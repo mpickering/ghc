@@ -1,24 +1,24 @@
 
 ==================== Strictness signatures ====================
-UnsatFun.$trModule: tm
+UnsatFun.$trModule: tm(tm1,tm1)
 UnsatFun.f: <B,1*U(U)><B,A>x
 UnsatFun.g: <B,1*U(U)>x
 UnsatFun.g': <L,1*U(U)>
-UnsatFun.g3: <L,U(U)>m
+UnsatFun.g3: <L,U(U)>m(t)
 UnsatFun.h: <C(S),1*C1(U(U))>
 UnsatFun.h2: <S,1*U><L,1*C1(U(U))>
-UnsatFun.h3: <C(S),1*C1(U)>m
+UnsatFun.h3: <C(S),1*C1(U)>m(t)
 
 
 
 ==================== Strictness signatures ====================
-UnsatFun.$trModule: tm
+UnsatFun.$trModule: tm(tm1,tm1)
 UnsatFun.f: <B,1*U(U)><B,A>x
 UnsatFun.g: <B,1*U(U)>x
 UnsatFun.g': <L,1*U(U)>
-UnsatFun.g3: <L,U(U)>m
+UnsatFun.g3: <L,U(U)>m(t)
 UnsatFun.h: <C(S),1*C1(U(U))>
 UnsatFun.h2: <S,1*U><L,1*C1(U(U))>
-UnsatFun.h3: <C(S),1*C1(U)>m
+UnsatFun.h3: <C(S),1*C1(U)>m(t)
 
 

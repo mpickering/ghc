@@ -140,11 +140,15 @@ dmdTransformThunkDmd e
 -- See ↦* relation in the Cardinality Analysis paper
 dmdAnalStar :: AnalEnv
             -> Demand   -- This one takes a *Demand*
-            -> CoreExpr -> (BothDmdArg, CoreExpr)
+            -> CoreExpr
+            -> (BothDmdArg, DmdResult, CoreExpr)
 dmdAnalStar env dmd e
-  | (defer_and_use, cd) <- toCleanDmd dmd (exprType e)
+  | (shell, cd)         <- toCleanDmd dmd (exprType e)
   , (dmd_ty, e')        <- dmdAnal env cd e
-  = (postProcessDmdType defer_and_use dmd_ty, e')
+  = let dmd_ty' = postProcessDmdType shell dmd_ty
+    in -- pprTrace "dmdAnalStar" (vcat [ppr e, ppr dmd, ppr defer_and_use, ppr dmd_ty, ppr dmd_ty'])
+        -- We also return the unmodified DmdResult, to store it in nested CPR information
+       (dmd_ty', getDmdResult dmd_ty,  e')
 
 -- Main Demand Analsysis machinery
 dmdAnal, dmdAnal' :: AnalEnv
@@ -162,8 +166,8 @@ dmdAnal' _ _ (Type ty)     = (nopDmdType, Type ty)      -- Doesn't happen, in fa
 dmdAnal' _ _ (Coercion co)
   = (unitDmdType (coercionDmdEnv co), Coercion co)
 
-dmdAnal' env dmd (Var var)
-  = (dmdTransform env var dmd, Var var)
+dmdAnal' env dmd (Var var)     = dmdAnalVarApp env dmd var []
+dmdAnal' env dmd (App fun arg) = dmdAnalApp    env dmd fun [arg]
 
 dmdAnal' env dmd (Cast e co)
   = (dmd_ty `bothDmdType` mkBothDmdArg (coercionDmdEnv co), Cast e' co)
@@ -187,33 +191,6 @@ dmdAnal' env dmd (Tick t e)
   = (dmd_ty, Tick t e')
   where
     (dmd_ty, e') = dmdAnal env dmd e
-
-dmdAnal' env dmd (App fun (Type ty))
-  = (fun_ty, App fun' (Type ty))
-  where
-    (fun_ty, fun') = dmdAnal env dmd fun
-
--- Lots of the other code is there to make this
--- beautiful, compositional, application rule :-)
-dmdAnal' env dmd (App fun arg)
-  = -- This case handles value arguments (type args handled above)
-    -- Crucially, coercions /are/ handled here, because they are
-    -- value arguments (Trac #10288)
-    let
-        call_dmd          = mkCallDmd dmd
-        (fun_ty, fun')    = dmdAnal env call_dmd fun
-        (arg_dmd, res_ty) = splitDmdTy fun_ty
-        (arg_ty, arg')    = dmdAnalStar env (dmdTransformThunkDmd arg arg_dmd) arg
-    in
---    pprTrace "dmdAnal:app" (vcat
---         [ text "dmd =" <+> ppr dmd
---         , text "expr =" <+> ppr (App fun arg)
---         , text "fun dmd_ty =" <+> ppr fun_ty
---         , text "arg dmd =" <+> ppr arg_dmd
---         , text "arg dmd_ty =" <+> ppr arg_ty
---         , text "res dmd_ty =" <+> ppr res_ty
---         , text "overall res dmd_ty =" <+> ppr (res_ty `bothDmdType` arg_ty) ])
-    (res_ty `bothDmdType` arg_ty, App fun' arg')
 
 -- this is an anonymous lambda, since @dmdAnalRhsLetDown@ uses @collectBinders@
 dmdAnal' env dmd (Lam var body)
@@ -303,7 +280,7 @@ dmdAnal' env dmd (Let (NonRec id rhs) body)
     (body_ty', id_dmd) = findBndrDmd env notArgOfDfun body_ty id
     id'                = setIdDemandInfo id id_dmd
 
-    (rhs_ty, rhs')     = dmdAnalStar env (dmdTransformThunkDmd rhs id_dmd) rhs
+    (rhs_ty, _, rhs')  = dmdAnalStar env (dmdTransformThunkDmd rhs id_dmd) rhs
     final_ty           = body_ty' `bothDmdType` rhs_ty
 
 dmdAnal' env dmd (Let (NonRec id rhs) body)
@@ -500,6 +477,82 @@ dmdTransform env var dmd
   = DmdType (unitVarEnv var (mkOnceUsedDmd dmd)) [] $
       if isUnliftedType (idType var) then convRes else topRes
 
+----------------
+dmdAnalApp :: AnalEnv -> CleanDemand -> CoreExpr
+           -> [CoreExpr] -> (DmdType, CoreExpr)
+dmdAnalApp env dmd (App fun arg) args = dmdAnalApp env dmd fun (arg:args)
+dmdAnalApp env dmd (Var fun)     args = dmdAnalVarApp env dmd fun args
+dmdAnalApp env dmd other_fun     args = dmdAnalOtherApp env dmd other_fun args
+
+----------------
+dmdAnalOtherApp :: AnalEnv -> CleanDemand -> CoreExpr
+                -> [CoreExpr] -> (DmdType, CoreExpr)
+dmdAnalOtherApp env dmd fun args
+  = completeApp env (dmdAnal env call_dmd fun) args
+  where
+    call_dmd = mkCallDmdN (valArgCount args) dmd
+
+----------------
+completeApp :: AnalEnv
+            -> (DmdType, CoreExpr)     -- Function and its demand-type
+            -> [CoreExpr]              -- Arguments
+            -> (DmdType, CoreExpr)     -- Function applied to args
+
+completeApp _ fun_ty_fun []
+  = fun_ty_fun
+completeApp env (fun_ty, fun') (arg:args)
+  | isTypeArg arg = completeApp env (fun_ty,                      App fun' arg)  args
+  | otherwise
+    = -- This case handles value arguments (type args handled above)
+      -- Crucially, coercions /are/ handled here, because they are
+      -- value arguments (Trac #10288)
+    completeApp env (res_ty `bothDmdType` arg_ty, App fun' arg') args
+  where
+    (arg_dmd, res_ty) = splitDmdTy fun_ty
+    (arg_ty, _, arg') = dmdAnalStar env (dmdTransformThunkDmd arg arg_dmd) arg
+
+----------------
+dmdAnalVarApp :: AnalEnv -> CleanDemand -> Id
+              -> [CoreExpr] -> (DmdType, CoreExpr)
+dmdAnalVarApp env dmd fun args
+  | Just con <- isDataConWorkId_maybe fun  -- Data constructor
+  , isVanillaDataCon con
+  , n_val_args == dataConRepArity con      -- Saturated
+  , dataConRepArity con > 0
+  , dataConRepArity con < 10
+  , Just cxt_ds <- splitProdCleanDmd n_val_args dmd
+  , let cpr_info
+          | isProductTyCon (dataConTyCon con) = cprProdRes arg_rets
+          | otherwise                         = cprSumRes (dataConTag con)
+        res_ty = foldl bothDmdType (DmdType emptyDmdEnv [] cpr_info) arg_tys
+        (arg_tys, arg_rets, args') = anal_con_args cxt_ds args
+            -- The constructor itself is lazy
+            -- See Note [Data-con worker strictness] in MkId
+  = -- pprTrace "dmdAnalVarApp" (vcat [ ppr con, ppr args, ppr n_val_args, ppr cxt_ds
+    --                                , ppr arg_tys, ppr cpr_info, ppr res_ty]) $
+    ( res_ty
+    , foldl App (Var fun) args')
+  where
+    n_val_args = valArgCount args
+
+    anal_con_args :: [Demand] -> [CoreExpr] -> ([BothDmdArg], [DmdResult], [CoreExpr])
+    anal_con_args _ [] = ([],[],[])
+    anal_con_args ds (arg : args)
+      | isTypeArg arg
+      , (arg_tys, arg_rets, args') <- anal_con_args ds args
+      = (arg_tys, arg_rets, arg:args')
+    anal_con_args (d:ds) (arg : args)
+      | (arg_ty, arg_ret, arg') <- dmdAnalStar env (dmdTransformThunkDmd arg d) arg
+      , (arg_tys, arg_rets, args') <- anal_con_args ds args
+      = (arg_ty:arg_tys, arg_ret:arg_rets, arg':args')
+    anal_con_args ds args = pprPanic "anal_con_args" (ppr args $$ ppr ds)
+
+dmdAnalVarApp env dmd fun args
+  = --pprTrace "dmdAnalVarApp" (vcat [ ppr fun, ppr args
+    --                               , ppr $ completeApp env (dmdTransform env fun (mkCallDmdN n_val_args dmd), Var fun) args
+    --                               ])
+    completeApp env (dmdTransform env fun (mkCallDmdN (valArgCount args) dmd), Var fun) args
+
 {-
 ************************************************************************
 *                                                                      *
@@ -595,8 +648,8 @@ environment, which effectively assigns them 'nopSig' (see "getStrictness")
 dmdAnalTrivialRhs ::
     AnalEnv -> Id -> CoreExpr -> Var ->
     (DmdEnv, Id, CoreExpr)
-dmdAnalTrivialRhs env id rhs fn
-  = (fn_fv, set_idStrictness env id fn_str, rhs)
+dmdAnalTrivialRhs env var rhs fn
+  = (fn_fv, set_idStrictness env var fn_str, rhs)
   where
     fn_str = getStrictness env fn
     fn_fv | isLocalId fn = unitVarEnv fn topDmd
@@ -628,15 +681,15 @@ dmdAnalRhsLetDown :: TopLevelFlag
            -> (DmdEnv, Id, CoreExpr)
 -- Process the RHS of the binding, add the strictness signature
 -- to the Id, and augment the environment with the signature as well.
-dmdAnalRhsLetDown top_lvl rec_flag env let_dmd id rhs
+dmdAnalRhsLetDown top_lvl rec_flag env let_dmd var rhs
   | Just fn <- unpackTrivial rhs   -- See Note [Demand analysis for trivial right-hand sides]
-  = dmdAnalTrivialRhs env id rhs fn
+  = dmdAnalTrivialRhs env var rhs fn
 
   | otherwise
-  = (lazy_fv, id', mkLams bndrs' body')
+  = (lazy_fv, var', mkLams bndrs' body')
   where
     (bndrs, body, body_dmd)
-       = case isJoinId_maybe id of
+       = case isJoinId_maybe var of
            Just join_arity  -- See Note [Demand analysis for join points]
                    | (bndrs, body) <- collectNBinders join_arity rhs
                    -> (bndrs, body, let_dmd)
@@ -644,14 +697,18 @@ dmdAnalRhsLetDown top_lvl rec_flag env let_dmd id rhs
            Nothing | (bndrs, body) <- collectBinders rhs
                    -> (bndrs, body, mkBodyDmd env body)
 
-    env_body         = foldl extendSigsWithLam env bndrs
-    (body_ty, body') = dmdAnal env_body body_dmd body
-    body_ty'         = removeDmdTyArgs body_ty -- zap possible deep CPR info
+    env_body             = foldl extendSigsWithLam env bndrs
+    (body_ty, body')     = dmdAnal env_body body_dmd body
+    body_ty'             = removeDmdTyArgs body_ty -- zap possible deep CPR info
     (DmdType rhs_fv rhs_dmds rhs_res, bndrs')
-                     = annotateLamBndrs env (isDFunId id) body_ty' bndrs
-    sig_ty           = mkStrictSig (mkDmdType sig_fv rhs_dmds rhs_res')
-    id'              = set_idStrictness env id sig_ty
-        -- See Note [NOINLINE and strictness]
+                         = annotateLamBndrs env (isDFunId var) body_ty' bndrs
+    sig_ty               = mkStrictSig $
+                           mkDmdType sig_fv rhs_dmds $
+                                handle_sum_cpr $
+                                handle_thunk_cpr $
+                                rhs_res
+    var'                 = set_idStrictness env var sig_ty
+      -- See Note [NOINLINE and strictness]
 
 
     -- See Note [Aggregated demand for cardinality]
@@ -662,16 +719,19 @@ dmdAnalRhsLetDown top_lvl rec_flag env let_dmd id rhs
     -- See Note [Lazy and unleashable free variables]
     (lazy_fv, sig_fv) = splitFVs is_thunk rhs_fv1
 
-    rhs_res'  = trimCPRInfo trim_all trim_sums rhs_res
-    trim_all  = is_thunk && not_strict
-    trim_sums = not (isTopLevel top_lvl) -- See Note [CPR for sum types]
+    -- Note [CPR for sum types]
+    handle_sum_cpr | isTopLevel top_lvl = id
+                   | otherwise          = forgetSumCPR
 
     -- See Note [CPR for thunks]
-    is_thunk = not (exprIsHNF rhs) && not (isJoinId id)
+    handle_thunk_cpr | is_thunk && not_strict = forgetCPR
+                     | otherwise              = id
+
+    is_thunk = not (exprIsHNF rhs) && not (isJoinId var)
     not_strict
        =  isTopLevel top_lvl  -- Top level and recursive things don't
        || isJust rec_flag     -- get their demandInfo set at all
-       || not (isStrictDmd (idDemandInfo id) || ae_virgin env)
+       || not (isStrictDmd (idDemandInfo var) || ae_virgin env)
           -- See Note [Optimistic CPR in the "virgin" case]
 
 mkBodyDmd :: AnalEnv -> CoreExpr -> CleanDemand
@@ -875,7 +935,7 @@ annotateLamIdBndr env arg_of_dfun dmd_ty id
                  Nothing  -> main_ty
                  Just unf -> main_ty `bothDmdType` unf_ty
                           where
-                             (unf_ty, _) = dmdAnalStar env dmd unf
+                             (unf_ty, _, _) = dmdAnalStar env dmd unf
 
     main_ty = addDemand dmd dmd_ty'
     (dmd_ty', dmd) = findBndrDmd env arg_of_dfun dmd_ty id
@@ -907,6 +967,9 @@ However this means in turn that the *enclosing* function
 may be CPR'd (via the returned Justs).  But in the case of
 sums, there may be Nothing alternatives; and that messes
 up the sum-type CPR.
+
+This also applies to nested CPR information: Keep product CPR information, but
+zap sum CPR information therein.
 
 Conclusion: only do this for products.  It's still not
 guaranteed OK for products, but sums definitely lose sometimes.

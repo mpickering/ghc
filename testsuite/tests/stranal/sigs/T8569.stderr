@@ -1,18 +1,18 @@
 
 ==================== Strictness signatures ====================
-T8569.$tc'Rdata: tm
-T8569.$tc'Rint: tm
-T8569.$tcRep: tm
-T8569.$trModule: tm
+T8569.$tc'Rdata: tm(t,t,tm(tm1,tm1),tm1)
+T8569.$tc'Rint: tm(t,t,tm(tm1,tm1),tm1)
+T8569.$tcRep: tm(t,t,tm(tm1,tm1),tm1)
+T8569.$trModule: tm(tm1,tm1)
 T8569.addUp: <S,1*U><L,U>
 
 
 
 ==================== Strictness signatures ====================
-T8569.$tc'Rdata: tm
-T8569.$tc'Rint: tm
-T8569.$tcRep: tm
-T8569.$trModule: tm
+T8569.$tc'Rdata: tm(t,t,tm(tm1,tm1),tm1)
+T8569.$tc'Rint: tm(t,t,tm(tm1,tm1),tm1)
+T8569.$tcRep: tm(t,t,tm(tm1,tm1),tm1)
+T8569.$trModule: tm(tm1,tm1)
 T8569.addUp: <S,1*U><L,U>
 
 

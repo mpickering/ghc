@@ -30,11 +30,12 @@ module Demand (
         peelFV, findIdDemand,
 
         DmdResult, CPRResult,
-        isBotRes, isTopRes,
+        isBotRes, isTopRes, getDmdResult,
         topRes, convRes, botRes, exnRes, cprProdRes,
         vanillaCprProdRes, cprSumRes,
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
-        trimCPRInfo, returnsCPR_maybe,
+        returnsCPR_maybe,
+        forgetCPR, forgetSumCPR,
         StrictSig(..), mkStrictSig, mkClosedStrictSig,
         nopSig, botSig, exnSig, cprProdSig, convergeSig,
         isTopSig, hasDemandEnvSig,
@@ -45,11 +46,11 @@ module Demand (
         seqDemand, seqDemandList, seqDmdType, seqStrictSig,
 
         evalDmd, cleanEvalDmd, cleanEvalProdDmd, isStrictDmd,
-        splitDmdTy, splitFVs,
+        splitDmdTy, splitFVs, splitProdCleanDmd,
         deferAfterIO,
         postProcessUnsat, postProcessDmdType,
 
-        splitProdDmd_maybe, peelCallDmd, mkCallDmd, mkWorkerDemand,
+        splitProdDmd_maybe, peelCallDmd, mkCallDmd, mkCallDmdN, mkWorkerDemand,
         dmdTransformSig, dmdTransformDataConSig, dmdTransformDictSelSig,
         argOneShots, argsOneShots, saturatedByOneShots,
         trimToType, TypeShape(..),
@@ -261,6 +262,10 @@ mkSCall :: StrDmd -> StrDmd
 mkSCall HyperStr = HyperStr
 mkSCall s        = SCall s
 
+mkSCallN :: Arity -> StrDmd -> StrDmd
+mkSCallN _ HyperStr = HyperStr
+mkSCallN n s        = nTimes n SCall s
+
 mkSProd :: [ArgStr] -> StrDmd
 mkSProd sx
   | any isHyperStr sx = HyperStr
@@ -340,9 +345,12 @@ seqStrDmd (SProd ds)   = seqStrDmdList ds
 seqStrDmd (SCall s)    = seqStrDmd s
 seqStrDmd _            = ()
 
+seqListWith :: (a -> ()) -> [a] -> ()
+seqListWith _ [] = ()
+seqListWith s (x:xs) = s x `seq` seqListWith s xs
+
 seqStrDmdList :: [ArgStr] -> ()
-seqStrDmdList [] = ()
-seqStrDmdList (d:ds) = seqArgStr d `seq` seqStrDmdList ds
+seqStrDmdList = seqListWith seqArgStr
 
 seqArgStr :: ArgStr -> ()
 seqArgStr Lazy      = ()
@@ -441,7 +449,11 @@ useTop     = Use Many Used
 
 mkUCall :: Count -> UseDmd -> UseDmd
 --mkUCall c Used = Used c
-mkUCall c a  = UCall c a
+mkUCall c u  = UCall c u
+
+mkUCallN :: Arity -> Count -> UseDmd -> UseDmd
+--mkUCall c Used = Used c
+mkUCallN n c u  = nTimes n (UCall c) u
 
 mkUProd :: [ArgUse] -> UseDmd
 mkUProd ux
@@ -630,8 +642,7 @@ seqUseDmd (UCall c d)  = c `seq` seqUseDmd d
 seqUseDmd _            = ()
 
 seqArgUseList :: [ArgUse] -> ()
-seqArgUseList []     = ()
-seqArgUseList (d:ds) = seqArgUse d `seq` seqArgUseList ds
+seqArgUseList = seqListWith seqArgUse
 
 seqArgUse :: ArgUse -> ()
 seqArgUse (Use c u)  = c `seq` seqUseDmd u
@@ -662,7 +673,7 @@ useCount _           = Many
 *                                                                      *
 ************************************************************************
 
-This domain differst from JointDemand in the sence that pure absence
+This domain differs from JointDemand in the sense that pure absence
 is taken away, i.e., we deal *only* with non-absent demands.
 
 Note [Strict demands]
@@ -710,6 +721,12 @@ mkOnceUsedDmd, mkManyUsedDmd :: CleanDemand -> Demand
 mkOnceUsedDmd (JD {sd = s,ud = a}) = JD { sd = Str VanStr s, ud = Use One a }
 mkManyUsedDmd (JD {sd = s,ud = a}) = JD { sd = Str VanStr s, ud = Use Many a }
 
+splitProdCleanDmd :: Arity -> CleanDemand -> Maybe [Demand]
+splitProdCleanDmd arity (JD {sd = s,ud = u}) = do
+  ss <- splitStrProdDmd arity s
+  us <- splitUseProdDmd arity u
+  return $ mkJointDmds ss us
+
 evalDmd :: Demand
 -- Evaluated strictly, and used arbitrarily deeply
 evalDmd = JD { sd = Str VanStr HeadStr, ud = useTop }
@@ -728,6 +745,10 @@ mkWorkerDemand :: Int -> Demand
 mkWorkerDemand n = JD { sd = Lazy, ud = Use One (go n) }
   where go 0 = Used
         go n = mkUCall One $ go (n-1)
+
+mkCallDmdN :: Arity -> CleanDemand -> CleanDemand
+mkCallDmdN n (JD {sd = d, ud = u})
+  = JD { sd = mkSCallN n d, ud = mkUCallN n One u }
 
 cleanEvalDmd :: CleanDemand
 cleanEvalDmd = JD { sd = HeadStr, ud = Used }
@@ -815,8 +836,7 @@ seqDemand :: Demand -> ()
 seqDemand (JD {sd = s, ud = u}) = seqArgStr s `seq` seqArgUse u
 
 seqDemandList :: [Demand] -> ()
-seqDemandList [] = ()
-seqDemandList (d:ds) = seqDemand d `seq` seqDemandList ds
+seqDemandList = seqListWith seqDemand
 
 isStrictDmd :: Demand -> Bool
 -- See Note [Strict demands]
@@ -951,7 +971,7 @@ DmdResult:     Dunno CPRResult
 
 CPRResult:         NoCPR
                    /    \
-            RetProd    RetSum ConTag
+  RetProd [DmdResult]    RetSum ConTag
 
 
 Product constructors return (Converges (RetProd rs))
@@ -972,16 +992,20 @@ data Termination r
 
 type DmdResult = Termination CPRResult
 
-data CPRResult = NoCPR          -- Top of the lattice
-               | RetProd        -- Returns a constructor from a product type
-               | RetSum ConTag  -- Returns a constructor from a data type
+data CPRResult = NoCPR               -- Top of the lattice
+               | RetProd [DmdResult] -- Returns a constructor from a product type
+               | RetSum ConTag       -- Returns a constructor from a data type
                deriving( Eq, Show )
 
 lubCPR :: CPRResult -> CPRResult -> CPRResult
 lubCPR (RetSum t1) (RetSum t2)
   | t1 == t2                       = RetSum t1
-lubCPR RetProd     RetProd     = RetProd
-lubCPR _ _                     = NoCPR
+lubCPR (RetProd ds1) (RetProd ds2)
+  | ds1 `equalLength` ds2          = RetProd (zipWith lubDmdResult ds1 ds2)
+    -- I'm thinking the could be unequal if two branches of a GADT case
+    -- returned a product constructor from a different data type
+    -- Also we use [] to mean [top,...,top]
+lubCPR _ _                         = NoCPR
 
 lubDmdResult :: DmdResult -> DmdResult -> DmdResult
 lubDmdResult Diverges       (Converges c2) = Dunno c2
@@ -1021,7 +1045,7 @@ instance Outputable r => Outputable (Termination r) where
 instance Outputable CPRResult where
   ppr NoCPR        = empty
   ppr (RetSum n)   = char 'm' <> int n
-  ppr RetProd      = char 'm'
+  ppr (RetProd rs) = char 'm' <> parens (hcat (punctuate (char ',') (map ppr rs)))
 
 seqDmdResult :: DmdResult -> ()
 seqDmdResult Diverges  = ()
@@ -1032,7 +1056,7 @@ seqDmdResult (Dunno c) = seqCPRResult c
 seqCPRResult :: CPRResult -> ()
 seqCPRResult NoCPR        = ()
 seqCPRResult (RetSum n)   = n `seq` ()
-seqCPRResult RetProd      = ()
+seqCPRResult (RetProd rs) = seqListWith seqDmdResult rs
 
 
 ------------------------------------------------------------------------
@@ -1050,15 +1074,72 @@ botRes = Diverges
 cprSumRes :: ConTag -> DmdResult
 cprSumRes tag = Converges $ RetSum tag
 
-cprProdRes :: [DmdType] -> DmdResult
-cprProdRes _arg_tys = Converges $ RetProd
+cprProdRes :: [DmdResult] -> DmdResult
+cprProdRes arg_ress
+  | opt_NestedCprOff  = Converges $ cutCPRResult flatCPRDepth $ RetProd arg_ress
+  | otherwise         = Converges $ cutCPRResult maxCPRDepth  $ RetProd arg_ress
+  where
+    opt_NestedCprOff = False
+
+getDmdResult :: DmdType -> DmdResult
+getDmdResult (DmdType _ [] r) = r       -- Only for data-typed arguments!
+getDmdResult _                = topRes
 
 -- Forget that something might converge for sure
 divergeDmdResult :: DmdResult -> DmdResult
 divergeDmdResult r = r `lubDmdResult` botRes
 
+maxCPRDepth :: Int
+maxCPRDepth = 3
+
+-- This is the depth we use with -fnested-cpr-off, in order
+-- to get precisely the same behaviour as before introduction of nested cpr
+-- -fnested-cpr-off can eventually be removed if nested cpr is deemd to be
+-- a good thing always.
+flatCPRDepth :: Int
+flatCPRDepth = 1
+
+-- With nested CPR, DmdResult can be arbitrarily deep; consider
+-- data Rec1 = Foo Rec2 Rec2
+-- data Rec2 = Bar Rec1 Rec1
+--
+-- x = Foo y y
+-- y = Bar x x
+--
+-- So we need to forget information at a certain depth. We do that at all points
+-- where we are constructing new RetProd constructors.
+cutCPRResult :: Int -> CPRResult -> CPRResult
+cutCPRResult 0 _               = NoCPR
+cutCPRResult _ NoCPR           = NoCPR
+cutCPRResult _ (RetSum tag)    = RetSum tag
+cutCPRResult n (RetProd rs)    = RetProd (map (cutDmdResult (n-1)) rs)
+  where
+    cutDmdResult :: Int -> DmdResult -> DmdResult
+    cutDmdResult 0 _             = topRes
+    cutDmdResult _ Diverges      = Diverges
+    cutDmdResult _ ThrowsExn     = ThrowsExn
+    cutDmdResult n (Converges c) = Converges (cutCPRResult n c)
+    cutDmdResult n (Dunno c)     = Dunno     (cutCPRResult n c)
+
+-- Forget the CPR information, but remember if it converges or diverges
+-- Used for non-strict thunks and non-top-level things with sum type
+forgetCPR :: DmdResult -> DmdResult
+forgetCPR (Converges _) = Converges NoCPR
+forgetCPR (Dunno _) = Dunno NoCPR
+forgetCPR res = res
+
+forgetSumCPR :: DmdResult -> DmdResult
+forgetSumCPR (Converges r) = Converges (forgetSumCPR_help r)
+forgetSumCPR (Dunno r) = Dunno (forgetSumCPR_help r)
+forgetSumCPR res = res
+
+forgetSumCPR_help :: CPRResult -> CPRResult
+forgetSumCPR_help (RetProd ds) = RetProd (map forgetSumCPR ds)
+forgetSumCPR_help (RetSum _)   = NoCPR
+forgetSumCPR_help NoCPR        = NoCPR
+
 vanillaCprProdRes :: Arity -> DmdResult
-vanillaCprProdRes _arity = Converges $ RetProd
+vanillaCprProdRes arity = cprProdRes (replicate arity topRes)
 
 isTopRes :: DmdResult -> Bool
 isTopRes (Dunno NoCPR) = True
@@ -1071,20 +1152,6 @@ isBotRes ThrowsExn  = True
 isBotRes (Dunno {}) = False
 isBotRes (Converges {}) = False
 
-trimCPRInfo :: Bool -> Bool -> DmdResult -> DmdResult
-trimCPRInfo trim_all trim_sums res
-  = trimR res
-  where
-    trimR (Converges c) = Converges (trimC c)
-    trimR (Dunno c) = Dunno (trimC c)
-    trimR res       = res
-
-    trimC (RetSum n)   | trim_all || trim_sums = NoCPR
-                       | otherwise             = RetSum n
-    trimC RetProd      | trim_all  = NoCPR
-                       | otherwise = RetProd
-    trimC NoCPR = NoCPR
-
 returnsCPR_maybe :: DmdResult -> Maybe ConTag
 returnsCPR_maybe (Converges c) = retCPR_maybe c
 returnsCPR_maybe (Dunno c)     = retCPR_maybe c
@@ -1093,7 +1160,7 @@ returnsCPR_maybe ThrowsExn     = Nothing
 
 retCPR_maybe :: CPRResult -> Maybe ConTag
 retCPR_maybe (RetSum t)  = Just t
-retCPR_maybe RetProd     = Just fIRST_TAG
+retCPR_maybe (RetProd _) = Just fIRST_TAG
 retCPR_maybe NoCPR       = Nothing
 
 -- See Notes [Default demand on free variables]
@@ -1334,10 +1401,11 @@ bothDmdType (DmdType fv1 ds1 r1) (fv2, t2)
 
 instance Outputable DmdType where
   ppr (DmdType fv ds res)
-    = hsep [hcat (map ppr ds) <> ppr res,
+    = hsep [hcat (map ppr ds) <> ppr_res,
             if null fv_elts then empty
             else braces (fsep (map pp_elt fv_elts))]
     where
+      ppr_res = if isTopRes res then empty else ppr res
       pp_elt (uniq, dmd) = ppr uniq <> text "->" <> ppr dmd
       fv_elts = nonDetUFMToList fv
         -- It's OK to use nonDetUFMToList here because we only do it for
@@ -2244,12 +2312,12 @@ instance Binary DmdResult where
 
 instance Binary CPRResult where
     put_ bh (RetSum n)   = do { putByte bh 0; put_ bh n }
-    put_ bh RetProd      = putByte bh 1
+    put_ bh (RetProd rs) = do { putByte bh 1; put_ bh rs }
     put_ bh NoCPR        = putByte bh 2
 
     get  bh = do
             h <- getByte bh
-            case h of
-              0 -> do { n <- get bh; return (RetSum n) }
-              1 -> return RetProd
+            case h of 
+              0 -> do { n  <- get bh; return (RetSum n) }
+              1 -> do { rs <- get bh; return (RetProd rs) }
               _ -> return NoCPR

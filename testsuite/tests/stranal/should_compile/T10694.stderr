@@ -4,7 +4,7 @@ Result size of Tidy Core = {terms: 74, types: 65, coercions: 0, joins: 0/4}
 
 -- RHS size: {terms: 39, types: 25, coercions: 0, joins: 0/4}
 T10694.$wpm [InlPrag=NOINLINE] :: Int -> Int -> (# Int, Int #)
-[GblId, Arity=2, Str=<L,U(U)><L,U(U)>]
+[GblId, Arity=2, Str=<L,U(U)><L,U(U)>tm(,)]
 T10694.$wpm
   = \ (w_s1pY :: Int) (w1_s1pZ :: Int) ->
       let {
@@ -31,7 +31,7 @@ T10694.$wpm
 pm [InlPrag=INLINE[0]] :: Int -> Int -> (Int, Int)
 [GblId,
  Arity=2,
- Str=<L,U(U)><L,U(U)>m,
+ Str=<L,U(U)><L,U(U)>tm(,),
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True,
          Guidance=ALWAYS_IF(arity=2,unsat_ok=True,boring_ok=False)
          Tmpl= \ (w_s1pY [Occ=Once] :: Int) (w1_s1pZ [Occ=Once] :: Int) ->
@@ -85,7 +85,7 @@ T10694.$trModule1 = GHC.Types.TrNameS T10694.$trModule2
 T10694.$trModule :: GHC.Types.Module
 [GblId,
  Caf=NoCafRefs,
- Str=tm,
+ Str=tm(tm1,tm1),
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
 T10694.$trModule = GHC.Types.Module T10694.$trModule3 T10694.$trModule1
 

@@ -43,7 +43,7 @@ Roman.$trModule1 = GHC.Types.TrNameS Roman.$trModule2
 Roman.$trModule :: GHC.Types.Module
 [GblId,
  Caf=NoCafRefs,
- Str=tm,
+ Str=tm(tm1,tm1),
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
 Roman.$trModule
@@ -141,7 +141,7 @@ Roman.foo_go [InlPrag=NOUSERINLINE[0]]
   :: Maybe Int -> Maybe Int -> Int
 [GblId,
  Arity=2,
- Str=<S,1*U><S,1*U>m,
+ Str=<S,1*U><S,1*U>m(t),
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True,
          Guidance=ALWAYS_IF(arity=2,unsat_ok=True,boring_ok=False)
@@ -155,7 +155,7 @@ Roman.foo_go
 Roman.foo2 :: Int
 [GblId,
  Caf=NoCafRefs,
- Str=tm,
+ Str=tm(t),
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
 Roman.foo2 = GHC.Types.I# 6#
@@ -174,7 +174,7 @@ foo :: Int -> Int
 [GblId,
  Arity=1,
  Caf=NoCafRefs,
- Str=<S(S),1*U(U)>m,
+ Str=<S(S),1*U(U)>m(t),
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True,
          Guidance=ALWAYS_IF(arity=1,unsat_ok=True,boring_ok=False)
