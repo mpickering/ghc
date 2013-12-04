@@ -1041,8 +1041,9 @@ seqCPRResult RetProd      = ()
 
 -- [cprRes] lets us switch off CPR analysis
 -- by making sure that everything uses TopRes
-topRes, exnRes, botRes :: DmdResult
+topRes, convRes, exnRes, botRes :: DmdResult
 topRes = Dunno NoCPR
+convRes = Converges NoCPR
 exnRes = ThrowsExn
 botRes = Diverges
 
@@ -1472,7 +1473,7 @@ postProcessDmdType du@(JD { sd = ss }) (DmdType fv _ res_ty)
 postProcessDmdResult :: Str () -> DmdResult -> DmdResult
     -- if we use it lazily, there cannot be divergence worrying us
     -- (Otherwise we'd lose the termination information of constructors in dmdAnalVarApp, for example)
-postProcessDmdResult Lazy           _         = Converges NoCPR
+postProcessDmdResult Lazy           _         = convRes
 postProcessDmdResult (Str ExnStr _) ThrowsExn = topRes  -- Key point!
 -- Note that only ThrowsExn results can be caught, not Diverges
 postProcessDmdResult _              res       = res
@@ -1578,8 +1579,8 @@ But the demand fed into f might be less than <C(C(S)), C1(C1(S))>. There are a f
    - And finally termination information: If r says that f diverges for sure,
      then this holds when the demand guarantees that two arguments are going to
      be passed. If the demand is lower, we may just as well converge.
-     If we were tracking definite convegence, than that would still hold under
-     a weaker demand than expected by the demand transformer.
+     Definite convegence still holds under a weaker demand than expected by the
+     demand transformer.
  * Not enough demand from the usage side: The missing usage can be expanded
    using UCall Many, therefore this is subsumed by the third case:
  * At least one of the uses has a cardinality of Many.
