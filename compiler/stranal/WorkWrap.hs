@@ -560,7 +560,7 @@ splitFun dflags fam_envs fn_id fn_info wrap_dmds res_info rhs
                   | otherwise      = res_info
     work_res_info | isJoinId fn_id = res_info -- Worker remains CPR-able
                   | otherwise
-                  = case returnsCPR_maybe res_info of
+                  = case returnsCPR_maybe False res_info of
                        Just _  -> topRes    -- Cpr stuff done by wrapper; kill it here
                        Nothing -> res_info  -- Preserve exception/divergence
 
