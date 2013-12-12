@@ -3,7 +3,7 @@
 DmdAnalGADTs.$tc'A: m
 DmdAnalGADTs.$tc'B: m
 DmdAnalGADTs.$tcD: m
-DmdAnalGADTs.$trModule: m
+DmdAnalGADTs.$trModule: tm
 DmdAnalGADTs.diverges: b
 DmdAnalGADTs.f: <S,1*U>
 DmdAnalGADTs.f': <S,1*U>m
@@ -17,7 +17,7 @@ DmdAnalGADTs.hasStrSig: <S,1*U(U)>m
 DmdAnalGADTs.$tc'A: m
 DmdAnalGADTs.$tc'B: m
 DmdAnalGADTs.$tcD: m
-DmdAnalGADTs.$trModule: m
+DmdAnalGADTs.$trModule: tm
 DmdAnalGADTs.diverges: b
 DmdAnalGADTs.f: <S,1*U>
 DmdAnalGADTs.f': <S,1*U>m

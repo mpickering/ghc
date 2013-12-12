@@ -530,7 +530,9 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
                              -- so it not make sure that the CAF info is sane
                          `setNeverLevPoly`      wrap_ty
 
-             wrap_sig = mkClosedStrictSig wrap_arg_dmds (dataConCPR data_con)
+             wrap_sig_conv = mkClosedStrictSig wrap_arg_dmds (dataConCPR data_con)
+             wrap_sig | any isBanged arg_ibangs = sigMayDiverge wrap_sig_conv
+                      | otherwise               = wrap_sig_conv
 
              wrap_arg_dmds =
                replicate (length theta) topDmd ++ map mk_dmd arg_ibangs
@@ -538,7 +540,7 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
                -- the strictness signature (#14290).
 
              mk_dmd str | isBanged str = evalDmd
-                        | otherwise           = topDmd
+                        | otherwise    = topDmd
 
              wrap_prag = alwaysInlinePragma `setInlinePragmaActivation`
                          ActiveAfter NoSourceText 2

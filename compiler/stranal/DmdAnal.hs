@@ -269,10 +269,7 @@ dmdAnal' env dmd (Case scrut case_bndr ty alts)
   = let      -- Case expression with multiple alternatives
         (alt_tys, alts')     = mapAndUnzip (dmdAnalAlt env dmd case_bndr) alts
         (scrut_ty, scrut')   = dmdAnal env cleanEvalDmd scrut
-        (alt_ty, case_bndr') = annotateBndr env (foldr lubDmdType botDmdType alt_tys) case_bndr
-                               -- NB: Base case is botDmdType, for empty case alternatives
-                               --     This is a unit for lubDmdType, and the right result
-                               --     when there really are no alternatives
+        (alt_ty, case_bndr') = annotateBndr env (lubDmdTypes alt_tys) case_bndr
         res_ty               = alt_ty `bothDmdType` toBothDmdArg scrut_ty
     in
 --    pprTrace "dmdAnal:Case2" (vcat [ text "scrut" <+> ppr scrut
@@ -1160,7 +1157,10 @@ extendSigEnvs top_lvl sigs vars
 
 extendAnalEnv :: TopLevelFlag -> AnalEnv -> Id -> StrictSig -> AnalEnv
 extendAnalEnv top_lvl env var sig
-  = env { ae_sigs = extendSigEnv top_lvl (ae_sigs env) var sig }
+  = env { ae_sigs = extendSigEnv top_lvl (ae_sigs env) var sig' }
+  where
+  sig' | isWeakLoopBreaker (idOccInfo var) = sigMayDiverge sig
+       | otherwise                         = sig
 
 extendSigEnv :: TopLevelFlag -> SigEnv -> Id -> StrictSig -> SigEnv
 extendSigEnv top_lvl sigs var sig = extendVarEnv sigs var (sig, top_lvl)
@@ -1185,7 +1185,7 @@ extendSigsWithLam env id
        -- See Note [Optimistic CPR in the "virgin" case]
        -- See Note [Initial CPR for strict binders]
   , Just (dc,_,_,_) <- deepSplitProductType_maybe (ae_fam_envs env) $ idType id
-  = extendAnalEnv NotTopLevel env id (cprProdSig (dataConRepArity dc))
+  = extendAnalEnv NotTopLevel env id (sigMayDiverge (cprProdSig (dataConRepArity dc)))
 
   | otherwise
   = env
@@ -1458,6 +1458,9 @@ point: all of these functions can have the CPR property.
     f4 :: T4 Int -> Int
     f4 (MkT4 x@(Foo v) y) | y>0       = f4 (MkT4 x (y-1))
                           | otherwise = v
+
+And finally note that the signature should obviously _not_ claim that it is
+converging (like a constructor call would).
 
 
 Note [Initialising strictness]

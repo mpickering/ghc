@@ -51,7 +51,7 @@ T7360.fun4 = GHC.Types.I# 0#
 fun2 :: forall a. [a] -> ((), Int)
 [GblId,
  Arity=1,
- Str=<L,1*U>m,
+ Str=<L,1*U>tm,
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True,
          Guidance=ALWAYS_IF(arity=1,unsat_ok=True,boring_ok=False)
@@ -113,7 +113,7 @@ T7360.$trModule1 = GHC.Types.TrNameS T7360.$trModule2
 T7360.$trModule :: GHC.Types.Module
 [GblId,
  Caf=NoCafRefs,
- Str=m,
+ Str=tm,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
 T7360.$trModule
