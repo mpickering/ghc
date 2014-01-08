@@ -30,9 +30,10 @@ module Demand (
         peelFV, findIdDemand,
 
         DmdResult, CPRResult,
-        isBotRes, isTopRes, getDmdResult,
+        isBotRes, isTopRes, getDmdResult, resTypeArgDmd,
         topRes, convRes, botRes, exnRes, cprProdRes,
         vanillaCprProdRes, cprSumRes,
+        splitNestedRes,
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
         returnsCPR_maybe,
         forgetCPR, forgetSumCPR,
@@ -1140,6 +1141,17 @@ forgetSumCPR_help NoCPR        = NoCPR
 
 vanillaCprProdRes :: Arity -> DmdResult
 vanillaCprProdRes arity = cprProdRes (replicate arity topRes)
+
+splitNestedRes :: DmdResult -> [DmdResult]
+splitNestedRes Diverges      = repeat topRes
+splitNestedRes ThrowsExn     = repeat topRes
+splitNestedRes (Dunno c)     = splitNestedCPR c
+splitNestedRes (Converges c) = splitNestedCPR c
+
+splitNestedCPR :: CPRResult -> [DmdResult]
+splitNestedCPR NoCPR        = repeat topRes
+splitNestedCPR (RetSum _)   = repeat topRes
+splitNestedCPR (RetProd cs) = cs
 
 isTopRes :: DmdResult -> Bool
 isTopRes (Dunno NoCPR) = True
