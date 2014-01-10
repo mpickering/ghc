@@ -15,7 +15,7 @@ T7116.$trModule4 = "main"#
 T7116.$trModule3 :: GHC.Types.TrName
 [GblId,
  Caf=NoCafRefs,
- Str=m1,
+ Str=tm1,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
 T7116.$trModule3 = GHC.Types.TrNameS T7116.$trModule4
@@ -32,7 +32,7 @@ T7116.$trModule2 = "T7116"#
 T7116.$trModule1 :: GHC.Types.TrName
 [GblId,
  Caf=NoCafRefs,
- Str=m1,
+ Str=tm1,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
 T7116.$trModule1 = GHC.Types.TrNameS T7116.$trModule2

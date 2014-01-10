@@ -157,7 +157,7 @@ dmdAnal, dmdAnal' :: AnalEnv
 dmdAnal env d e = -- pprTrace "dmdAnal" (ppr d <+> ppr e) $
                   dmdAnal' env d e
 
-dmdAnal' _ _ (Lit lit)     = (nopDmdType, Lit lit)
+dmdAnal' _ _ (Lit lit)     = (litDmdType, Lit lit)
 dmdAnal' _ _ (Type ty)     = (nopDmdType, Type ty)      -- Doesn't happen, in fact
 dmdAnal' _ _ (Coercion co)
   = (unitDmdType (coercionDmdEnv co), Coercion co)

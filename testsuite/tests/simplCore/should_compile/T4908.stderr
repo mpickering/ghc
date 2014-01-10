@@ -7,6 +7,7 @@ Result size of Tidy Core
 T4908.$trModule4 :: Addr#
 [GblId,
  Caf=NoCafRefs,
+ Str=t,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 20 0}]
 T4908.$trModule4 = "main"#
@@ -15,7 +16,7 @@ T4908.$trModule4 = "main"#
 T4908.$trModule3 :: TrName
 [GblId,
  Caf=NoCafRefs,
- Str=m1,
+ Str=tm1,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
 T4908.$trModule3 = GHC.Types.TrNameS T4908.$trModule4
@@ -24,6 +25,7 @@ T4908.$trModule3 = GHC.Types.TrNameS T4908.$trModule4
 T4908.$trModule2 :: Addr#
 [GblId,
  Caf=NoCafRefs,
+ Str=t,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 30 0}]
 T4908.$trModule2 = "T4908"#
@@ -32,7 +34,7 @@ T4908.$trModule2 = "T4908"#
 T4908.$trModule1 :: TrName
 [GblId,
  Caf=NoCafRefs,
- Str=m1,
+ Str=tm1,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
 T4908.$trModule1 = GHC.Types.TrNameS T4908.$trModule2
