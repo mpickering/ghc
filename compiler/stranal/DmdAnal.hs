@@ -497,7 +497,8 @@ dmdTransform env var dmd
     else addVarDmd fn_ty var (mkOnceUsedDmd dmd)
 
   | otherwise                                    -- Local non-letrec-bound thing
-  = unitDmdType (unitVarEnv var (mkOnceUsedDmd dmd))
+  = DmdType (unitVarEnv var (mkOnceUsedDmd dmd)) [] $
+      if isUnliftedType (idType var) then convRes else topRes
 
 {-
 ************************************************************************
@@ -1162,6 +1163,7 @@ extendAnalEnv top_lvl env var sig
   = env { ae_sigs = extendSigEnv top_lvl (ae_sigs env) var sig' }
   where
   sig' | isWeakLoopBreaker (idOccInfo var) = sigMayDiverge sig
+       | isUnliftedType (idType var)       = convergeSig sig
        | otherwise                         = sig
 
 extendSigEnv :: TopLevelFlag -> SigEnv -> Id -> StrictSig -> SigEnv

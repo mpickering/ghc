@@ -31,7 +31,7 @@ module Demand (
 
         DmdResult, CPRResult,
         isBotRes, isTopRes,
-        topRes, botRes, exnRes, cprProdRes,
+        topRes, convRes, botRes, exnRes, cprProdRes,
         vanillaCprProdRes, cprSumRes,
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
         trimCPRInfo, returnsCPR_maybe,
