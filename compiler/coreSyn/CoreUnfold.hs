@@ -25,6 +25,7 @@ module CoreUnfold (
         mkTopUnfolding, mkSimpleUnfolding, mkWorkerUnfolding,
         mkInlineUnfolding, mkInlineUnfoldingWithArity,
         mkInlinableUnfolding, mkWwInlineRule,
+        mkDataConWrapUnfolding,
         mkCompulsoryUnfolding, mkDFunUnfolding,
         specUnfolding,
 
@@ -158,6 +159,20 @@ mkInlineUnfoldingWithArity arity expr
                     , ug_unsat_ok = needSaturated
                     , ug_boring_ok = boring_ok }
     boring_ok = inlineBoringOk expr'
+
+mkDataConWrapUnfolding :: Arity -> CoreExpr -> Unfolding
+mkDataConWrapUnfolding arity expr
+  = mkCoreUnfolding InlineStable
+                    True
+                    expr'
+                    UnfWhen { ug_arity = arity
+                            , ug_unsat_ok = unSaturatedOk
+                            , ug_boring_ok = boringCxtOk
+                            }
+                    -- See Note [Inline data constructor wrappers aggresively]
+                    -- and Note [Inline partially-applied constructor wrappers].
+  where
+    expr' = simpleOptExpr expr
 
 mkInlinableUnfolding :: DynFlags -> CoreExpr -> Unfolding
 mkInlinableUnfolding dflags expr
@@ -315,6 +330,49 @@ This can occasionally mean that the guidance is very pessimistic;
 it gets fixed up next round.  And it should be rare, because large
 let-bound things that are dead are usually caught by preInlineUnconditionally
 
+Note [Inline data constructor wrappers aggresively]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The wrappers for strict data type constructors are to be inlined even in
+a boring context. This increases the chance that the demand analyzer will
+see the real constructor and return a nested CPR property.
+
+For example:
+    data P a = P !a !b
+    f :: Int -> P Int Int
+    f x = P x x
+previously, the demand analyzer would only see
+    f x = $WP x x
+and infer a strictness signature of "<S,U>m(,)", i.e. a non-nested CPR property.
+
+But if we inline $WP, we get
+    f x = case x of _ -> P x x
+and we would get "<S,U>,m(t(),t())", i.e. a nested CPR property.
+
+A real world example of this issue is the function mean in [ticket:2289#comment:1].
+
+Note [Inline partially-applied constructor wrappers]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We allow the wrapper to inline when partially applied to avoid
+boxing values unnecessarily. For example, consider
+
+   data Foo a = Foo !Int a
+
+   instance Traversable Foo where
+     traverse f (Foo i a) = Foo i <$> f a
+
+This desugars to
+
+   traverse f foo = case foo of
+        Foo i# a -> let i = I# i#
+                    in map ($WFoo i) (f a)
+
+If the wrapper `$WFoo` is not inlined, we get a fruitless reboxing of `i`.
+But if we inline the wrapper, we get
+
+   map (\a. case i of I# i# a -> Foo i# a) (f a)
+
+and now case-of-known-constructor eliminates the redundant allocation.
 
 ************************************************************************
 *                                                                      *

@@ -475,32 +475,6 @@ newtype DataConBoxer = DCB ([Type] -> [Var] -> UniqSM ([Var], [CoreBind]))
                        -- Bind these src-level vars, returning the
                        -- rep-level vars to bind in the pattern
 
-{-
-Note [Inline partially-applied constructor wrappers]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-We allow the wrapper to inline when partially applied to avoid
-boxing values unnecessarily. For example, consider
-
-   data Foo a = Foo !Int a
-
-   instance Traversable Foo where
-     traverse f (Foo i a) = Foo i <$> f a
-
-This desugars to
-
-   traverse f foo = case foo of
-        Foo i# a -> let i = I# i#
-                    in map ($WFoo i) (f a)
-
-If the wrapper `$WFoo` is not inlined, we get a fruitless reboxing of `i`.
-But if we inline the wrapper, we get
-
-   map (\a. case i of I# i# a -> Foo i# a) (f a)
-
-and now case-of-known-constructor eliminates the redundant allocation.
--}
-
 mkDataConRep :: DynFlags
              -> FamInstEnvs
              -> Name
@@ -551,10 +525,8 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
              -- not always the case; GHC may choose not to inline it. In
              -- particular, the wrapper constructor is not inlined inside
              -- an INLINE rhs or when it is not applied to any arguments.
-             -- See Note [Inline partially-applied constructor wrappers]
-             -- Passing Nothing here allows the wrapper to inline when
-             -- unsaturated.
-             wrap_unf = mkInlineUnfolding wrap_rhs
+             wrap_unf = mkDataConWrapUnfolding wrap_arity wrap_rhs
+             wrap_tvs = (univ_tvs `minusList` map eqSpecTyVar eq_spec) ++ ex_tvs
              wrap_rhs = mkLams wrap_tvs $
                         mkLams wrap_args $
                         wrapFamInstBody tycon res_ty_args $
