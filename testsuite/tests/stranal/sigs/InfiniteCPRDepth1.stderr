@@ -1,0 +1,20 @@
+
+==================== Strictness signatures ====================
+InfiniteCPR.$tc'Bar: tm(,,,)
+InfiniteCPR.$tc'Foo: tm(,,,)
+InfiniteCPR.$tcRec1: tm(,,,)
+InfiniteCPR.$tcRec2: tm(,,,)
+InfiniteCPR.$trModule: tm(,)
+InfiniteCPR.f: <L,U>m(,)
+
+
+
+==================== Strictness signatures ====================
+InfiniteCPR.$tc'Bar: tm(,,,)
+InfiniteCPR.$tc'Foo: tm(,,,)
+InfiniteCPR.$tcRec1: tm(,,,)
+InfiniteCPR.$tcRec2: tm(,,,)
+InfiniteCPR.$trModule: tm(,)
+InfiniteCPR.f: <L,U>m(,)
+
+

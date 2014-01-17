@@ -1,0 +1,20 @@
+
+==================== Strictness signatures ====================
+InfiniteCPR.$tc'Bar:
+InfiniteCPR.$tc'Foo:
+InfiniteCPR.$tcRec1:
+InfiniteCPR.$tcRec2:
+InfiniteCPR.$trModule:
+InfiniteCPR.f: <L,U>
+
+
+
+==================== Strictness signatures ====================
+InfiniteCPR.$tc'Bar:
+InfiniteCPR.$tc'Foo:
+InfiniteCPR.$tcRec1:
+InfiniteCPR.$tcRec2:
+InfiniteCPR.$trModule:
+InfiniteCPR.f: <L,U>
+
+

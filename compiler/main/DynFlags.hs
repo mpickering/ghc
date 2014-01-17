@@ -908,6 +908,8 @@ data DynFlags = DynFlags {
 
   maxWorkerArgs         :: Int,
 
+  maxCprDepth           :: Int,
+
   ghciHistSize          :: Int,
 
   -- | MsgDoc output action: use "ErrUtils" instead of this if you can
@@ -1720,6 +1722,8 @@ defaultDynFlags mySettings myLlvmTargets =
         ufVeryAggressive    = False,
 
         maxWorkerArgs = 10,
+
+        maxCprDepth = 3,
 
         ghciHistSize = 50, -- keep a log of length 50 by default
 
@@ -3271,6 +3275,8 @@ dynamic_flags_deps = [
       (floatSuffix (\n d -> d {ufKeenessFactor = n}))
   , make_ord_flag defFlag "fmax-worker-args"
       (intSuffix (\n d -> d {maxWorkerArgs = n}))
+  , make_ord_flag defFlag "fcpr-depth"
+      (intSuffix (\n d -> d {maxCprDepth = n}))
   , make_ord_flag defGhciFlag "fghci-hist-size"
       (intSuffix (\n d -> d {ghciHistSize = n}))
   , make_ord_flag defGhcFlag "fmax-inline-alloc-size"

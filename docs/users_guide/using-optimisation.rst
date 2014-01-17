@@ -45,7 +45,7 @@ optimisation to be performed, which can have an impact on how much of
 your program needs to be recompiled when you change something. This is
 one reason to stick to no-optimisation when developing code.
 
-**No ``-O*``-type option specified:** This is taken to mean “Please 
+**No ``-O*``-type option specified:** This is taken to mean “Please
 compile quickly; I'm not over-bothered about compiled-code quality.”
 So, for example, ``ghc -c Foo.hs``
 
@@ -226,6 +226,14 @@ by saying ``-fno-wombat``.
     :default: on
 
     Turn on CPR analysis in the demand analyser.
+
+.. ghc-flag:: -fcpr-depth=⟨n⟩
+    :shortdesc: Set the depth of nested CPR.
+    :type: dynamic
+    :default: 3
+
+    Analyze the result of functions for constructed product results to that depth.
+    Setting this to zero disables CPR, setting this to one disables nested CPR.
 
 .. ghc-flag:: -fcse
     :shortdesc: Enable common sub-expression elimination. Implied by :ghc-flag:`-O`.
