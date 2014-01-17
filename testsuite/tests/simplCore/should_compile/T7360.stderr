@@ -8,7 +8,7 @@ T7360.$WFoo3 [InlPrag=INLINE[2]] :: Int -> Foo
 [GblId[DataConWrapper],
  Arity=1,
  Caf=NoCafRefs,
- Str=<S,U>m3,
+ Str=<S,U>,
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True,
          Guidance=ALWAYS_IF(arity=1,unsat_ok=True,boring_ok=True)

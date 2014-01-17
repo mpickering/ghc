@@ -32,7 +32,7 @@ module Demand (
         DmdResult, CPRResult,
         isBotRes, isTopRes, getDmdResult, resTypeArgDmd,
         topRes, convRes, botRes, exnRes, cprProdRes,
-        vanillaCprProdRes, cprSumRes,
+        cprSumRes,
         splitNestedRes,
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
         returnsCPR_maybe,
@@ -1139,9 +1139,6 @@ forgetSumCPR_help (RetProd ds) = RetProd (map forgetSumCPR ds)
 forgetSumCPR_help (RetSum _)   = NoCPR
 forgetSumCPR_help NoCPR        = NoCPR
 
-vanillaCprProdRes :: Arity -> DmdResult
-vanillaCprProdRes arity = cprProdRes (replicate arity topRes)
-
 splitNestedRes :: DmdResult -> [DmdResult]
 splitNestedRes Diverges      = repeat topRes
 splitNestedRes ThrowsExn     = repeat topRes
@@ -1440,7 +1437,7 @@ litDmdType = DmdType emptyDmdEnv [] convRes
 
 cprProdDmdType :: Arity -> DmdType
 cprProdDmdType arity
-  = DmdType emptyDmdEnv [] (vanillaCprProdRes arity)
+  = DmdType emptyDmdEnv [] (cprProdRes (replicate arity topRes))
 
 isTopDmdType :: DmdType -> Bool
 isTopDmdType (DmdType env [] res)

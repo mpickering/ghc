@@ -383,14 +383,12 @@ mkDataConWorkId wkr_name data_con
     wkr_arity = dataConRepArity data_con
     wkr_info  = noCafIdInfo
                 `setArityInfo`          wkr_arity
-                `setStrictnessInfo`     wkr_sig
                 `setUnfoldingInfo`      evaldUnfolding  -- Record that it's evaluated,
                                                         -- even if arity = 0
                 `setLevityInfoWithType` alg_wkr_ty
                   -- NB: unboxed tuples have workers, so we can't use
                   -- setNeverLevPoly
 
-    wkr_sig = mkClosedStrictSig (replicate wkr_arity topDmd) (dataConCPR data_con)
         --      Note [Data-con worker strictness]
         -- Notice that we do *not* say the worker Id is strict
         -- even if the data constructor is declared strict
@@ -426,33 +424,6 @@ mkDataConWorkId wkr_name data_con
                    mkCompulsoryUnfolding $
                    mkLams nt_tvs $ Lam id_arg1 $
                    wrapNewTypeBody tycon res_ty_args (Var id_arg1)
-
-dataConCPR :: DataCon -> DmdResult
-dataConCPR con
-  | isDataTyCon tycon     -- Real data types only; that is,
-                          -- not unboxed tuples or newtypes
-  , null (dataConExTyVars con)  -- No existentials
-  , wkr_arity > 0
-  , wkr_arity <= mAX_CPR_SIZE
-  = if is_prod then vanillaCprProdRes (dataConRepArity con)
-               else cprSumRes (dataConTag con)
-  | otherwise
-  = topRes
-  where
-    is_prod   = isProductTyCon tycon
-    tycon     = dataConTyCon con
-    wkr_arity = dataConRepArity con
-
-    mAX_CPR_SIZE :: Arity
-    mAX_CPR_SIZE = 10
-    -- We do not treat very big tuples as CPR-ish:
-    --      a) for a start we get into trouble because there aren't
-    --         "enough" unboxed tuple types (a tiresome restriction,
-    --         but hard to fix),
-    --      b) more importantly, big unboxed tuples get returned mainly
-    --         on the stack, and are often then allocated in the heap
-    --         by the caller.  So doing CPR for them may in fact make
-    --         things worse.
 
 {-
 -------------------------------------------------
@@ -504,9 +475,7 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
                              -- so it not make sure that the CAF info is sane
                          `setNeverLevPoly`      wrap_ty
 
-             wrap_sig_conv = mkClosedStrictSig wrap_arg_dmds (dataConCPR data_con)
-             wrap_sig | any isBanged arg_ibangs = sigMayDiverge wrap_sig_conv
-                      | otherwise               = wrap_sig_conv
+             wrap_sig = mkClosedStrictSig wrap_arg_dmds topRes
 
              wrap_arg_dmds =
                replicate (length theta) topDmd ++ map mk_dmd arg_ibangs
@@ -520,11 +489,6 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
                          ActiveAfter NoSourceText 2
                          -- See Note [Activation for data constructor wrappers]
 
-             -- The wrapper will usually be inlined (see wrap_unf), so its
-             -- strictness and CPR info is usually irrelevant. But this is
-             -- not always the case; GHC may choose not to inline it. In
-             -- particular, the wrapper constructor is not inlined inside
-             -- an INLINE rhs or when it is not applied to any arguments.
              wrap_unf = mkDataConWrapUnfolding wrap_arity wrap_rhs
              wrap_tvs = (univ_tvs `minusList` map eqSpecTyVar eq_spec) ++ ex_tvs
              wrap_rhs = mkLams wrap_tvs $
