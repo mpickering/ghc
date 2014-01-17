@@ -22,7 +22,7 @@ module Demand (
         addCaseBndrDmd,
 
         DmdType(..), dmdTypeDepth, lubDmdType, lubDmdTypes, bothDmdType,
-        nopDmdType, litDmdType, botDmdType, mkDmdType,
+        nopDmdType, litDmdType, botDmdType, mkDmdType, cprProdDmdType, cprSumDmdType,
         addDemand, removeDmdTyArgs,
         BothDmdArg, mkBothDmdArg, toBothDmdArg,
 
@@ -31,8 +31,7 @@ module Demand (
 
         DmdResult, CPRResult,
         isBotRes, isTopRes, getDmdResult, resTypeArgDmd,
-        topRes, convRes, botRes, exnRes, cprProdRes,
-        cprSumRes,
+        topRes, convRes, botRes, exnRes,
         splitNestedRes,
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
         returnsCPR_maybe,
@@ -1435,9 +1434,13 @@ botDmdType = DmdType emptyDmdEnv [] botRes
 exnDmdType = DmdType emptyDmdEnv [] exnRes
 litDmdType = DmdType emptyDmdEnv [] convRes
 
-cprProdDmdType :: Arity -> DmdType
-cprProdDmdType arity
-  = DmdType emptyDmdEnv [] (cprProdRes (replicate arity topRes))
+cprProdDmdType :: [DmdResult] -> DmdType
+cprProdDmdType arg_ress
+  = DmdType emptyDmdEnv [] $ cprProdRes arg_ress
+
+cprSumDmdType :: ConTag -> DmdType
+cprSumDmdType tag
+  = DmdType emptyDmdEnv [] $ cprSumRes tag
 
 isTopDmdType :: DmdType -> Bool
 isTopDmdType (DmdType env [] res)
@@ -1899,8 +1902,8 @@ nopSig = StrictSig nopDmdType
 botSig = StrictSig botDmdType
 exnSig = StrictSig exnDmdType
 
-cprProdSig :: Arity -> StrictSig
-cprProdSig arity = StrictSig (cprProdDmdType arity)
+cprProdSig :: [DmdResult] -> StrictSig
+cprProdSig arg_ress = StrictSig (cprProdDmdType arg_ress)
 
 seqStrictSig :: StrictSig -> ()
 seqStrictSig (StrictSig ty) = seqDmdType ty

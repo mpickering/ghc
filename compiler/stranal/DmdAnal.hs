@@ -228,7 +228,7 @@ dmdAnal' env dmd (Case scrut case_bndr ty [alt@(DataAlt dc, bndrs, _)])
 
         -- Build a surely converging, CPR carrying signature for the builder,
         -- and for the components use what we get from the scrunitee
-        case_bndr_sig = mkClosedStrictSig [] (cprProdRes comp_rets)
+        case_bndr_sig = cprProdSig comp_rets
 
         env_w_tc              = env { ae_rec_tc = rec_tc' }
         env_alt               = extendAnalEnvs1 NotTopLevel env_w_tc $
@@ -559,9 +559,9 @@ dmdAnalVarApp env dmd fun args
   , dataConRepArity con < 10
   , Just cxt_ds <- splitProdCleanDmd n_val_args dmd
   , let cpr_info
-          | isProductTyCon (dataConTyCon con) = cprProdRes arg_rets
-          | otherwise                         = cprSumRes (dataConTag con)
-        res_ty = foldl bothDmdType (DmdType emptyDmdEnv [] cpr_info) arg_tys
+          | isProductTyCon (dataConTyCon con) = cprProdDmdType arg_rets
+          | otherwise                         = cprSumDmdType (dataConTag con)
+        res_ty = foldl bothDmdType cpr_info arg_tys
         (arg_tys, arg_rets, args') = anal_con_args cxt_ds args
             -- The constructor itself is lazy
             -- See Note [Data-con worker strictness] in MkId
@@ -1288,7 +1288,8 @@ extendSigsWithLam env id
        -- See Note [Optimistic CPR in the "virgin" case]
        -- See Note [Initial CPR for strict binders]
   , Just (dc,_,_,_) <- deepSplitProductType_maybe (ae_fam_envs env) $ idType id
-  = extendAnalEnv NotTopLevel env id (sigMayDiverge (cprProdSig (dataConRepArity dc)))
+  = extendAnalEnv NotTopLevel env id $ sigMayDiverge $
+    cprProdSig (replicate (dataConRepArity dc) topRes)
 
   | otherwise
   = env
@@ -1301,14 +1302,14 @@ extendEnvForProdAlt env scrut case_bndr dc bndrs
     env1 = extendAnalEnv NotTopLevel env case_bndr case_bndr_sig
 
     ids_w_strs    = filter isId bndrs `zip` dataConRepStrictness dc
-    case_bndr_sig = cprProdSig (dataConRepArity dc)
+    case_bndr_sig = cprProdSig (replicate (dataConRepArity dc) topRes)
     fam_envs      = ae_fam_envs env
 
     do_con_arg env (id, str)
        | let is_strict = isStrictDmd (idDemandInfo id) || isMarkedStrict str
        , ae_virgin env || (is_var_scrut && is_strict)  -- See Note [CPR in a product case alternative]
        , Just (dc,_,_,_) <- deepSplitProductType_maybe fam_envs $ idType id
-       = extendAnalEnv NotTopLevel env id (cprProdSig (dataConRepArity dc))
+       = extendAnalEnv NotTopLevel env id (cprProdSig (replicate (dataConRepArity dc) topRes))
        | otherwise
        = env
 
