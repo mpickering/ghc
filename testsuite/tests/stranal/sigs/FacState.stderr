@@ -1,5 +1,12 @@
 
 ==================== Strictness signatures ====================
-FacState.fac: <S,1*U(U)><L,U>dm1(d,tm1(d))
+FacState.$trModule: tm(tm1,tm1)
+FacState.fac: <S(S),1*U(U)><L,U>m(,tm(t))
+
+
+
+==================== Strictness signatures ====================
+FacState.$trModule: tm(tm1,tm1)
+FacState.fac: <S(S),1*U(U)><L,U>m(,tm(t))
 
 
