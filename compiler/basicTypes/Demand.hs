@@ -52,7 +52,7 @@ module Demand (
         postProcessUnsat, postProcessDmdType,
 
         splitProdDmd_maybe, peelCallDmd, mkCallDmd, mkCallDmdN, mkWorkerDemand,
-        dmdTransformSig, dmdTransformDataConSig, dmdTransformDictSelSig,
+        dmdTransformSig, dmdTransformDictSelSig,
         argOneShots, argsOneShots, saturatedByOneShots,
         trimToType, TypeShape(..),
 
@@ -1924,30 +1924,6 @@ dmdTransformSig :: StrictSig -> CleanDemand -> DmdType
 dmdTransformSig (StrictSig dmd_ty@(DmdType _ arg_ds _)) cd
   = postProcessUnsat (peelManyCalls (length arg_ds) cd) dmd_ty
     -- see Note [Demands from unsaturated function calls]
-
-dmdTransformDataConSig :: Arity -> StrictSig -> CleanDemand -> DmdType
--- Same as dmdTransformSig but for a data constructor (worker),
--- which has a special kind of demand transformer.
--- If the constructor is saturated, we feed the demand on
--- the result into the constructor arguments.
-dmdTransformDataConSig arity (StrictSig (DmdType _ _ con_res))
-                             (JD { sd = str, ud = abs })
-  | Just str_dmds <- go_str arity str
-  , Just abs_dmds <- go_abs arity abs
-  = DmdType emptyDmdEnv (mkJointDmds str_dmds abs_dmds) con_res
-                -- Must remember whether it's a product, hence con_res, not TopRes
-
-  | otherwise   -- Not saturated
-  = nopDmdType
-  where
-    go_str 0 dmd        = splitStrProdDmd arity dmd
-    go_str n (SCall s') = go_str (n-1) s'
-    go_str n HyperStr   = go_str (n-1) HyperStr
-    go_str _ _          = Nothing
-
-    go_abs 0 dmd            = splitUseProdDmd arity dmd
-    go_abs n (UCall One u') = go_abs (n-1) u'
-    go_abs _ _              = Nothing
 
 dmdTransformDictSelSig :: StrictSig -> CleanDemand -> DmdType
 -- Like dmdTransformDataConSig, we have a special demand transformer
