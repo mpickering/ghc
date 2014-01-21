@@ -207,8 +207,14 @@ dmdAnal' env dmd (Lam var body)
         env'             = extendSigsWithLam env var
         (body_ty, body') = dmdAnal env' body_dmd body
         (lam_ty, var')   = annotateLamIdBndr env notArgOfDfun body_ty var
+        lam_ty'          = postProcessUnsat defer_and_use lam_ty
     in
-    (postProcessUnsat defer_and_use lam_ty, Lam var' body')
+    -- pprTrace "dmdAnal:Lam" (vcat [ text "dmd" <+> ppr dmd
+    --                              , text "body_ty" <+> ppr body_ty
+    --                              , text "lam_ty" <+> ppr lam_ty
+    --                              , text "lam_ty'" <+> ppr lam_ty'
+    --                              ]) $
+    (lam_ty', Lam var' body')
 
 dmdAnal' env dmd (Case scrut case_bndr ty [alt@(DataAlt dc, bndrs, _)])
   -- Only one alternative with a product constructor, and a complex scrutinee
@@ -352,6 +358,9 @@ dmdAnal' env dmd (Let (Rec pairs) body)
         body_ty1                = deleteFVs body_ty (map fst pairs)
         body_ty2                = addLazyFVs body_ty1 lazy_fv -- see Note [Lazy and unleashable free variables]
     in
+    -- pprTrace "dmdAnal:LetRec" (vcat [ text "body_ty" <+> ppr body_ty
+    --                                 , text "body_ty1" <+> ppr body_ty1
+    --                                 , text "body_ty2" <+> ppr body_ty2]) $
     body_ty2 `seq`
     (body_ty2,  Let (Rec pairs') body')
 
@@ -379,7 +388,11 @@ dmdAnalAlt env dmd case_bndr (con,bndrs,rhs)
   , (alt_ty, dmds) <- findBndrsDmds env rhs_ty bndrs
   , let case_bndr_dmd = findIdDemand alt_ty case_bndr
         id_dmds       = addCaseBndrDmd case_bndr_dmd dmds
-  = (alt_ty, (con, setBndrsDemandInfo bndrs id_dmds, rhs'))
+  =
+    -- pprTrace "dmdAnalAlt" (vcat [ text "rhs_ty" <+> ppr rhs_ty
+    --                             , text "alt_ty" <+> ppr alt_ty
+    --                             ]) $
+    (alt_ty, (con, setBndrsDemandInfo bndrs id_dmds, rhs'))
 
 
 {- Note [IO hack in the demand analyser]
