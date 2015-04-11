@@ -68,6 +68,7 @@ import FastString
 import Util
 
 import Data.Maybe( isNothing )
+import Data.Monoid( mappend )
 import Control.Monad ( unless, when, zipWithM )
 import PrelNames( ipClassName, funTyConKey, allNameStrings )
 
@@ -188,6 +189,11 @@ tcHsInstHead user_ctxt lhs_ty@(L loc hs_ty)
        ; checkValidInstance user_ctxt lhs_ty inst_ty }
 
 tc_inst_head :: HsType Name -> TcM TcType
+tc_inst_head (HsForAllTy _ _ hs_tvs hs_ctxt (L _ (HsForAllTy _ _ hs_tvs1 hs_ctxt1 hs_ty)))
+  = tcHsTyVarBndrs (hs_tvs `mappend` hs_tvs1) $ \ tvs ->
+    do { ctxt <- tcHsContext (noLoc (unLoc hs_ctxt ++ unLoc hs_ctxt1))
+       ; ty   <- tc_lhs_type hs_ty ekConstraint    -- Body for forall has kind Constraint
+       ; return (mkSigmaTy tvs ctxt ty) }
 tc_inst_head (HsForAllTy _ _ hs_tvs hs_ctxt hs_ty)
   = tcHsTyVarBndrs hs_tvs $ \ tvs ->
     do { ctxt <- tcHsContext hs_ctxt
