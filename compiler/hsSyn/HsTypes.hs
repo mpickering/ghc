@@ -14,6 +14,7 @@ HsTypes: Abstract syntax: user-defined types
 {-# LANGUAGE UndecidableInstances #-} -- Note [Pass sensitive types]
                                       -- in module PlaceHolder
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE CPP #-}
 
 module HsTypes (
         HsType(..), LHsType, HsKind, LHsKind,
@@ -68,7 +69,9 @@ import Maybes( isJust )
 
 import Data.Data hiding ( Fixity )
 import Data.Maybe ( fromMaybe )
+#if __GLASGOW_HASKELL__ < 709
 import Data.Monoid hiding ((<>))
+#endif
 
 {-
 ************************************************************************
