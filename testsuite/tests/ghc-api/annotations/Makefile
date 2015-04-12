@@ -6,17 +6,17 @@ clean:
 	rm -f *.o *.hi
 	rm -f annotations comments parseTree exampleTest
 
-annotations: 
+annotations:
 	rm -f annotations.o annotations.hi
 	'$(TEST_HC)' $(TEST_HC_OPTS) --make -v0 -package ghc annotations
 	./annotations "`'$(TEST_HC)' $(TEST_HC_OPTS) --print-libdir | tr -d '\r'`"
 
-parseTree: 
+parseTree:
 	rm -f parseTree.o parseTree.hi
 	'$(TEST_HC)' $(TEST_HC_OPTS) --make -v0 -package ghc parseTree
 	./parseTree "`'$(TEST_HC)' $(TEST_HC_OPTS) --print-libdir | tr -d '\r'`"
 
-comments: 
+comments:
 	rm -f comments.o comments.hi
 	'$(TEST_HC)' $(TEST_HC_OPTS) --make -v0 -package ghc comments
 	./comments "`'$(TEST_HC)' $(TEST_HC_OPTS) --print-libdir | tr -d '\r'`"
@@ -36,4 +36,9 @@ T10269:
 	'$(TEST_HC)' $(TEST_HC_OPTS) --make -v0 -package ghc t10269
 	./t10269 "`'$(TEST_HC)' $(TEST_HC_OPTS) --print-libdir | tr -d '\r'`"
 
-.PHONY: clean annotations parseTree comments exampleTest listcomps
+t10255:
+	rm -f t10255.o t10255.hi
+	'$(TEST_HC)' $(TEST_HC_OPTS) --make -v0 -package ghc t10255
+	./t10255 "`'$(TEST_HC)' $(TEST_HC_OPTS) --print-libdir | tr -d '\r'`"
+
+.PHONY: clean annotations parseTree comments exampleTest listcomps t10255 T10269

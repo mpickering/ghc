@@ -4,6 +4,7 @@ comments
 exampleTest
 listcomps
 t10269
+t10255
 *.hi
 *.o
 *.run.*
