@@ -8,6 +8,7 @@ t10255
 t10268
 t10280
 boolFormula
+t10268
 *.hi
 *.o
 *.run.*
