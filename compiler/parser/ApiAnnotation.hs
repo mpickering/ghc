@@ -242,8 +242,11 @@ data AnnKeywordId
     | AnnRole
     | AnnSafe
     | AnnSemi -- ^ ';'
+    | AnnSimpleQuote -- ^ '''
     | AnnStatic -- ^ 'static'
     | AnnThen
+    | AnnThIdSplice -- ^ '$'
+    | AnnThIdTySplice -- ^ '$$'
     | AnnTilde -- ^ '~'
     | AnnTildehsh -- ^ '~#'
     | AnnType

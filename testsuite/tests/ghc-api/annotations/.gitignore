@@ -5,6 +5,7 @@ exampleTest
 listcomps
 t10269
 t10255
+t10268
 *.hi
 *.o
 *.run.*
