@@ -45,5 +45,9 @@ T10268:
 	rm -f t10268.o t10268.hi
 	'$(TEST_HC)' $(TEST_HC_OPTS) --make -v0 -package ghc t10268
 	./t10268 "`'$(TEST_HC)' $(TEST_HC_OPTS) --print-libdir | tr -d '\r'`"
+T10280:
+	rm -f t10280.o t10280.hi
+	'$(TEST_HC)' $(TEST_HC_OPTS) --make -v0 -package ghc t10280
+	./t10280 "`'$(TEST_HC)' $(TEST_HC_OPTS) --print-libdir | tr -d '\r'`"
 
 .PHONY: clean annotations parseTree comments exampleTest listcomps
