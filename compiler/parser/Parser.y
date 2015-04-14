@@ -1695,7 +1695,6 @@ atype :: { LHsType RdrName }
         | TH_ID_SPLICE                { sLL $1 $> $ mkHsSpliceTy $ sL1 $1 $ HsVar $
                                         mkUnqual varName (getTH_ID_SPLICE $1) }
                                       -- see Note [Promotion] for the followings
-        | SIMPLEQUOTE qcon            {% ams (sLL $1 $> $ HsTyVar $ unLoc $2) [mj AnnSimpleQuote $1] }
         | SIMPLEQUOTE  '(' ctype ',' comma_types1 ')'
                              {% addAnnotation (gl $3) AnnComma (gl $4) >>
                                 ams (sLL $1 $> $ HsExplicitTupleTy [] ($3 : $5))
@@ -1703,6 +1702,7 @@ atype :: { LHsType RdrName }
         | SIMPLEQUOTE  '[' comma_types0 ']'     {% ams (sLL $1 $> $ HsExplicitListTy
                                                             placeHolderKind $3)
                                                        [mj AnnSimpleQuote $1,mos $2,mcs $4] }
+        | SIMPLEQUOTE qcon            {% ams (sLL $1 $> $ HsTyVar $ unLoc $2) [mj AnnSimpleQuote $1] }
         | SIMPLEQUOTE var                       {% ams (sLL $1 $> $ HsTyVar $ unLoc $2)
                                                        [mj AnnSimpleQuote $1] }
 
