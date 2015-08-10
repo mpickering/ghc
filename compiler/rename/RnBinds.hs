@@ -653,6 +653,10 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                       ; name2 <- lookupVar var2
                       -- ; checkPrecMatch -- TODO
                       ; return (InfixPatSyn name1 name2, mkFVs (map unLoc [name1, name2])) }
+               RecordPatSyn vars ->
+                   do { checkDupRdrNames vars
+                      ; names <- mapM lookupVar vars
+                      ; return (RecordPatSyn names, mkFVs (map unLoc names)) }
         ; return ((pat', details'), fvs) }
         ; (dir', fvs2) <- case dir of
             Unidirectional -> return (Unidirectional, emptyFVs)
