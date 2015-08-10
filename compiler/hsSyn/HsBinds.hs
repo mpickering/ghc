@@ -897,37 +897,46 @@ pprMinimalSig bf = ptext (sLit "MINIMAL") <+> ppr (fmap unLoc bf)
 data HsPatSynDetails a
   = InfixPatSyn a a
   | PrefixPatSyn [a]
+  | RecordPatSyn [a]
   deriving (Data, Typeable)
 
 instance Functor HsPatSynDetails where
     fmap f (InfixPatSyn left right) = InfixPatSyn (f left) (f right)
     fmap f (PrefixPatSyn args) = PrefixPatSyn (fmap f args)
+    fmap f (RecordPatSyn args) = RecordPatSyn (fmap f args)
 
 instance Foldable HsPatSynDetails where
     foldMap f (InfixPatSyn left right) = f left `mappend` f right
     foldMap f (PrefixPatSyn args) = foldMap f args
+    foldMap f (RecordPatSyn args) = foldMap f args
 
     foldl1 f (InfixPatSyn left right) = left `f` right
     foldl1 f (PrefixPatSyn args) = Data.List.foldl1 f args
+    foldl1 f (RecordPatSyn args) = Data.List.foldl1 f args
 
     foldr1 f (InfixPatSyn left right) = left `f` right
     foldr1 f (PrefixPatSyn args) = Data.List.foldr1 f args
+    foldr1 f (RecordPatSyn args) = Data.List.foldr1 f args
 
 -- TODO: After a few more versions, we should probably use these.
 #if __GLASGOW_HASKELL__ >= 709
     length (InfixPatSyn _ _) = 2
     length (PrefixPatSyn args) = Data.List.length args
+    length (RecordPatSyn args) = Data.List.length args
 
     null (InfixPatSyn _ _) = False
     null (PrefixPatSyn args) = Data.List.null args
+    null (RecordPatSyn args) = Data.List.null args
 
     toList (InfixPatSyn left right) = [left, right]
     toList (PrefixPatSyn args) = args
+    toList (RecordPatSyn args) = args
 #endif
 
 instance Traversable HsPatSynDetails where
     traverse f (InfixPatSyn left right) = InfixPatSyn <$> f left <*> f right
     traverse f (PrefixPatSyn args) = PrefixPatSyn <$> traverse f args
+    traverse f (RecordPatSyn args) = PrefixPatSyn <$> traverse f args
 
 data HsPatSynDir id
   = Unidirectional

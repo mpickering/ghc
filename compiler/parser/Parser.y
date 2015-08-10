@@ -1149,10 +1149,17 @@ pattern_synonym_decl :: { LHsDecl RdrName }
 pattern_synonym_lhs :: { (Located RdrName, HsPatSynDetails (Located RdrName)) }
         : con vars0 { ($1, PrefixPatSyn $2) }
         | varid conop varid { ($2, InfixPatSyn $1 $3) }
+        | con '{' cvars1 '}' { ($1, RecordPatSyn $3) }
+
+-- TODO: Retain annotation information
 
 vars0 :: { [Located RdrName] }
         : {- empty -}                 { [] }
         | varid vars0                 { $1 : $2 }
+
+cvars1 :: { [Located RdrName] }
+       : varid                        { [$1] }
+       | varid ',' cvars1             { $1 : $3 }
 
 where_decls :: { Located ([AddAnn]
                          , Located (OrdList (LHsDecl RdrName))) }
