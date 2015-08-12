@@ -22,6 +22,7 @@ module TcTyClsDecls (
 #include "HsVersions.h"
 
 import HsSyn
+import PatSyn
 import HscTypes
 import BuildTyCl
 import TcRnMonad
@@ -45,6 +46,7 @@ import Class
 import CoAxiom
 import TyCon
 import DataCon
+import ConLike
 import Id
 import MkCore           ( rEC_SEL_ERROR_ID )
 import IdInfo
@@ -70,6 +72,7 @@ import BasicTypes
 import Bag
 import Control.Monad
 import Data.List
+import Debug.Trace
 
 {-
 ************************************************************************
@@ -2031,6 +2034,9 @@ mkRecSelBinds tycons
     rec_sels = map mkRecSelBind [ (tc,fld)
                                 | ATyCon tc <- tycons
                                 , fld <- tyConFields tc ]
+            ++ map mkPatSynRecSelBind [ (tc, fld)
+                                      | AConLike (PatSynCon tc) <- tycons
+                                      , fld <- patSynFieldLabels tc]
 
 mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, LHsBinds Name)
 mkRecSelBind (tycon, sel_name)
@@ -2095,6 +2101,69 @@ mkRecSelBind (tycon, sel_name)
         --                 B :: { fld :: Int } -> T Int Char
     dealt_with con = con `elem` cons_w_field || dataConCannotMatch inst_tys con
     inst_tys = substTyVars (mkTopTvSubst (dataConEqSpec con1)) (dataConUnivTyVars con1)
+
+    unit_rhs = mkLHsTupleExpr []
+    msg_lit = HsStringPrim "" $ unsafeMkByteString $
+              occNameString (getOccName sel_name)
+
+mkPatSynRecSelBind :: (PatSyn, FieldLabel) -> (LSig Name, LHsBinds Name)
+mkPatSynRecSelBind (patSyn, sel_name)
+  = traceShow "generating" (L loc (IdSig sel_id), unitBag (L loc sel_bind))
+  where
+    loc    = getSrcSpan sel_name
+    sel_id = mkExportedLocalId rec_details sel_name sel_ty
+    rec_details = RecSelId { sel_tycon = undefined, sel_naughty = is_naughty }
+
+    -- Selector type; Note [Polymorphic selectors]
+    field_ty   = patSynFieldType patSyn sel_name
+    data_ty    = patSynOrigResTy patSyn
+    data_tvs   = tyVarsOfType data_ty
+    is_naughty = not (tyVarsOfType field_ty `subVarSet` data_tvs)
+    (field_tvs, field_theta, field_tau) = tcSplitSigmaTy field_ty
+    sel_ty | is_naughty = unitTy  -- See Note [Naughty record selectors]
+           | otherwise  = mkForAllTys (varSetElemsKvsFirst $
+                                       data_tvs `extendVarSetList` field_tvs) $
+                          mkPhiTy []                        $   -- Urgh!
+                          mkPhiTy field_theta               $   -- Urgh!
+                          mkFunTy data_ty field_tau
+
+    -- Make the binding: sel (C2 { fld = x }) = x
+    --                   sel (C7 { fld = x }) = x
+    --    where cons_w_field = [C2,C7]
+    sel_bind = mkTopFunBind Generated sel_lname alts
+      where
+        alts | is_naughty = [mkSimpleMatch [] unit_rhs]
+             | otherwise =  [mk_match patSyn]
+    mk_match con = mkSimpleMatch [L loc (mk_sel_pat con)]
+                                 (L loc (HsVar field_var))
+    mk_sel_pat con = ConPatIn (L loc (patSynName patSyn)) (RecCon rec_fields)
+    rec_fields = HsRecFields { rec_flds = [rec_field], rec_dotdot = Nothing }
+    rec_field  = noLoc (HsRecField { hsRecFieldId = sel_lname
+                                   , hsRecFieldArg = L loc (VarPat field_var)
+                                   , hsRecPun = False })
+    sel_lname = L loc sel_name
+    field_var = mkInternalName (mkBuiltinUnique 1) (getOccName sel_name) loc
+
+    -- Add catch-all default case unless the case is exhaustive
+    -- We do this explicitly so that we get a nice error message that
+    -- mentions this particular record selector
+    {-
+    deflt | all dealt_with all_cons = []
+          | otherwise = [mkSimpleMatch [L loc (WildPat placeHolderType)]
+                            (mkHsApp (L loc (HsVar (getName rEC_SEL_ERROR_ID)))
+                                     (L loc (HsLit msg_lit)))]
+                                     -}
+
+        -- Do not add a default case unless there are unmatched
+        -- constructors.  We must take account of GADTs, else we
+        -- get overlap warning messages from the pattern-match checker
+        -- NB: we need to pass type args for the *representation* TyCon
+        --     to dataConCannotMatch, hence the calculation of inst_tys
+        --     This matters in data families
+        --              data instance T Int a where
+        --                 A :: { fld :: Int } -> T Int Bool
+        --                 B :: { fld :: Int } -> T Int Char
+    inst_tys = substTyVars (mkTopTvSubst []) (patSynUnivTyVars patSyn)
 
     unit_rhs = mkLHsTupleExpr []
     msg_lit = HsStringPrim "" $ unsafeMkByteString $

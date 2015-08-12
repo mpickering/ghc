@@ -17,6 +17,8 @@ import TcRnMonad
 import TcEnv
 import TcMType
 import TysPrim
+import TysWiredIn
+import TypeRep
 import Name
 import SrcLoc
 import PatSyn
@@ -35,9 +37,11 @@ import TcType
 import TcEvidence
 import BuildTyCl
 import VarSet
+import ConLike
 import MkId
 import VarEnv
 import Inst
+import Unique
 #if __GLASGOW_HASKELL__ < 709
 import Data.Monoid
 #endif
@@ -45,6 +49,7 @@ import Bag
 import Util
 import Data.Maybe
 import Control.Monad (forM)
+import Debug.Trace
 
 #include "HsVersions.h"
 
@@ -67,13 +72,17 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; let (arg_names, is_infix) = case details of
                  PrefixPatSyn names      -> (map unLoc names, False)
                  InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
-                 RecordPatSyn names      -> (map unLoc names, False)
+                 RecordPatSyn names      -> (map (unLoc . recordPatSynArg) names, False)
        ; ((lpat', (args, pat_ty)), tclvl, wanted)
             <- pushLevelAndCaptureConstraints  $
                do { pat_ty <- newFlexiTyVarTy openTypeKind
                   ; tcPat PatSyn lpat pat_ty $
                do { args <- mapM tcLookupId arg_names
                   ; return (args, pat_ty) } }
+
+       ; let field_names = case details of
+                             RecordPatSyn names -> (map (unLoc . recordPatSynId) names)
+                             _ -> (arg_names)
 
        ; let named_taus = (name, pat_ty) : map (\arg -> (getName arg, varType arg)) args
 
@@ -95,11 +104,11 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; args       <- mapM zonkId args
 
        ; traceTc "tcInferPatSynDecl }" $ ppr name
-       ; tc_patsyn_finish lname dir is_infix lpat'
+       ; tc_patsyn_finish lname dir is_infix lpat lpat'
                           (univ_tvs, req_theta, ev_binds, req_dicts)
                           (ex_tvs, map mkTyVarTy ex_tvs, prov_theta, emptyTcEvBinds, prov_dicts)
                           (zip args $ repeat idHsWrapper)
-                          pat_ty }
+                          pat_ty field_names arg_names }
 
 tcCheckPatSynDecl :: PatSynBind Name Name
                   -> TcPatSynInfo
@@ -125,7 +134,7 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; let (arg_names, is_infix) = case details of
                  PrefixPatSyn names      -> (map unLoc names, False)
                  InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
-                 RecordPatSyn names       -> (map unLoc names, False)
+                 RecordPatSyn names       -> (map (unLoc . recordPatSynArg) names, False)
 
        ; let ty_arity = length arg_tys
        ; checkTc (length arg_names == ty_arity)
@@ -164,11 +173,11 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
            ; emitWanteds origin prov_theta' }
 
        ; traceTc "tcCheckPatSynDecl }" $ ppr name
-       ; tc_patsyn_finish lname dir is_infix lpat'
+       ; tc_patsyn_finish lname dir is_infix lpat lpat'
                           (univ_tvs, req_theta, req_ev_binds, req_dicts)
                           (ex_tvs, ex_tys, prov_theta, prov_ev_binds, prov_dicts)
                           wrapped_args
-                          pat_ty }
+                          pat_ty arg_names undefined }
   where
     (arg_tys, pat_ty) = tcSplitFunTys tau
 
@@ -182,17 +191,20 @@ wrongNumberOfParmsErr ty_arity
 tc_patsyn_finish :: Located Name
                  -> HsPatSynDir Name
                  -> Bool
+                 -> LPat Name
                  -> LPat Id
                  -> ([TcTyVar], [PredType], TcEvBinds, [EvVar])
                  -> ([TcTyVar], [TcType], [PredType], TcEvBinds, [EvVar])
                  -> [(Var, HsWrapper)]
                  -> TcType
+                 -> [Name]
+                 -> [Name]
                  -> TcM (PatSyn, LHsBinds Id)
-tc_patsyn_finish lname dir is_infix lpat'
+tc_patsyn_finish lname dir is_infix lpat lpat'
                  (univ_tvs, req_theta, req_ev_binds, req_dicts)
                  (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
                  wrapped_args
-                 pat_ty
+                 pat_ty field_names pat_var_names
   = do { traceTc "tc_patsyn_finish {" $
            ppr (unLoc lname) $$ ppr (unLoc lpat') $$
            ppr (univ_tvs, req_theta, req_ev_binds, req_dicts) $$
@@ -207,18 +219,35 @@ tc_patsyn_finish lname dir is_infix lpat'
 
        ; builder_id <- mkPatSynBuilderId dir lname qtvs theta arg_tys pat_ty
 
+
        ; let patSyn = mkPatSyn (unLoc lname) is_infix
                         (univ_tvs, req_theta)
                         (ex_tvs, prov_theta)
                         arg_tys
                         pat_ty
-                        matcher_id builder_id
+                        matcher_id builder_id field_names
 
-       ; return (patSyn, matcher_bind) }
+       ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds lpat patSyn field_names pat_var_names)
+       ; tc_selector <- map snd <$> tcPatSynRecSelBinds patSyn sigs selector_binds
+       ; traceTc "tc_selector" $ ppr tc_selector
+
+       ; return (patSyn, foldr unionBags matcher_bind tc_selector) }
   where
     qtvs = univ_tvs ++ ex_tvs
     theta = prov_theta ++ req_theta
     arg_tys = map (varType . fst) wrapped_args
+
+
+tcPatSynRecSelBinds :: PatSyn -> [LSig Name] -> [LHsBinds Name] ->  TcM [(RecFlag, LHsBinds TcId)]
+tcPatSynRecSelBinds pat_syn sigs binds
+  = tcExtendGlobalEnv [tything]
+      $ tcExtendGlobalValEnv [sel_id | L _ (IdSig sel_id) <- sigs] $
+    do { (rec_sel_binds, tcg_env) <-
+        discardWarnings (tcValBinds TopLevel (zip (repeat NonRecursive) binds) sigs getGblEnv)
+       ; return rec_sel_binds }
+  where
+    tything = AConLike (PatSynCon pat_syn)
+
 
 {-
 ************************************************************************
@@ -312,6 +341,70 @@ tcPatSynMatcher (L loc name) lpat
 
        ; return ((matcher_id, is_unlifted), matcher_bind) }
 
+-- = ValBindsOut [(NonRecursive, b) | b <- binds] sigs
+--
+mkPatSynRecSelBinds :: LPat Name -> PatSyn -> [Name] -> [Name] -> [(LSig Name, LHsBinds Name)]
+mkPatSynRecSelBinds lpat ps field_names pat_var_names = zipWith (mkPatSynRecSelBind lpat ps) field_names pat_var_names
+
+mkPatSynRecSelBind :: LPat Name -> PatSyn -> Name -> Name -> (LSig Name, LHsBinds Name)
+mkPatSynRecSelBind lpat patSyn sel_name sel_pat_name
+  = traceShow "generating" (L loc (IdSig sel_id), unitBag (L loc sel_bind))
+  where
+    loc    = getSrcSpan sel_name
+    sel_id = mkExportedLocalId rec_details sel_name sel_ty
+    rec_details = RecSelId { sel_tycon = undefined, sel_naughty = is_naughty }
+
+    -- Selector type; Note [Polymorphic selectors]
+    field_ty   = patSynFieldType patSyn sel_name
+    data_ty    = patSynOrigResTy patSyn
+    data_tvs   = tyVarsOfType data_ty
+    is_naughty = not (tyVarsOfType field_ty `subVarSet` data_tvs)
+    (field_tvs, field_theta, field_tau) = tcSplitSigmaTy field_ty
+    sel_ty | is_naughty = unitTy  -- See Note [Naughty record selectors]
+           | otherwise  = mkForAllTys (varSetElemsKvsFirst $
+                                       data_tvs `extendVarSetList` field_tvs) $
+                          mkPhiTy []                        $   -- Urgh!
+                          mkPhiTy field_theta               $   -- Urgh!
+                          mkFunTy data_ty field_tau
+
+    -- Make the binding: sel (C2 { fld = x }) = x
+    --                   sel (C7 { fld = x }) = x
+    --    where cons_w_field = [C2,C7]
+    sel_bind = mkTopFunBind Generated sel_lname alts
+      where
+        alts | is_naughty = [mkSimpleMatch [] unit_rhs]
+             | otherwise =  [mk_match]
+    mk_match = mkSimpleMatch [lpat]
+                                 (L loc (HsVar sel_pat_name))
+    mk_sel_pat = lpat
+    sel_lname = L loc sel_name
+    field_var = mkInternalName (mkBuiltinUnique 1) (getOccName sel_name) loc
+
+    -- Add catch-all default case unless the case is exhaustive
+    -- We do this explicitly so that we get a nice error message that
+    -- mentions this particular record selector
+    {-
+    deflt | all dealt_with all_cons = []
+          | otherwise = [mkSimpleMatch [L loc (WildPat placeHolderType)]
+                            (mkHsApp (L loc (HsVar (getName rEC_SEL_ERROR_ID)))
+                                     (L loc (HsLit msg_lit)))]
+                                     -}
+
+        -- Do not add a default case unless there are unmatched
+        -- constructors.  We must take account of GADTs, else we
+        -- get overlap warning messages from the pattern-match checker
+        -- NB: we need to pass type args for the *representation* TyCon
+        --     to dataConCannotMatch, hence the calculation of inst_tys
+        --     This matters in data families
+        --              data instance T Int a where
+        --                 A :: { fld :: Int } -> T Int Bool
+        --                 B :: { fld :: Int } -> T Int Char
+    inst_tys = substTyVars (mkTopTvSubst []) (patSynUnivTyVars patSyn)
+
+    unit_rhs = mkLHsTupleExpr []
+    msg_lit = HsStringPrim "" $ unsafeMkByteString $
+              occNameString (getOccName sel_name)
+
 
 isUnidirectional :: HsPatSynDir a -> Bool
 isUnidirectional Unidirectional          = True
@@ -394,7 +487,7 @@ tcPatSynBuilderBind PSB{ psb_id = L loc name, psb_def = lpat
     args = case details of
               PrefixPatSyn args     -> args
               InfixPatSyn arg1 arg2 -> [arg1, arg2]
-              RecordPatSyn args     -> args
+              RecordPatSyn args     -> map recordPatSynArg args
 
     add_dummy_arg :: MatchGroup Name (LHsExpr Name) -> MatchGroup Name (LHsExpr Name)
     add_dummy_arg mg@(MG { mg_alts = [L loc (Match Nothing [] ty grhss)] })

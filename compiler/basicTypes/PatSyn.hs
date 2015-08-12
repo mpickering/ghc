@@ -17,6 +17,9 @@ module PatSyn (
         patSynMatcher, patSynBuilder,
         patSynExTyVars, patSynSig,
         patSynInstArgTys, patSynInstResTy,
+        patSynFieldType, patSynFieldLabels,
+        patSynOrigResTy, patSynReqTheta, patSynUnivTyVars,
+
         tidyPatSynIds
     ) where
 
@@ -24,6 +27,7 @@ module PatSyn (
 
 import Type
 import TcType( mkSigmaTy )
+import TyCon (FieldLabel)
 import Name
 import Outputable
 import Unique
@@ -53,6 +57,10 @@ data PatSyn
         psUnique      :: Unique,      -- Cached from Name
 
         psArgs        :: [Type],
+        psFieldLabels :: [FieldLabel],
+                -- Field labels for this constructor, in the
+                -- same order as the psArgs
+                -- length = 0 (if not a record pattern)
         psArity       :: Arity,       -- == length psArgs
         psInfix       :: Bool,        -- True <=> declared infix
 
@@ -245,13 +253,14 @@ mkPatSyn :: Name
          -> Type                 -- ^ Original result type
          -> (Id, Bool)           -- ^ Name of matcher
          -> Maybe (Id, Bool)     -- ^ Name of builder
+         -> [Name]               -- ^ Original field names
          -> PatSyn
 mkPatSyn name declared_infix
          (univ_tvs, req_theta)
          (ex_tvs, prov_theta)
          orig_args
          orig_res_ty
-         matcher builder
+         matcher builder fnames
     = MkPatSyn {psName = name, psUnique = getUnique name,
                 psUnivTyVars = univ_tvs, psExTyVars = ex_tvs,
                 psProvTheta = prov_theta, psReqTheta = req_theta,
@@ -260,7 +269,8 @@ mkPatSyn name declared_infix
                 psArity = length orig_args,
                 psOrigResTy = orig_res_ty,
                 psMatcher = matcher,
-                psBuilder = builder }
+                psBuilder = builder,
+                psFieldLabels = fnames }
 
 -- | The 'Name' of the 'PatSyn', giving it a unique, rooted identification
 patSynName :: PatSyn -> Name
@@ -286,6 +296,18 @@ patSynArity = psArity
 patSynArgs :: PatSyn -> [Type]
 patSynArgs = psArgs
 
+patSynFieldLabels :: PatSyn -> [Name]
+patSynFieldLabels = psFieldLabels
+
+patSynOrigResTy :: PatSyn -> Type
+patSynOrigResTy = psOrigResTy
+
+patSynReqTheta :: PatSyn -> ThetaType
+patSynReqTheta = psReqTheta
+
+patSynUnivTyVars :: PatSyn -> [TyVar]
+patSynUnivTyVars = psUnivTyVars
+
 patSynTyDetails :: PatSyn -> HsPatSynDetails Type
 patSynTyDetails (MkPatSyn { psInfix = is_infix, psArgs = arg_tys })
   | is_infix, [left,right] <- arg_tys
@@ -295,6 +317,13 @@ patSynTyDetails (MkPatSyn { psInfix = is_infix, psArgs = arg_tys })
 
 patSynExTyVars :: PatSyn -> [TyVar]
 patSynExTyVars = psExTyVars
+
+-- | Extract the type for any given labelled field of the 'DataCon'
+patSynFieldType :: PatSyn -> FieldLabel -> Type
+patSynFieldType ps label
+  = case lookup label (psFieldLabels ps `zip` psArgs ps) of
+      Just ty -> ty
+      Nothing -> pprPanic "patSynFieldType" (ppr ps <+> ppr label)
 
 patSynSig :: PatSyn -> ([TyVar], [TyVar], ThetaType, ThetaType, [Type], Type)
 patSynSig (MkPatSyn { psUnivTyVars = univ_tvs, psExTyVars = ex_tvs

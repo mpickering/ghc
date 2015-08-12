@@ -654,10 +654,17 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                       -- ; checkPrecMatch -- TODO
                       ; return (InfixPatSyn name1 name2, mkFVs (map unLoc [name1, name2])) }
                RecordPatSyn vars ->
-                   do { checkDupRdrNames vars
-                      ; names <- mapM lookupVar vars
-                      ; return (RecordPatSyn names, mkFVs (map unLoc names)) }
+                   do { checkDupRdrNames (map recordPatSynId vars)
+                      ; let rnRecordPatSynField (RecordPatSynField visible hidden) = do {
+                              ; visible' <- lookupLocatedTopBndrRn visible
+                              ; hidden'  <- lookupVar hidden
+                              ; return $ RecordPatSynField visible' hidden' }
+                      ; names <- mapM rnRecordPatSynField  vars
+                      ; return (RecordPatSyn names, mkFVs (map (unLoc . recordPatSynId) names)) }
+
+
         ; return ((pat', details'), fvs) }
+        ; traceRn (text "rnPatSynBind" <+> ppr pat')
         ; (dir', fvs2) <- case dir of
             Unidirectional -> return (Unidirectional, emptyFVs)
             ImplicitBidirectional -> return (ImplicitBidirectional, emptyFVs)
@@ -676,9 +683,12 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                           , psb_def = pat'
                           , psb_dir = dir'
                           , psb_fvs = fvs' }
+        ; let selector_names = case details' of
+                                 RecordPatSyn names -> map (unLoc . recordPatSynId) names
+                                 _ -> []
 
         ; fvs' `seq` -- See Note [Free-variable space leak]
-          return (bind', [name], fvs1)
+          return (bind', name : selector_names , fvs1)
           -- See Note [Pattern synonym builders don't yield dependencies]
       }
   where

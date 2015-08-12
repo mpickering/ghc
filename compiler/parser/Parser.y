@@ -1157,9 +1157,9 @@ vars0 :: { [Located RdrName] }
         : {- empty -}                 { [] }
         | varid vars0                 { $1 : $2 }
 
-cvars1 :: { [Located RdrName] }
-       : varid                        { [$1] }
-       | varid ',' cvars1             { $1 : $3 }
+cvars1 :: { [RecordPatSynField (Located RdrName)] }
+       : varid                        { [RecordPatSynField $1 $1] }
+       | varid ',' cvars1             { (RecordPatSynField $1 $1) : $3 }
 
 where_decls :: { Located ([AddAnn]
                          , Located (OrdList (LHsDecl RdrName))) }
@@ -1950,7 +1950,7 @@ deriving :: { Located (Maybe (Located [LHsType RdrName])) }
 {- Note [Declaration/signature overlap]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 There's an awkward overlap with a type signature.  Consider
-        f :: Int -> Int = ...rhs...
+        f :: Int -> Int = ...rhs'{' x...
    Then we can't tell whether it's a type signature or a value
    definition with a result signature until we see the '='.
    So we have to inline enough to postpone reductions until we know.

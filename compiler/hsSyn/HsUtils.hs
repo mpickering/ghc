@@ -855,10 +855,12 @@ hsPatSynBinders :: HsValBinds RdrName -> [Located RdrName]
 hsPatSynBinders (ValBindsIn binds _) = foldrBag addPatSynBndr [] binds
 hsPatSynBinders _ = panic "hsPatSynBinders"
 
-addPatSynBndr :: LHsBindLR idL idR -> [Located idL] -> [Located idL]
+addPatSynBndr :: LHsBindLR idL idL -> [Located idL] -> [Located idL]
 -- See Note [SrcSpan for binders]
 addPatSynBndr bind pss
-  | L bind_loc (PatSynBind (PSB { psb_id = L _ n })) <- bind
+  | L bind_loc (PatSynBind (PSB { psb_id = L _ n, psb_args = RecordPatSyn as })) <- bind
+  = map recordPatSynId as ++ L bind_loc n : pss
+  | L bind_loc (PatSynBind (PSB { psb_id = L _ n})) <- bind
   = L bind_loc n : pss
   | otherwise
   = pss

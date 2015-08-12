@@ -1102,7 +1102,7 @@ rnTopSrcDecls group
 
                 -- Dump trace of renaming part
         rnDump (ppr rn_decls) ;
-
+        rnDump (ppr $ tcg_binds tcg_env') ;
         return (tcg_env', rn_decls)
    }
 

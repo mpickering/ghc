@@ -118,6 +118,7 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    --      Need to do this before (D2) because rnTopBindsLHS
    --      looks up those pattern synonyms (Trac #9889)
    pat_syn_bndrs <- mapM newTopSrcBinder (hsPatSynBinders val_decls) ;
+   traceRn  (ppr pat_syn_bndrs) ;
    tc_envs <- extendGlobalRdrEnvRn (map Avail pat_syn_bndrs) local_fix_env ;
    setEnvs tc_envs $ do {
 
