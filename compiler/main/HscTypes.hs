@@ -1698,11 +1698,13 @@ implicitConLikeThings :: ConLike -> [TyThing]
 implicitConLikeThings (RealDataCon dc)
   = map AnId (dataConImplicitIds dc)
     -- For data cons add the worker and (possibly) wrapper
-
+--implicitConLikeThings (PatSynCon ps)
+--  = map AnId (patSynSelectorIds ps)
 implicitConLikeThings (PatSynCon {})
   = []  -- Pattern synonyms have no implicit Ids; the wrapper and matcher
         -- are not "implicit"; they are simply new top-level bindings,
         -- and they have their own declaration in an interface file
+        -- Unless a record pat syn when there are implicit selectors
 
 implicitClassThings :: Class -> [TyThing]
 implicitClassThings cl

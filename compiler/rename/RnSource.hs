@@ -121,6 +121,7 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    traceRn  (ppr pat_syn_bndrs) ;
    tc_envs <- extendGlobalRdrEnvRn (map Avail pat_syn_bndrs) local_fix_env ;
    setEnvs tc_envs $ do {
+   inNewEnv (extendPatternSynSelectorEnv val_decls) $ \_ -> do {
 
    -- (D2) Rename the left-hand sides of the value bindings.
    --     This depends on everything from (B) being in scope,
@@ -219,7 +220,7 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    traceRn (text "finish rnSrc" <+> ppr rn_group) ;
    traceRn (text "finish Dus" <+> ppr src_dus ) ;
    return (final_tcg_env, rn_group)
-                    }}}}}
+                    }}}}}}
 
 -- some utils because we do this a bunch above
 -- compute and install the new env
@@ -1592,6 +1593,33 @@ extendRecordFieldEnv tycl_decls inst_decls
                    fld_set' = extendNameSetList fld_set flds'
              ; return $ (RecFields env' fld_set') }
     get_con _ env = return env
+
+extendPatternSynSelectorEnv :: HsValBindsLR RdrName RdrName -> TcM TcGblEnv
+extendPatternSynSelectorEnv (ValBindsIn bs _)
+  = do  { tcg_env <- getGblEnv
+        ; field_env' <- foldrM get_field (tcg_field_env tcg_env) all_pat_syn_sels
+        ; return (tcg_env { tcg_field_env = field_env' }) }
+  where
+    -- we want to lookup:
+    --  (a) a patterns synonym field
+    -- knowing that they're from this module.
+    -- lookupLocatedTopBndrRn does this, because it does a lookupGreLocalRn_maybe,
+    -- which keeps only the local ones.
+    lookup x = do { x' <- lookupLocatedTopBndrRn x
+                    ; return $ unLoc x'}
+
+    pat_syn_decls =
+      [psb | L _ (PatSynBind psb) <- bagToList bs]
+
+    all_pat_syn_sels = concat [fs | PSB {psb_args = RecordPatSyn fs} <- pat_syn_decls]
+
+    get_field (RecordPatSynField visible _)
+            (RecFields env fld_set)
+        = do { fname <- lookup visible
+--             ; let env'    = foldl (\e c -> extendNameEnv e c flds') env cons'
+
+             ; let fld_set' = extendNameSetList fld_set [fname]
+             ; return $ (RecFields env fld_set') }
 
 {-
 *********************************************************

@@ -48,6 +48,7 @@ import NameSet
 import NameEnv
 import SrcLoc
 import Bag
+import PatSyn
 import ListSetOps
 import ErrUtils
 import Digraph
@@ -162,10 +163,12 @@ tcTopBinds :: HsValBinds Name -> TcM (TcGblEnv, TcLclEnv)
 -- The TcLclEnv has an extended type envt for the new bindings
 tcTopBinds (ValBindsOut binds sigs)
   = do  { -- Pattern synonym bindings populate the global environment
+          traceTc "tcTopBinds" (ppr binds) ;
           (binds', (tcg_env, tcl_env)) <- tcValBinds TopLevel binds sigs $
             do { gbl <- getGblEnv
                ; lcl <- getLclEnv
                ; return (gbl, lcl) }
+        ; traceTc "Tc4a" (ppr binds')
         ; specs <- tcImpPrags sigs   -- SPECIALISE prags for imported Ids
 
         ; let { tcg_env' = tcg_env { tcg_binds = foldr (unionBags . snd)
@@ -428,6 +431,7 @@ tc_group top_lvl sig_fn prag_fn (NonRecursive, binds) thing_inside
                  [bind] -> bind
                  []     -> panic "tc_group: empty list of binds"
                  _      -> panic "tc_group: NonRecursive binds is not a singleton bag"
+       ; traceTc "tc_group" (ppr bind)
        ; (bind', thing) <- tc_single top_lvl sig_fn prag_fn bind thing_inside
        ; return ( [(NonRecursive, bind')], thing) }
 
@@ -436,8 +440,8 @@ tc_group top_lvl sig_fn prag_fn (Recursive, binds) thing_inside
         -- strongly-connected-component analysis, this time omitting
         -- any references to variables with type signatures.
         -- (This used to be optional, but isn't now.)
-    do  { traceTc "tc_group rec" (pprLHsBinds binds)
-        ; when hasPatSyn $ recursivePatSynErr binds
+    do  { traceTc "tc_group rec" (ppr binds)
+--        ; when hasPatSyn $ recursivePatSynErr binds
         ; (binds1, thing) <- go sccs
         ; return ([(Recursive, binds1)], thing) }
                 -- Rec them all together
@@ -475,21 +479,19 @@ tc_single :: forall thing.
             TopLevelFlag -> TcSigFun -> TcPragEnv
           -> LHsBind Name -> TcM thing
           -> TcM (LHsBinds TcId, thing)
-tc_single _top_lvl sig_fn _prag_fn (L _ (PatSynBind psb@PSB{ psb_id = L _ name })) thing_inside
-  = do { (pat_syn, aux_binds) <- tc_pat_syn_decl
+tc_single top_lvl sig_fn _prag_fn (L _ (PatSynBind psb@PSB{ psb_id = L _ name })) thing_inside
+  = do { (pat_syn, aux_binds, tcg_env) <- tc_pat_syn_decl
        ; traceTc "tc_single_pat_syn" (ppr aux_binds)
        ; let tything = AConLike (PatSynCon pat_syn)
-       ; let extension action = do {
-          ; tcg_env <- getGblEnv
-          ; let { tcg_env' = tcg_env { tcg_binds = unionBags
-                                                       (tcg_binds tcg_env)
-                                                       aux_binds }}
-          ; setGblEnv tcg_env' action
-          }
-       ; thing <- extension $ tcExtendGlobalEnv [tything] thing_inside
+--       ; tcExtendGlobalEnvImplicit implicit_things $
+--   tcRecSelBinds rec_sel_binds
+-- where
+--   implicit_things = concatMap implicitTyThings tyclss
+       ; thing <- setGblEnv tcg_env   $ tcExtendGlobalEnv [tything] thing_inside
        ; return (aux_binds, thing)
        }
   where
+    tc_pat_syn_decl :: TcM (PatSyn, LHsBinds TcId, TcGblEnv)
     tc_pat_syn_decl = case sig_fn name of
         Nothing                 -> tcInferPatSynDecl psb
         Just (TcPatSynSig tpsi) -> tcCheckPatSynDecl psb tpsi
@@ -499,6 +501,7 @@ tc_single top_lvl sig_fn prag_fn lbind thing_inside
   = do { (binds1, ids) <- tcPolyBinds top_lvl sig_fn prag_fn
                                       NonRecursive NonRecursive
                                       [lbind]
+       ; traceTc "tc_single_not_pat_syn" (ppr binds1 <+> ppr ids)
        ; thing <- tcExtendLetEnv top_lvl ids thing_inside
        ; return (binds1, thing) }
 

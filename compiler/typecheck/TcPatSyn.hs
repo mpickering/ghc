@@ -62,7 +62,7 @@ import Debug.Trace
 -}
 
 tcInferPatSynDecl :: PatSynBind Name Name
-                  -> TcM (PatSyn, LHsBinds Id)
+                  -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
 tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                        psb_def = lpat, psb_dir = dir }
   = setSrcSpan loc $
@@ -101,6 +101,7 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; req_theta  <- zonkTcThetaType req_theta
 
        ; pat_ty     <- zonkTcType pat_ty
+
        ; args       <- mapM zonkId args
 
        ; traceTc "tcInferPatSynDecl }" $ ppr name
@@ -112,7 +113,7 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
 
 tcCheckPatSynDecl :: PatSynBind Name Name
                   -> TcPatSynInfo
-                  -> TcM (PatSyn, LHsBinds Id)
+                  -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
 tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                        psb_def = lpat, psb_dir = dir }
                   TPSI{ patsig_tau = tau,
@@ -173,6 +174,7 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
            ; emitWanteds origin prov_theta' }
 
        ; traceTc "tcCheckPatSynDecl }" $ ppr name
+       ; traceTc "tcCheckPatSynDecl }" $ ppr name
        ; tc_patsyn_finish lname dir is_infix lpat lpat'
                           (univ_tvs, req_theta, req_ev_binds, req_dicts)
                           (ex_tvs, ex_tys, prov_theta, prov_ev_binds, prov_dicts)
@@ -199,7 +201,7 @@ tc_patsyn_finish :: Located Name
                  -> TcType
                  -> [Name]
                  -> [Name]
-                 -> TcM (PatSyn, LHsBinds Id)
+                 -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
 tc_patsyn_finish lname dir is_infix lpat lpat'
                  (univ_tvs, req_theta, req_ev_binds, req_dicts)
                  (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
@@ -228,25 +230,36 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                         matcher_id builder_id field_names
 
        ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds lpat patSyn field_names pat_var_names)
-       ; tc_selector <- map snd <$> tcPatSynRecSelBinds patSyn sigs selector_binds
+       ; traceTc "tc_binds" $ ppr field_names
+       ; (tc_selector, tcg_env) <- tcPatSynRecSelBinds patSyn sigs selector_binds
+       ; traceTc "tc_binds" $ ppr selector_binds
        ; traceTc "tc_selector" $ ppr tc_selector
 
-       ; return (patSyn, foldr unionBags matcher_bind tc_selector) }
+       ; return (patSyn, foldr unionBags matcher_bind tc_selector, tcg_env) }
   where
     qtvs = univ_tvs ++ ex_tvs
     theta = prov_theta ++ req_theta
     arg_tys = map (varType . fst) wrapped_args
 
 
-tcPatSynRecSelBinds :: PatSyn -> [LSig Name] -> [LHsBinds Name] ->  TcM [(RecFlag, LHsBinds TcId)]
+tcPatSynRecSelBinds :: PatSyn -> [LSig Name] -> [LHsBinds Name] ->  TcM  ([LHsBinds TcId], TcGblEnv)
 tcPatSynRecSelBinds pat_syn sigs binds
   = tcExtendGlobalEnv [tything]
       $ tcExtendGlobalValEnv [sel_id | L _ (IdSig sel_id) <- sigs] $
     do { (rec_sel_binds, tcg_env) <-
         discardWarnings (tcValBinds TopLevel (zip (repeat NonRecursive) binds) sigs getGblEnv)
-       ; return rec_sel_binds }
+       ; let rec_sel_binds' = map snd rec_sel_binds
+       ; traceTc "error:" (ppr rec_sel_binds')
+       ; return (rec_sel_binds', tcg_env) }
   where
     tything = AConLike (PatSynCon pat_syn)
+    getId :: HsBindLR Id Id -> [Id]
+    getId (AbsBinds { abs_binds = as }) = map (getId' . unLoc) (bagToList as)
+    getId _ = panic "tcPatSynRecSelBinds"
+
+    getId' :: HsBindLR Id Id -> Id
+    getId' (FunBind { fun_id = L _ n }) = n
+    getId' _ = panic "tcPatSynRecSelBinds'"
 
 
 {-
@@ -348,7 +361,8 @@ mkPatSynRecSelBinds lpat ps field_names pat_var_names = zipWith (mkPatSynRecSelB
 
 mkPatSynRecSelBind :: LPat Name -> PatSyn -> Name -> Name -> (LSig Name, LHsBinds Name)
 mkPatSynRecSelBind lpat patSyn sel_name sel_pat_name
-  = traceShow "generating" (L loc (IdSig sel_id), unitBag (L loc sel_bind))
+  =
+      (L loc (IdSig sel_id), unitBag (L loc sel_bind))
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId rec_details sel_name sel_ty

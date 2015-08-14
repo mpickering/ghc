@@ -51,6 +51,7 @@ import FastString
 import Data.List        ( partition, sort )
 import Maybes           ( orElse )
 import Control.Monad
+import Debug.Trace
 #if __GLASGOW_HASKELL__ < 709
 import Data.Traversable ( traverse )
 #endif
@@ -293,7 +294,8 @@ rnValBindsRHS :: HsSigCtxt
 rnValBindsRHS ctxt (ValBindsIn mbinds sigs)
   = do { (sigs', sig_fvs) <- renameSigs ctxt sigs
        ; binds_w_dus <- mapBagM (rnLBind (mkSigTvFn sigs')) mbinds
-       ; case depAnalBinds binds_w_dus of
+       ; traceRn (text "dep_anal" <+> (ppr (depAnalBinds binds_w_dus)))
+       ; case (depAnalBinds binds_w_dus) of
            (anal_binds, anal_dus) -> return (valbind', valbind'_dus)
               where
                 valbind' = ValBindsOut anal_binds sigs'
@@ -660,7 +662,7 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                               ; hidden'  <- lookupVar hidden
                               ; return $ RecordPatSynField visible' hidden' }
                       ; names <- mapM rnRecordPatSynField  vars
-                      ; return (RecordPatSyn names, mkFVs (map (unLoc . recordPatSynId) names)) }
+                      ; return (RecordPatSyn names, mkFVs (map (unLoc . recordPatSynArg) names) `plusFV` mkFVs (map (unLoc . recordPatSynArg) names)) }
 
 
         ; return ((pat', details'), fvs) }
@@ -688,7 +690,7 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                                  _ -> []
 
         ; fvs' `seq` -- See Note [Free-variable space leak]
-          return (bind', name : selector_names , fvs1)
+          return (bind', name : selector_names , fvs')
           -- See Note [Pattern synonym builders don't yield dependencies]
       }
   where
