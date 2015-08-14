@@ -137,6 +137,10 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                  InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
                  RecordPatSyn names       -> (map (unLoc . recordPatSynArg) names, False)
 
+       ; let field_names = case details of
+                             RecordPatSyn names -> (map (unLoc . recordPatSynId) names)
+                             _ -> (arg_names)
+
        ; let ty_arity = length arg_tys
        ; checkTc (length arg_names == ty_arity)
                  (wrongNumberOfParmsErr ty_arity)
@@ -179,7 +183,7 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                           (univ_tvs, req_theta, req_ev_binds, req_dicts)
                           (ex_tvs, ex_tys, prov_theta, prov_ev_binds, prov_dicts)
                           wrapped_args
-                          pat_ty arg_names undefined }
+                          pat_ty field_names arg_names  }
   where
     (arg_tys, pat_ty) = tcSplitFunTys tau
 
@@ -366,7 +370,7 @@ mkPatSynRecSelBind lpat patSyn sel_name sel_pat_name
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId rec_details sel_name sel_ty
-    rec_details = RecSelId { sel_tycon = undefined, sel_naughty = is_naughty }
+    rec_details = PatSynSelId patSyn
 
     -- Selector type; Note [Polymorphic selectors]
     field_ty   = patSynFieldType patSyn sel_name

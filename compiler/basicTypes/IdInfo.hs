@@ -76,6 +76,7 @@ import VarSet
 import BasicTypes
 import DataCon
 import TyCon
+import {-# SOURCE #-} PatSyn
 import ForeignCall
 import Outputable
 import Module
@@ -113,6 +114,7 @@ data IdDetails
     , sel_naughty :: Bool       -- True <=> a "naughty" selector which can't actually exist, for example @x@ in:
                                 --    data T = forall a. MkT { x :: a }
     }                           -- See Note [Naughty record selectors] in TcTyClsDecls
+  | PatSynSelId PatSyn
 
   | DataConWorkId DataCon       -- ^ The 'Id' is for a data constructor /worker/
   | DataConWrapId DataCon       -- ^ The 'Id' is for a data constructor /wrapper/
@@ -172,6 +174,7 @@ pprIdDetails other     = brackets (pp other)
    pp (RecSelId { sel_naughty = is_naughty })
                          = brackets $ ptext (sLit "RecSel")
                             <> ppWhen is_naughty (ptext (sLit "(naughty)"))
+   pp (PatSynSelId _)   = ptext (sLit "RecSynSelId")
 
 {-
 ************************************************************************
