@@ -232,12 +232,14 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                                                 )
        ; (tc_selector, tcg_env) <- tcPatSynRecSelBinds sigs selector_binds
 
+       ; let field_labels = map (unLoc . recordPatSynId) rec_fields
+
        ; let patSyn = mkPatSyn (unLoc lname) is_infix
                         (univ_tvs, req_theta)
                         (ex_tvs, prov_theta)
                         arg_tys
                         pat_ty
-                        matcher_id builder_id
+                        matcher_id builder_id field_labels
 
        ; return (patSyn, foldr unionBags matcher_bind tc_selector, tcg_env) }
   where

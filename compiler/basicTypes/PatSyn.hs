@@ -16,7 +16,7 @@ module PatSyn (
         patSynArgs, patSynTyDetails, patSynType,
         patSynMatcher, patSynBuilder,
         patSynExTyVars, patSynSig,
-        patSynInstArgTys, patSynInstResTy,
+        patSynInstArgTys, patSynInstResTy, patSynFieldLabels,
 
         tidyPatSynIds
     ) where
@@ -33,6 +33,7 @@ import BasicTypes
 import FastString
 import Var
 import HsBinds( HsPatSynDetails(..) )
+import TyCon
 
 import qualified Data.Data as Data
 import qualified Data.Typeable
@@ -51,17 +52,18 @@ import Data.Function
 data PatSyn
   = MkPatSyn {
         psName        :: Name,
-        psUnique      :: Unique,      -- Cached from Name
+        psUnique      :: Unique,       -- Cached from Name
 
         psArgs        :: [Type],
-        psArity       :: Arity,       -- == length psArgs
-        psInfix       :: Bool,        -- True <=> declared infix
+        psArity       :: Arity,        -- == length psArgs
+        psInfix       :: Bool,         -- True <=> declared infix
+        psFieldLabels :: [FieldLabel], -- List of fields for a a record pattern synonym
 
-        psUnivTyVars  :: [TyVar],     -- Universially-quantified type variables
-        psReqTheta    :: ThetaType,   -- Required dictionaries
-        psExTyVars    :: [TyVar],     -- Existentially-quantified type vars
-        psProvTheta   :: ThetaType,   -- Provided dictionaries
-        psOrigResTy   :: Type,        -- Mentions only psUnivTyVars
+        psUnivTyVars  :: [TyVar],      -- Universially-quantified type variables
+        psReqTheta    :: ThetaType,    -- Required dictionaries
+        psExTyVars    :: [TyVar],      -- Existentially-quantified type vars
+        psProvTheta   :: ThetaType,    -- Provided dictionaries
+        psOrigResTy   :: Type,         -- Mentions only psUnivTyVars
 
         -- See Note [Matchers and builders for pattern synonyms]
         psMatcher     :: (Id, Bool),
@@ -246,13 +248,14 @@ mkPatSyn :: Name
          -> Type                 -- ^ Original result type
          -> (Id, Bool)           -- ^ Name of matcher
          -> Maybe (Id, Bool)     -- ^ Name of builder
+         -> [FieldLabel]         -- ^ Names of fields for a record pattern synonym
          -> PatSyn
 mkPatSyn name declared_infix
          (univ_tvs, req_theta)
          (ex_tvs, prov_theta)
          orig_args
          orig_res_ty
-         matcher builder
+         matcher builder field_labels
     = MkPatSyn {psName = name, psUnique = getUnique name,
                 psUnivTyVars = univ_tvs, psExTyVars = ex_tvs,
                 psProvTheta = prov_theta, psReqTheta = req_theta,
@@ -261,7 +264,8 @@ mkPatSyn name declared_infix
                 psArity = length orig_args,
                 psOrigResTy = orig_res_ty,
                 psMatcher = matcher,
-                psBuilder = builder }
+                psBuilder = builder,
+                psFieldLabels = field_labels}
 
 -- | The 'Name' of the 'PatSyn', giving it a unique, rooted identification
 patSynName :: PatSyn -> Name
@@ -286,6 +290,9 @@ patSynArity = psArity
 
 patSynArgs :: PatSyn -> [Type]
 patSynArgs = psArgs
+
+patSynFieldLabels :: PatSyn -> [FieldLabel]
+patSynFieldLabels = psFieldLabels
 
 
 patSynTyDetails :: PatSyn -> HsPatSynDetails Type

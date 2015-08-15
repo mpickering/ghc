@@ -97,7 +97,7 @@ conLikeArity (PatSynCon pat_syn)    = patSynArity pat_syn
 
 conLikeFieldLabels :: ConLike -> [FieldLabel]
 conLikeFieldLabels (RealDataCon data_con) = dataConFieldLabels data_con
-conLikeFieldLabels (PatSynCon _) = []
+conLikeFieldLabels (PatSynCon pat_syn)    = patSynFieldLabels pat_syn
 
 conLikeInstOrigArgTys :: ConLike -> [Type] -> [Type]
 conLikeInstOrigArgTys (RealDataCon data_con) tys =
