@@ -231,7 +231,7 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                         (ex_tvs, prov_theta)
                         arg_tys
                         pat_ty
-                        matcher_id builder_id field_names
+                        matcher_id builder_id
 
        ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds lpat patSyn field_names pat_var_names)
        ; traceTc "tc_binds" $ ppr field_names
@@ -361,10 +361,10 @@ tcPatSynMatcher (L loc name) lpat
 -- = ValBindsOut [(NonRecursive, b) | b <- binds] sigs
 --
 mkPatSynRecSelBinds :: LPat Name -> PatSyn -> [Name] -> [Name] -> [(LSig Name, LHsBinds Name)]
-mkPatSynRecSelBinds lpat ps field_names pat_var_names = zipWith (mkPatSynRecSelBind lpat ps) field_names pat_var_names
+mkPatSynRecSelBinds lpat ps field_names pat_var_names = zipWith (mkPatSynRecSelBind field_names lpat ps) field_names pat_var_names
 
-mkPatSynRecSelBind :: LPat Name -> PatSyn -> Name -> Name -> (LSig Name, LHsBinds Name)
-mkPatSynRecSelBind lpat patSyn sel_name sel_pat_name
+mkPatSynRecSelBind :: [Name] -> LPat Name -> PatSyn -> Name -> Name -> (LSig Name, LHsBinds Name)
+mkPatSynRecSelBind labels lpat patSyn sel_name sel_pat_name
   =
       (L loc (IdSig sel_id), unitBag (L loc sel_bind))
   where
@@ -373,7 +373,7 @@ mkPatSynRecSelBind lpat patSyn sel_name sel_pat_name
     rec_details = PatSynSelId patSyn
 
     -- Selector type; Note [Polymorphic selectors]
-    field_ty   = patSynFieldType patSyn sel_name
+    field_ty   = patSynFieldType labels patSyn sel_name
     data_ty    = patSynOrigResTy patSyn
     data_tvs   = tyVarsOfType data_ty
     is_naughty = not (tyVarsOfType field_ty `subVarSet` data_tvs)

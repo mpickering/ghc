@@ -1950,7 +1950,7 @@ deriving :: { Located (Maybe (Located [LHsType RdrName])) }
 {- Note [Declaration/signature overlap]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 There's an awkward overlap with a type signature.  Consider
-        f :: Int -> Int = ...rhs'{' x...
+        f :: Int -> Int = ...rhs...
    Then we can't tell whether it's a type signature or a value
    definition with a result signature until we see the '='.
    So we have to inline enough to postpone reductions until we know.
