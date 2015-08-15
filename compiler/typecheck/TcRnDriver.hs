@@ -1143,9 +1143,8 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
                 -- Now GHC-generated derived bindings, generics, and selectors
                 -- Do not generate warnings from compiler-generated code;
                 -- hence the use of discardWarnings
-        traceTc "deriv_binds" (ppr deriv_binds) ;
-        --tc_envs <- discardWarnings (tcTopBinds deriv_binds) ;
-       -- setEnvs tc_envs $ do {
+        tc_envs <- discardWarnings (tcTopBinds deriv_binds) ;
+        setEnvs tc_envs $ do {
 
                 -- Value declarations next
         traceTc "Tc5" empty ;
@@ -1199,7 +1198,7 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
 
         addUsedRdrNames fo_rdr_names ;
         return (tcg_env', tcl_env)
-    }}}}}
+    }}}}}}
   where
     gre_to_rdr_name :: GlobalRdrElt -> [RdrName] -> [RdrName]
         -- For *imported* newtype data constructors, we want to

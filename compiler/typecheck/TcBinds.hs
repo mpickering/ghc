@@ -163,12 +163,10 @@ tcTopBinds :: HsValBinds Name -> TcM (TcGblEnv, TcLclEnv)
 -- The TcLclEnv has an extended type envt for the new bindings
 tcTopBinds (ValBindsOut binds sigs)
   = do  { -- Pattern synonym bindings populate the global environment
-          traceTc "tcTopBinds" (ppr binds) ;
           (binds', (tcg_env, tcl_env)) <- tcValBinds TopLevel binds sigs $
             do { gbl <- getGblEnv
                ; lcl <- getLclEnv
                ; return (gbl, lcl) }
-        ; traceTc "Tc4a" (ppr binds')
         ; specs <- tcImpPrags sigs   -- SPECIALISE prags for imported Ids
 
         ; let { tcg_env' = tcg_env { tcg_binds = foldr (unionBags . snd)
@@ -376,15 +374,11 @@ tcValBinds top_lvl binds sigs thing_inside
                 -- we extend it on a per-rhs basis in tcExtendForRhs
         ; tcExtendLetEnvIds top_lvl [(idName id, id) | id <- poly_ids] $ do
             { (binds', (extra_binds', thing)) <- tcBindGroups top_lvl sig_fn prag_fn binds $ do
-                   { traceTc "tcValBinds" (ppr patsyns)
-                   ; thing <- thing_inside
+                   { thing <- thing_inside
                      -- See Note [Pattern synonym builders don't yield dependencies]
                    ; patsyn_builders <- mapM tcPatSynBuilderBind patsyns
                    ; let extra_binds = [ (NonRecursive, builder) | builder <- patsyn_builders ]
                    ; return (extra_binds, thing) }
-             ; traceTc "tcValBinds" (ppr binds')
-             ; traceTc "tcValBinds" (ppr binds)
-             ; traceTc "tcValBinds" (ppr extra_binds')
              ; return (binds' ++ extra_binds', thing) }}
   where
     patsyns = [psb | (_, lbinds) <- binds, L _ (PatSynBind psb) <- bagToList lbinds]
@@ -431,7 +425,6 @@ tc_group top_lvl sig_fn prag_fn (NonRecursive, binds) thing_inside
                  [bind] -> bind
                  []     -> panic "tc_group: empty list of binds"
                  _      -> panic "tc_group: NonRecursive binds is not a singleton bag"
-       ; traceTc "tc_group" (ppr bind)
        ; (bind', thing) <- tc_single top_lvl sig_fn prag_fn bind thing_inside
        ; return ( [(NonRecursive, bind')], thing) }
 
@@ -440,8 +433,8 @@ tc_group top_lvl sig_fn prag_fn (Recursive, binds) thing_inside
         -- strongly-connected-component analysis, this time omitting
         -- any references to variables with type signatures.
         -- (This used to be optional, but isn't now.)
-    do  { traceTc "tc_group rec" (ppr binds)
---        ; when hasPatSyn $ recursivePatSynErr binds
+    do  { traceTc "tc_group rec" (pprLHsBinds binds)
+        ; when hasPatSyn $ recursivePatSynErr binds
         ; (binds1, thing) <- go sccs
         ; return ([(Recursive, binds1)], thing) }
                 -- Rec them all together
@@ -481,13 +474,8 @@ tc_single :: forall thing.
           -> TcM (LHsBinds TcId, thing)
 tc_single top_lvl sig_fn _prag_fn (L _ (PatSynBind psb@PSB{ psb_id = L _ name })) thing_inside
   = do { (pat_syn, aux_binds, tcg_env) <- tc_pat_syn_decl
-       ; traceTc "tc_single_pat_syn" (ppr aux_binds)
        ; let tything = AConLike (PatSynCon pat_syn)
---       ; tcExtendGlobalEnvImplicit implicit_things $
---   tcRecSelBinds rec_sel_binds
--- where
---   implicit_things = concatMap implicitTyThings tyclss
-       ; thing <- setGblEnv tcg_env   $ tcExtendGlobalEnv [tything] thing_inside
+       ; thing <- setGblEnv tcg_env  $ tcExtendGlobalEnv [tything] thing_inside
        ; return (aux_binds, thing)
        }
   where
@@ -501,7 +489,6 @@ tc_single top_lvl sig_fn prag_fn lbind thing_inside
   = do { (binds1, ids) <- tcPolyBinds top_lvl sig_fn prag_fn
                                       NonRecursive NonRecursive
                                       [lbind]
-       ; traceTc "tc_single_not_pat_syn" (ppr binds1 <+> ppr ids)
        ; thing <- tcExtendLetEnv top_lvl ids thing_inside
        ; return (binds1, thing) }
 

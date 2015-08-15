@@ -22,7 +22,6 @@ module TcTyClsDecls (
 #include "HsVersions.h"
 
 import HsSyn
-import PatSyn
 import HscTypes
 import BuildTyCl
 import TcRnMonad
@@ -46,7 +45,6 @@ import Class
 import CoAxiom
 import TyCon
 import DataCon
-import ConLike
 import Id
 import MkCore           ( rEC_SEL_ERROR_ID )
 import IdInfo
@@ -72,7 +70,6 @@ import BasicTypes
 import Bag
 import Control.Monad
 import Data.List
-import Debug.Trace
 
 {-
 ************************************************************************
@@ -122,8 +119,7 @@ tcTyAndClassDecls tyclds_s
     fold_env :: [TyClGroup Name] -> TcM TcGblEnv
     fold_env [] = getGblEnv
     fold_env (tyclds:tyclds_s)
-      = do { traceTc "tcTyAndClassDecls" (ppr tyclds)
-           ; tcg_env <- tcTyClGroup tyclds
+      = do { tcg_env <- tcTyClGroup tyclds
            ; setGblEnv tcg_env $ fold_env tyclds_s }
              -- remaining groups are typecheck in the extended global env
 
@@ -174,7 +170,6 @@ tcTyClGroup tyclds
            -- Step 4: Add the implicit things;
            -- we want them in the environment because
            -- they may be mentioned in interface files
-       ; traceTc "getting here" empty
        ; tcExtendGlobalValEnv (mkDefaultMethodIds tyclss) $
          tcAddImplicits tyclss } }
 
