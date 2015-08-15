@@ -17,8 +17,6 @@ module PatSyn (
         patSynMatcher, patSynBuilder,
         patSynExTyVars, patSynSig,
         patSynInstArgTys, patSynInstResTy,
-        patSynFieldType,
-        patSynOrigResTy, patSynReqTheta, patSynUnivTyVars,
 
         tidyPatSynIds
     ) where
@@ -27,7 +25,6 @@ module PatSyn (
 
 import Type
 import TcType( mkSigmaTy )
-import TyCon (FieldLabel)
 import Name
 import Outputable
 import Unique
@@ -290,14 +287,6 @@ patSynArity = psArity
 patSynArgs :: PatSyn -> [Type]
 patSynArgs = psArgs
 
-patSynOrigResTy :: PatSyn -> Type
-patSynOrigResTy = psOrigResTy
-
-patSynReqTheta :: PatSyn -> ThetaType
-patSynReqTheta = psReqTheta
-
-patSynUnivTyVars :: PatSyn -> [TyVar]
-patSynUnivTyVars = psUnivTyVars
 
 patSynTyDetails :: PatSyn -> HsPatSynDetails Type
 patSynTyDetails (MkPatSyn { psInfix = is_infix, psArgs = arg_tys })
@@ -308,13 +297,6 @@ patSynTyDetails (MkPatSyn { psInfix = is_infix, psArgs = arg_tys })
 
 patSynExTyVars :: PatSyn -> [TyVar]
 patSynExTyVars = psExTyVars
-
--- | Extract the type for any given labelled field of the 'DataCon'
-patSynFieldType :: [FieldLabel] -> PatSyn -> FieldLabel -> Type
-patSynFieldType labels ps label
-  = case lookup label (labels `zip` psArgs ps) of
-      Just ty -> ty
-      Nothing -> pprPanic "patSynFieldType" (ppr ps <+> ppr label)
 
 patSynSig :: PatSyn -> ([TyVar], [TyVar], ThetaType, ThetaType, [Type], Type)
 patSynSig (MkPatSyn { psUnivTyVars = univ_tvs, psExTyVars = ex_tvs

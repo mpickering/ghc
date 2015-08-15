@@ -224,6 +224,13 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
 
        ; builder_id <- mkPatSynBuilderId dir lname qtvs theta arg_tys pat_ty
 
+       -- Selectors
+       ; let unLocFields fs = map (fmap unLoc) fs
+       ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds
+                                                lpat pat_ty univ_tvs
+                                                (zip (unLocFields rec_fields) arg_tys)
+                                                )
+       ; (tc_selector, tcg_env) <- tcPatSynRecSelBinds sigs selector_binds
 
        ; let patSyn = mkPatSyn (unLoc lname) is_infix
                         (univ_tvs, req_theta)
@@ -231,13 +238,6 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                         arg_tys
                         pat_ty
                         matcher_id builder_id
-       ; let unLocFields fs = map (fmap unLoc) fs
-
-       ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds
-                                                lpat pat_ty univ_tvs
-                                                (zip (unLocFields rec_fields) arg_tys)
-                                                )
-       ; (tc_selector, tcg_env) <- tcPatSynRecSelBinds patSyn sigs selector_binds
 
        ; return (patSyn, foldr unionBags matcher_bind tc_selector, tcg_env) }
   where
@@ -246,24 +246,13 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
     arg_tys = map (varType . fst) wrapped_args
 
 
-tcPatSynRecSelBinds :: PatSyn -> [LSig Name] -> [LHsBinds Name] ->  TcM  ([LHsBinds TcId], TcGblEnv)
-tcPatSynRecSelBinds pat_syn sigs binds
-  = tcExtendGlobalEnv [tything]
-      $ tcExtendGlobalValEnv [sel_id | L _ (IdSig sel_id) <- sigs] $
+tcPatSynRecSelBinds :: [LSig Name] -> [LHsBinds Name] ->  TcM  ([LHsBinds TcId], TcGblEnv)
+tcPatSynRecSelBinds sigs binds
+  = tcExtendGlobalValEnv [sel_id | L _ (IdSig sel_id) <- sigs] $
     do { (rec_sel_binds, tcg_env) <-
         discardWarnings (tcValBinds TopLevel (zip (repeat NonRecursive) binds) sigs getGblEnv)
        ; let rec_sel_binds' = map snd rec_sel_binds
-       ; traceTc "error:" (ppr rec_sel_binds')
        ; return (rec_sel_binds', tcg_env) }
-  where
-    tything = AConLike (PatSynCon pat_syn)
-    getId :: HsBindLR Id Id -> [Id]
-    getId (AbsBinds { abs_binds = as }) = map (getId' . unLoc) (bagToList as)
-    getId _ = panic "tcPatSynRecSelBinds"
-
-    getId' :: HsBindLR Id Id -> Id
-    getId' (FunBind { fun_id = L _ n }) = n
-    getId' _ = panic "tcPatSynRecSelBinds'"
 
 
 {-
