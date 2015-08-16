@@ -224,13 +224,6 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
 
        ; builder_id <- mkPatSynBuilderId dir lname qtvs theta arg_tys pat_ty
 
-       -- Selectors
-       ; let unLocFields fs = map (fmap unLoc) fs
-       ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds
-                                                lpat pat_ty univ_tvs
-                                                (zip (unLocFields rec_fields) arg_tys)
-                                                )
-       ; (tc_selector, tcg_env) <- tcPatSynRecSelBinds sigs selector_binds
 
        ; let field_labels = map (unLoc . recordPatSynId) rec_fields
 
@@ -239,7 +232,17 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                         (ex_tvs, prov_theta)
                         arg_tys
                         pat_ty
-                        matcher_id builder_id field_labels
+                        matcher_id builder_id
+                        field_labels
+                        lpat'
+
+       -- Selectors, after making patSyn as we need patSyn for PatSynSelId
+       ; let unLocFields fs = map (fmap unLoc) fs
+       ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds patSyn
+                                                lpat pat_ty univ_tvs
+                                                (zip (unLocFields rec_fields) arg_tys)
+                                                )
+       ; (tc_selector, tcg_env) <- tcPatSynRecSelBinds sigs selector_binds
 
        ; return (patSyn, foldr unionBags matcher_bind tc_selector, tcg_env) }
   where
@@ -351,25 +354,28 @@ tcPatSynMatcher (L loc name) lpat
 
 -- = ValBindsOut [(NonRecursive, b) | b <- binds] sigs
 --
-mkPatSynRecSelBinds :: LPat Name -- ^ RHS pattern
+mkPatSynRecSelBinds :: PatSyn
+                    -> LPat Name -- ^ RHS pattern
                     -> Type
                     -> [TyVar]
                     -> [(RecordPatSynField Name, Type)] -- ^ Visible field labels
                     -> [(LSig Name, LHsBinds Name)]
-mkPatSynRecSelBinds lpat data_ty univ_ty_vars fields =
-    map (mkPatSynRecSelBind lpat data_ty univ_ty_vars) fields
+mkPatSynRecSelBinds ps lpat data_ty univ_ty_vars fields =
+    map (mkPatSynRecSelBind ps lpat data_ty univ_ty_vars) fields
 
-mkPatSynRecSelBind :: LPat Name
+mkPatSynRecSelBind :: PatSyn
+                   -> LPat Name
                    -> Type
                    -> [TyVar]
                    -> (RecordPatSynField Name, Type)
                    -> (LSig Name, LHsBinds Name)
-mkPatSynRecSelBind lpat data_ty univ_ty_vars ((RecordPatSynField sel_name sel_pat_name), field_ty)
+mkPatSynRecSelBind ps lpat data_ty univ_ty_vars
+                     ((RecordPatSynField sel_name sel_pat_name), field_ty)
   =
-      (L loc (IdSig sel_id), unitBag (L loc sel_bind))
+      (L loc (IdSig sel_id) , unitBag (L loc sel_bind))
   where
     loc    = getSrcSpan sel_name
-    sel_id = mkExportedLocalId VanillaId sel_name sel_ty
+    sel_id = mkExportedLocalId (PatSynSelId ps) sel_name sel_ty
 --    rec_details = PatSynSelId patSyn
 
     -- Selector type; Note [Polymorphic selectors]

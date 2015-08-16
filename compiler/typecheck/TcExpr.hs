@@ -36,6 +36,7 @@ import TcMType
 import TcType
 import DsMonad
 import Id
+import IdInfo
 import ConLike
 import DataCon
 import Name
@@ -57,6 +58,7 @@ import Maybes
 import ErrUtils
 import Outputable
 import FastString
+import PatSyn
 import Control.Monad
 import Class(classTyCon)
 import Data.Function
@@ -543,7 +545,7 @@ tcExpr (RecordCon (L loc con_name) _ rbinds) res_ty
               con_id = dataConWrapId data_con
 
         ; co_res <- unifyType actual_res_ty res_ty
-        ; rbinds' <- tcRecordBinds data_con arg_tys rbinds
+        ; rbinds' <- tcRecordBinds (RealDataCon data_con) arg_tys rbinds
         ; return $ mkHsWrapCo co_res $
           RecordCon (L loc con_id) con_expr rbinds' }
 
@@ -650,19 +652,213 @@ In the outgoing (HsRecordUpd scrut binds cons in_inst_tys out_inst_tys):
         family example], in_inst_tys = [t1,t2], out_inst_tys = [t3,t2]
 -}
 
-tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
+tcExpr (RecordUpd record_expr rbinds _ _ _ _ _) res_ty
   = ASSERT( notNull upd_fld_names )
     do  {
         -- STEP 0
         -- Check that the field names are really field names
+        -- and they are all field names for proper records or
+        -- all field names for pattern synonyms.
         ; sel_ids <- mapM tcLookupField upd_fld_names
                         -- The renamer has already checked that
                         -- selectors are all in scope
         ; let bad_guys = [ setSrcSpan loc $ addErrTc (notSelector fld_name)
                          | (fld, sel_id) <- rec_flds rbinds `zip` sel_ids,
-                           not (isRecordSelector sel_id),       -- Excludes class ops
+                           not (isRecordSelector sel_id),
+                           not (isPatSynRecordSelector sel_id),       -- Excludes class ops
                            let L loc fld_name = hsRecFieldId (unLoc fld) ]
         ; unless (null bad_guys) (sequence bad_guys >> failM)
+        -- Note that there are occasions when this might make sense when
+        -- the pattern synonym refers to a record.
+        ; unless (all isRecordSelector sel_ids || all isPatSynRecordSelector sel_ids)
+            (addErrTc mixedSelectors >> failM)
+
+        -- Branch as dealing with pattern synonym selectors is much simple
+        -- as there is only one constructor
+        ; case sel_ids of
+            (sel_id: _) | isRecordSelector sel_id -> tcRecordUpd  record_expr rbinds res_ty sel_ids
+            _ -> tcPatSynRecordUpd record_expr rbinds res_ty sel_ids }
+  where
+    upd_fld_names = hsRecFields rbinds
+
+
+
+{-
+************************************************************************
+*                                                                      *
+        Arithmetic sequences                    e.g. [a,b..]
+        and their parallel-array counterparts   e.g. [: a,b.. :]
+
+*                                                                      *
+************************************************************************
+-}
+
+tcExpr (ArithSeq _ witness seq) res_ty
+  = tcArithSeq witness seq res_ty
+
+tcExpr (PArrSeq _ seq@(FromTo expr1 expr2)) res_ty
+  = do  { (coi, elt_ty) <- matchExpectedPArrTy res_ty
+        ; expr1' <- tcPolyExpr expr1 elt_ty
+        ; expr2' <- tcPolyExpr expr2 elt_ty
+        ; enumFromToP <- initDsTc $ dsDPHBuiltin enumFromToPVar
+        ; enum_from_to <- newMethodFromName (PArrSeqOrigin seq)
+                                 (idName enumFromToP) elt_ty
+        ; return $ mkHsWrapCo coi
+                     (PArrSeq enum_from_to (FromTo expr1' expr2')) }
+
+tcExpr (PArrSeq _ seq@(FromThenTo expr1 expr2 expr3)) res_ty
+  = do  { (coi, elt_ty) <- matchExpectedPArrTy res_ty
+        ; expr1' <- tcPolyExpr expr1 elt_ty
+        ; expr2' <- tcPolyExpr expr2 elt_ty
+        ; expr3' <- tcPolyExpr expr3 elt_ty
+        ; enumFromThenToP <- initDsTc $ dsDPHBuiltin enumFromThenToPVar
+        ; eft <- newMethodFromName (PArrSeqOrigin seq)
+                      (idName enumFromThenToP) elt_ty        -- !!!FIXME: chak
+        ; return $ mkHsWrapCo coi
+                     (PArrSeq eft (FromThenTo expr1' expr2' expr3')) }
+
+tcExpr (PArrSeq _ _) _
+  = panic "TcExpr.tcExpr: Infinite parallel array!"
+    -- the parser shouldn't have generated it and the renamer shouldn't have
+    -- let it through
+
+{-
+************************************************************************
+*                                                                      *
+                Template Haskell
+*                                                                      *
+************************************************************************
+-}
+
+tcExpr (HsSpliceE splice)        res_ty = tcSpliceExpr splice res_ty
+tcExpr (HsBracket brack)         res_ty = tcTypedBracket   brack res_ty
+tcExpr (HsRnBracketOut brack ps) res_ty = tcUntypedBracket brack ps res_ty
+
+{-
+************************************************************************
+*                                                                      *
+                Catch-all
+*                                                                      *
+************************************************************************
+-}
+
+tcExpr other _ = pprPanic "tcMonoExpr" (ppr other)
+  -- Include ArrForm, ArrApp, which shouldn't appear at all
+  -- Also HsTcBracketOut, HsQuasiQuoteE
+  --
+{-
+************************************************************************
+*                                                                      *
+                Record Updates
+*                                                                      *
+************************************************************************
+-}
+tcPatSynRecordUpd :: LHsExpr Name
+                  -> HsRecFields Name (LHsExpr Name)
+                  -> TcTauType
+                  -> [Id]
+                  -> TcM (HsExpr TcId)
+tcPatSynRecordUpd record_expr rbinds res_ty sel_ids = do {
+        -- STEP 1
+        -- No need to figure out the data cons as there is only one.
+        ; let PatSynSelId patSyn = idDetails $ head sel_ids
+              (con1_tvs, _, _, _, con1_arg_tys, con1_res_ty) = patSynSig patSyn
+              con1_flds = patSynFieldLabels patSyn
+--        ; con1_res_ty = mkFamilyTyConApp tycon (mkTyVarTys con1_tvs)
+
+        -- STEP 2
+        -- Check that the pattern synonym has the named fields
+        ; checkTc (all (`elem` con1_flds) upd_fld_names) (text "TODO")
+
+        -- STEP 3
+        ; let flds1_w_tys = zipEqual "tcExpr:RecConUpd" con1_flds con1_arg_tys
+              upd_flds1_w_tys = filter is_updated flds1_w_tys
+              is_updated (fld,_) = fld `elem` upd_fld_names
+
+              bad_upd_flds = filter bad_fld upd_flds1_w_tys
+              con1_tv_set = mkVarSet con1_tvs
+              bad_fld (fld, ty) = fld `elem` upd_fld_names &&
+                                      not (tyVarsOfType ty `subVarSet` con1_tv_set)
+        ; checkTc (null bad_upd_flds) (badFieldTypes bad_upd_flds)
+
+        -- STEP 4  Note [Type of a record update]
+        -- Figure out types for the scrutinee and result
+        -- Both are of form (T a b c), with fresh type variables, but with
+        -- common variables where the scrutinee and result must have the same type
+        -- These are variables that appear in *any* arg of *any* of the
+        -- relevant constructors *except* in the updated fields
+        --
+        ; let fixed_tvs = getFixedTyVars con1_tvs patSyn
+              is_fixed_tv tv = tv `elemVarSet` fixed_tvs
+
+              mk_inst_ty :: TvSubst -> (TKVar, TcType) -> TcM (TvSubst, TcType)
+              -- Deals with instantiation of kind variables
+              --   c.f. TcMType.tcInstTyVars
+              mk_inst_ty subst (tv, result_inst_ty)
+                | is_fixed_tv tv   -- Same as result type
+                = return (extendTvSubst subst tv result_inst_ty, result_inst_ty)
+                | otherwise        -- Fresh type, of correct kind
+                = do { new_ty <- newFlexiTyVarTy (TcType.substTy subst (tyVarKind tv))
+                     ; return (extendTvSubst subst tv new_ty, new_ty) }
+
+        ; (result_subst, con1_tvs') <- tcInstTyVars con1_tvs
+        ; let result_inst_tys = mkTyVarTys con1_tvs'
+
+        ; (scrut_subst, scrut_inst_tys) <- mapAccumLM mk_inst_ty emptyTvSubst
+                                                      (con1_tvs `zip` result_inst_tys)
+
+        ; let rec_res_ty    = TcType.substTy result_subst con1_res_ty
+              scrut_ty      = TcType.substTy scrut_subst  con1_res_ty
+              con1_arg_tys' = map (TcType.substTy result_subst) con1_arg_tys
+
+        ; traceTc "rec_res_ty" (ppr rec_res_ty $$ ppr scrut_ty)
+
+        ; co_res <- unifyType rec_res_ty res_ty
+        ; traceTc "co_res" (ppr co_res)
+
+        -- STEP 5
+        -- Typecheck the thing to be updated, and the bindings
+        ; record_expr' <- tcMonoExpr record_expr scrut_ty
+        ; rbinds'      <- tcRecordBinds (PatSynCon patSyn) con1_arg_tys' rbinds
+        ; traceTc "record_expr'" (ppr record_expr')
+
+        -- STEP 6: Deal with the stupid theta
+        ; let theta' = substTheta scrut_subst []
+        ; instStupidTheta RecordUpdOrigin theta'
+        -- Phew!
+        ; return $ mkHsWrapCo co_res $
+          RecordUpd record_expr' rbinds'
+                    [PatSynCon patSyn] scrut_inst_tys result_inst_tys scrut_ty rec_res_ty }
+
+  where
+    upd_fld_names = hsRecFields rbinds
+    getFixedTyVars :: [TyVar] -> PatSyn -> TyVarSet
+    -- These tyvars must not change across the updates
+    getFixedTyVars tvs1 patSyn
+      = mkVarSet [tv1 | (tv1,tv) <- tvs1 `zip` tvs      -- Discards existentials in tvs
+                      , tv `elemVarSet` fixed_tvs ]
+      where
+        (univ_tvs, ex_tvs, prov_theta, req_theta, arg_tys, _) = patSynSig patSyn
+        tvs = univ_tvs ++ ex_tvs
+        flds = patSynFieldLabels patSyn
+        fixed_tvs = exactTyVarsOfTypes fixed_tys
+                -- fixed_tys: See Note [Type of a record update]
+                          `unionVarSet` tyVarsOfTypes prov_theta
+                -- Universally-quantified tyvars that
+                -- appear in any of the *implicit*
+                -- arguments to the constructor are fixed
+                -- See Note [Implicit type sharing]
+
+        fixed_tys = [ty | (fld,ty) <- zip flds arg_tys
+                        , not (fld `elem` upd_fld_names)]
+
+
+tcRecordUpd :: LHsExpr Name
+            -> HsRecFields Name (LHsExpr Name)
+            -> TcTauType
+            -> [Id]
+            -> TcM (HsExpr TcId)
+tcRecordUpd record_expr rbinds res_ty sel_ids = do {
 
         -- STEP 1
         -- Figure out the tycon and data cons from the first field name
@@ -737,7 +933,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
         -- STEP 5
         -- Typecheck the thing to be updated, and the bindings
         ; record_expr' <- tcMonoExpr record_expr scrut_ty
-        ; rbinds'      <- tcRecordBinds con1 con1_arg_tys' rbinds
+        ; rbinds'      <- tcRecordBinds (RealDataCon con1) con1_arg_tys' rbinds
 
         -- STEP 6: Deal with the stupid theta
         ; let theta' = substTheta scrut_subst (dataConStupidTheta con1)
@@ -751,7 +947,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
         -- Phew!
         ; return $ mkHsWrapCo co_res $
           RecordUpd (mkLHsWrap scrut_co record_expr') rbinds'
-                    relevant_cons scrut_inst_tys result_inst_tys  }
+                    (map RealDataCon relevant_cons) scrut_inst_tys result_inst_tys scrut_ty rec_res_ty }
   where
     upd_fld_names = hsRecFields rbinds
 
@@ -773,69 +969,6 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
                                             , not (fld `elem` upd_fld_names)]
                       , (tv1,tv) <- tvs1 `zip` tvs      -- Discards existentials in tvs
                       , tv `elemVarSet` fixed_tvs ]
-
-{-
-************************************************************************
-*                                                                      *
-        Arithmetic sequences                    e.g. [a,b..]
-        and their parallel-array counterparts   e.g. [: a,b.. :]
-
-*                                                                      *
-************************************************************************
--}
-
-tcExpr (ArithSeq _ witness seq) res_ty
-  = tcArithSeq witness seq res_ty
-
-tcExpr (PArrSeq _ seq@(FromTo expr1 expr2)) res_ty
-  = do  { (coi, elt_ty) <- matchExpectedPArrTy res_ty
-        ; expr1' <- tcPolyExpr expr1 elt_ty
-        ; expr2' <- tcPolyExpr expr2 elt_ty
-        ; enumFromToP <- initDsTc $ dsDPHBuiltin enumFromToPVar
-        ; enum_from_to <- newMethodFromName (PArrSeqOrigin seq)
-                                 (idName enumFromToP) elt_ty
-        ; return $ mkHsWrapCo coi
-                     (PArrSeq enum_from_to (FromTo expr1' expr2')) }
-
-tcExpr (PArrSeq _ seq@(FromThenTo expr1 expr2 expr3)) res_ty
-  = do  { (coi, elt_ty) <- matchExpectedPArrTy res_ty
-        ; expr1' <- tcPolyExpr expr1 elt_ty
-        ; expr2' <- tcPolyExpr expr2 elt_ty
-        ; expr3' <- tcPolyExpr expr3 elt_ty
-        ; enumFromThenToP <- initDsTc $ dsDPHBuiltin enumFromThenToPVar
-        ; eft <- newMethodFromName (PArrSeqOrigin seq)
-                      (idName enumFromThenToP) elt_ty        -- !!!FIXME: chak
-        ; return $ mkHsWrapCo coi
-                     (PArrSeq eft (FromThenTo expr1' expr2' expr3')) }
-
-tcExpr (PArrSeq _ _) _
-  = panic "TcExpr.tcExpr: Infinite parallel array!"
-    -- the parser shouldn't have generated it and the renamer shouldn't have
-    -- let it through
-
-{-
-************************************************************************
-*                                                                      *
-                Template Haskell
-*                                                                      *
-************************************************************************
--}
-
-tcExpr (HsSpliceE splice)        res_ty = tcSpliceExpr splice res_ty
-tcExpr (HsBracket brack)         res_ty = tcTypedBracket   brack res_ty
-tcExpr (HsRnBracketOut brack ps) res_ty = tcUntypedBracket brack ps res_ty
-
-{-
-************************************************************************
-*                                                                      *
-                Catch-all
-*                                                                      *
-************************************************************************
--}
-
-tcExpr other _ = pprPanic "tcMonoExpr" (ppr other)
-  -- Include ArrForm, ArrApp, which shouldn't appear at all
-  -- Also HsTcBracketOut, HsQuasiQuoteE
 
 {-
 ************************************************************************
@@ -1330,16 +1463,19 @@ This extends OK when the field types are universally quantified.
 -}
 
 tcRecordBinds
-        :: DataCon
+        :: ConLike
         -> [TcType]     -- Expected type for each field
         -> HsRecordBinds Name
         -> TcM (HsRecordBinds TcId)
 
-tcRecordBinds data_con arg_tys (HsRecFields rbinds dd)
+tcRecordBinds con_like arg_tys (HsRecFields rbinds dd)
   = do  { mb_binds <- mapM do_bind rbinds
         ; return (HsRecFields (catMaybes mb_binds) dd) }
   where
-    flds_w_tys = zipEqual "tcRecordBinds" (dataConFieldLabels data_con) arg_tys
+    fields = case con_like of
+               RealDataCon data_con -> dataConFieldLabels data_con
+               PatSynCon pat_syn    -> patSynFieldLabels pat_syn
+    flds_w_tys = zipEqual "tcRecordBinds" fields arg_tys
     do_bind (L l fld@(HsRecField { hsRecFieldId = L loc field_lbl
                                  , hsRecFieldArg = rhs }))
       | Just field_ty <- assocMaybe flds_w_tys field_lbl
@@ -1355,7 +1491,7 @@ tcRecordBinds data_con arg_tys (HsRecFields rbinds dd)
            ; return (Just (L l (fld { hsRecFieldId = L loc field_id
                                     , hsRecFieldArg = rhs' }))) }
       | otherwise
-      = do { addErrTc (badFieldCon (RealDataCon data_con) field_lbl)
+      = do { addErrTc (badFieldCon con_like field_lbl)
            ; return Nothing }
 
 checkMissingFields ::  DataCon -> HsRecordBinds Name -> TcM ()
@@ -1545,6 +1681,11 @@ naughtyRecordSel sel_id
 notSelector :: Name -> SDoc
 notSelector field
   = hsep [quotes (ppr field), ptext (sLit "is not a record selector")]
+
+mixedSelectors :: SDoc
+mixedSelectors
+  = ptext (sLit "Mixture of pattern and record synonym selectors")
+
 
 missingStrictFields :: DataCon -> [FieldLabel] -> SDoc
 missingStrictFields con fields

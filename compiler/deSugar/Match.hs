@@ -820,7 +820,6 @@ matchEquations ctxt vars eqns_info rhs_ty
   = do  { locn <- getSrcSpanDs
         ; let   ds_ctxt   = DsMatchContext ctxt locn
                 error_doc = matchContextErrString ctxt
-
         ; match_result <- matchCheck ds_ctxt vars rhs_ty eqns_info
 
         ; fail_expr <- mkErrorAppDs pAT_ERROR_ID rhs_ty error_doc

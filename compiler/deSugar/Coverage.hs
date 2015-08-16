@@ -540,11 +540,12 @@ addTickHsExpr (RecordCon id ty rec_binds) =
                 (return id)
                 (return ty)
                 (addTickHsRecordBinds rec_binds)
-addTickHsExpr (RecordUpd e rec_binds cons tys1 tys2) =
-        liftM5 RecordUpd
-                (addTickLHsExpr e)
-                (addTickHsRecordBinds rec_binds)
-                (return cons) (return tys1) (return tys2)
+addTickHsExpr (RecordUpd e rec_binds cons tys1 tys2 ty1 ty2) =
+        return RecordUpd `ap`
+                (addTickLHsExpr e) `ap`
+                (addTickHsRecordBinds rec_binds) `ap`
+                (return cons) `ap` (return tys1) `ap` (return tys2) `ap`
+                (return ty1) `ap` (return ty2)
 
 addTickHsExpr (ExprWithTySigOut e ty) =
         liftM2 ExprWithTySigOut

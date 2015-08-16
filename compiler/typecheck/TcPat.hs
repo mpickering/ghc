@@ -1070,6 +1070,7 @@ tcConArgs con_like arg_tys (RecCon (HsRecFields rpats dd)) penv thing_inside
            (pat_ty : extras) ->
                 ASSERT( null extras )
                 do { sel_id <- tcLookupField field_lbl
+                   ; traceTc "find_field" (ppr sel_id $$ ppr pat_ty $$ ppr field_lbl)
                    ; return (sel_id, pat_ty) }
 
     field_tys :: [(FieldLabel, TcType)]

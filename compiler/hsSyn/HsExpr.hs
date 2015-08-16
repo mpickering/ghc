@@ -30,6 +30,7 @@ import Var
 import Name
 import BasicTypes
 import DataCon
+import ConLike
 import SrcLoc
 import Util
 import StaticFlags( opt_PprStyle_Debug )
@@ -293,12 +294,14 @@ data HsExpr id
                 (HsRecordBinds id)
 --              (HsMatchGroup Id)  -- Filled in by the type checker to be
 --                                 -- a match that does the job
-                (PostTc id [DataCon])
+                (PostTc id [ConLike])
                 -- Filled in by the type checker to the
                 -- _non-empty_ list of DataCons that have
                 -- all the upd'd fields
                 (PostTc id [Type])  -- Argument types of *input* record type
                 (PostTc id [Type])  --              and  *output* record type
+                (PostTc id Type)     -- Actual input type
+                (PostTc id Type)     -- Actual output type
   -- For a type family, the arg types are of the *instance* tycon,
   -- not the family tycon
 
@@ -699,7 +702,7 @@ ppr_expr (ExplicitPArr _ exprs)
 ppr_expr (RecordCon con_id _ rbinds)
   = hang (ppr con_id) 2 (ppr rbinds)
 
-ppr_expr (RecordUpd aexp rbinds _ _ _)
+ppr_expr (RecordUpd aexp rbinds _ _ _ _ _)
   = hang (pprLExpr aexp) 2 (ppr rbinds)
 
 ppr_expr (ExprWithTySig expr sig _)

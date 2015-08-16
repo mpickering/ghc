@@ -545,7 +545,8 @@ mkCoreAppDs (Var f `App` Type ty1 `App` Type ty2 `App` arg1) arg2
                    Var v1 | isLocalId v1 -> v1        -- Note [Desugaring seq (2) and (3)]
                    _                     -> mkWildValBinder ty1
 
-mkCoreAppDs fun arg = mkCoreApp fun arg  -- The rest is done in MkCore
+mkCoreAppDs fun arg = pprTrace "mkCoreAppDs" (ppr res) res
+  where res = mkCoreApp fun arg  -- The rest is done in MkCore
 
 mkCoreAppsDs :: CoreExpr -> [CoreExpr] -> CoreExpr
 mkCoreAppsDs fun args = foldl mkCoreAppDs fun args

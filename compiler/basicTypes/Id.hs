@@ -54,6 +54,7 @@ module Id (
         isStrictId,
         isExportedId, isLocalId, isGlobalId,
         isRecordSelector, isNaughtyRecordSelector,
+        isPatSynRecordSelector,
         isClassOpId_maybe, isDFunId,
         isPrimOpId, isPrimOpId_maybe,
         isFCallId, isFCallId_maybe,
@@ -362,6 +363,7 @@ recordSelectorFieldLabel id
 
 isRecordSelector        :: Id -> Bool
 isNaughtyRecordSelector :: Id -> Bool
+isPatSynRecordSelector  :: Id -> Bool
 isPrimOpId              :: Id -> Bool
 isFCallId               :: Id -> Bool
 isDataConWorkId         :: Id -> Bool
@@ -374,6 +376,10 @@ isDataConWorkId_maybe   :: Id -> Maybe DataCon
 
 isRecordSelector id = case Var.idDetails id of
                         RecSelId {}  -> True
+                        _               -> False
+
+isPatSynRecordSelector id = case Var.idDetails id of
+                        PatSynSelId {}  -> True
                         _               -> False
 
 isNaughtyRecordSelector id = case Var.idDetails id of
