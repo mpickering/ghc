@@ -822,9 +822,8 @@ tcPatSynRecordUpd record_expr rbinds res_ty sel_ids = do {
         ; rbinds'      <- tcRecordBinds (PatSynCon patSyn) con1_arg_tys' rbinds
         ; traceTc "record_expr'" (ppr record_expr')
 
-        -- STEP 6: Deal with the stupid theta
-        ; let theta' = substTheta scrut_subst []
-        ; instStupidTheta RecordUpdOrigin theta'
+        -- STEP 6: Deal with the stupid theta, does this need to be here?
+        ; instStupidTheta RecordUpdOrigin  []
         -- Phew!
         ; return $ mkHsWrapCo co_res $
           RecordUpd record_expr' rbinds'
