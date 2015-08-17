@@ -902,10 +902,12 @@ data HsPatSynDetails a
   | RecordPatSyn [RecordPatSynField a]
   deriving (Data, Typeable)
 
+
 data RecordPatSynField a
   = RecordPatSynField {
-      recordPatSynId :: a
-      , recordPatSynArg :: a  -- Filled in by renamer
+      recordPatSynId :: a     -- Selector name visible in rest of the file
+      , recordPatSynArg :: a  -- Filled in by renamer, the name used internally
+                              -- by the pattern
       } deriving (Data, Typeable)
 
 instance Functor RecordPatSynField where
@@ -915,6 +917,13 @@ instance Functor RecordPatSynField where
 instance Outputable a => Outputable (RecordPatSynField a) where
     ppr (RecordPatSynField v _) = ppr v
 
+instance Foldable RecordPatSynField  where
+    foldMap f (RecordPatSynField visible hidden) =
+      f visible `mappend` f hidden
+
+instance Traversable RecordPatSynField where
+    traverse f (RecordPatSynField visible hidden) =
+      RecordPatSynField <$> f visible <*> f hidden
 
 
 instance Functor HsPatSynDetails where
@@ -925,15 +934,15 @@ instance Functor HsPatSynDetails where
 instance Foldable HsPatSynDetails where
     foldMap f (InfixPatSyn left right) = f left `mappend` f right
     foldMap f (PrefixPatSyn args) = foldMap f args
-    foldMap f (RecordPatSyn args) = error "to implement"
+    foldMap f (RecordPatSyn args) = foldMap (foldMap f) args
 
     foldl1 f (InfixPatSyn left right) = left `f` right
     foldl1 f (PrefixPatSyn args) = Data.List.foldl1 f args
-    foldl1 f (RecordPatSyn args) = error "to implement"
+    foldl1 f (RecordPatSyn args) = foldl1 f (map (foldl1 f) args)
 
     foldr1 f (InfixPatSyn left right) = left `f` right
     foldr1 f (PrefixPatSyn args) = Data.List.foldr1 f args
-    foldr1 f (RecordPatSyn args) = error "to implement"
+    foldr1 f (RecordPatSyn args) = foldr1 f (map (foldr1 f) args)
 
 -- TODO: After a few more versions, we should probably use these.
 #if __GLASGOW_HASKELL__ >= 709
@@ -948,13 +957,13 @@ instance Foldable HsPatSynDetails where
 
     toList (InfixPatSyn left right) = [left, right]
     toList (PrefixPatSyn args) = args
-    toList (RecordPatSyn args) = error "to implement"
+    toList (RecordPatSyn args) = foldMap toList args
 #endif
 
 instance Traversable HsPatSynDetails where
     traverse f (InfixPatSyn left right) = InfixPatSyn <$> f left <*> f right
     traverse f (PrefixPatSyn args) = PrefixPatSyn <$> traverse f args
-    traverse f (RecordPatSyn args) = error "to implement"
+    traverse f (RecordPatSyn args) = RecordPatSyn <$> traverse (traverse f) args
 
 data HsPatSynDir id
   = Unidirectional

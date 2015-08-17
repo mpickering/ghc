@@ -40,7 +40,6 @@ import VarSet
 import MkId
 import VarEnv
 import Inst
-import Unique
 import MkCore
 #if __GLASGOW_HASKELL__ < 709
 import Data.Monoid
@@ -79,6 +78,7 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                do { args <- mapM tcLookupId arg_names
                   ; return (args, pat_ty) } }
 
+        -- Only generate selectors for RecordPatSyn
        ; let rec_fields = case details of
                              RecordPatSyn names -> names
                              _ -> []
@@ -368,7 +368,7 @@ mkPatSynRecSelBind :: PatSyn
                    -> [TyVar]
                    -> (RecordPatSynField Name, Type)
                    -> (LSig Name, LHsBinds Name)
-mkPatSynRecSelBind ps lpat data_ty univ_ty_vars
+mkPatSynRecSelBind ps lpat data_ty _univ_ty_vars
                      ((RecordPatSynField sel_name sel_pat_name), field_ty)
   =
       (L loc (IdSig sel_id) , unitBag (L loc sel_bind))
@@ -397,7 +397,6 @@ mkPatSynRecSelBind ps lpat data_ty univ_ty_vars
     mk_match = mkSimpleMatch [lpat]
                                  (L loc (HsVar sel_pat_name))
     sel_lname = L loc sel_name
-    field_var = mkInternalName (mkBuiltinUnique 1) (getOccName sel_name) loc
 
     -- Add catch-all default case
     -- It is hard to tell when the LHS is exhaustive as it can be any
@@ -406,8 +405,6 @@ mkPatSynRecSelBind ps lpat data_ty univ_ty_vars
       = mkSimpleMatch [L loc (WildPat placeHolderType)]
                             (mkHsApp (L loc (HsVar (getName rEC_SEL_ERROR_ID)))
                                      (L loc (HsLit msg_lit)))
-
-    inst_tys = substTyVars (mkTopTvSubst []) univ_ty_vars
 
     unit_rhs = mkLHsTupleExpr []
     msg_lit = HsStringPrim "" $ unsafeMkByteString $
