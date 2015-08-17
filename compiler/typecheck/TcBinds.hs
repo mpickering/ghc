@@ -472,7 +472,7 @@ tc_single :: forall thing.
             TopLevelFlag -> TcSigFun -> TcPragEnv
           -> LHsBind Name -> TcM thing
           -> TcM (LHsBinds TcId, thing)
-tc_single top_lvl sig_fn _prag_fn (L _ (PatSynBind psb@PSB{ psb_id = L _ name })) thing_inside
+tc_single _top_lvl sig_fn _prag_fn (L _ (PatSynBind psb@PSB{ psb_id = L _ name })) thing_inside
   = do { (pat_syn, aux_binds, tcg_env) <- tc_pat_syn_decl
        ; let tything = AConLike (PatSynCon pat_syn)
        ; thing <- setGblEnv tcg_env  $ tcExtendGlobalEnv [tything] thing_inside

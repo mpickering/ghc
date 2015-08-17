@@ -1620,6 +1620,7 @@ extendPatternSynSelectorEnv (ValBindsIn bs _)
 
              ; let fld_set' = extendNameSetList fld_set [fname]
              ; return $ (RecFields env fld_set') }
+extendPatternSynSelectorEnv (ValBindsOut {}) = panic "extendPatternSynSelectorEnv"
 
 {-
 *********************************************************

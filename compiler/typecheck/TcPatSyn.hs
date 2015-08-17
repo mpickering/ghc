@@ -37,11 +37,11 @@ import TcType
 import TcEvidence
 import BuildTyCl
 import VarSet
-import ConLike
 import MkId
 import VarEnv
 import Inst
 import Unique
+import MkCore
 #if __GLASGOW_HASKELL__ < 709
 import Data.Monoid
 #endif
@@ -49,7 +49,6 @@ import Bag
 import Util
 import Data.Maybe
 import Control.Monad (forM)
-import Debug.Trace
 
 #include "HsVersions.h"
 
@@ -376,7 +375,6 @@ mkPatSynRecSelBind ps lpat data_ty univ_ty_vars
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId (PatSynSelId ps) sel_name sel_ty
---    rec_details = PatSynSelId patSyn
 
     -- Selector type; Note [Polymorphic selectors]
     data_tvs   = tyVarsOfType data_ty
@@ -395,32 +393,20 @@ mkPatSynRecSelBind ps lpat data_ty univ_ty_vars
     sel_bind = mkTopFunBind Generated sel_lname alts
       where
         alts | is_naughty = [mkSimpleMatch [] unit_rhs]
-             | otherwise =  [mk_match]
+             | otherwise =  [mk_match, deflt]
     mk_match = mkSimpleMatch [lpat]
                                  (L loc (HsVar sel_pat_name))
-    mk_sel_pat = lpat
     sel_lname = L loc sel_name
     field_var = mkInternalName (mkBuiltinUnique 1) (getOccName sel_name) loc
 
-    -- Add catch-all default case unless the case is exhaustive
-    -- We do this explicitly so that we get a nice error message that
-    -- mentions this particular record selector
-    {-
-    deflt | all dealt_with all_cons = []
-          | otherwise = [mkSimpleMatch [L loc (WildPat placeHolderType)]
+    -- Add catch-all default case
+    -- It is hard to tell when the LHS is exhaustive as it can be any
+    -- pattern
+    deflt
+      = mkSimpleMatch [L loc (WildPat placeHolderType)]
                             (mkHsApp (L loc (HsVar (getName rEC_SEL_ERROR_ID)))
-                                     (L loc (HsLit msg_lit)))]
-                                     -}
+                                     (L loc (HsLit msg_lit)))
 
-        -- Do not add a default case unless there are unmatched
-        -- constructors.  We must take account of GADTs, else we
-        -- get overlap warning messages from the pattern-match checker
-        -- NB: we need to pass type args for the *representation* TyCon
-        --     to dataConCannotMatch, hence the calculation of inst_tys
-        --     This matters in data families
-        --              data instance T Int a where
-        --                 A :: { fld :: Int } -> T Int Bool
-        --                 B :: { fld :: Int } -> T Int Char
     inst_tys = substTyVars (mkTopTvSubst []) univ_ty_vars
 
     unit_rhs = mkLHsTupleExpr []

@@ -838,7 +838,7 @@ tcPatSynRecordUpd record_expr rbinds res_ty sel_ids = do {
       = mkVarSet [tv1 | (tv1,tv) <- tvs1 `zip` tvs      -- Discards existentials in tvs
                       , tv `elemVarSet` fixed_tvs ]
       where
-        (univ_tvs, ex_tvs, prov_theta, req_theta, arg_tys, _) = patSynSig patSyn
+        (univ_tvs, ex_tvs, prov_theta, _req_theta, arg_tys, _) = patSynSig patSyn
         tvs = univ_tvs ++ ex_tvs
         flds = patSynFieldLabels patSyn
         fixed_tvs = exactTyVarsOfTypes fixed_tys

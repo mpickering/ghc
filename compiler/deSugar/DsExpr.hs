@@ -605,7 +605,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                     case con of
                       (RealDataCon data_con) -> dataConFullSig data_con
                       (PatSynCon patSyn)     ->
-                        let (univ_tvs, ex_tvs, prov_theta, req_theta, arg_tys, f)
+                        let (univ_tvs, ex_tvs, _prov_theta, req_theta, arg_tys, f)
                               = patSynSig patSyn
                         in (univ_tvs, ex_tvs, [], req_theta, arg_tys, f)
                  subst = mkTopTvSubst (univ_tvs `zip` in_inst_tys)
@@ -652,7 +652,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                  wrap_subst = mkVarEnv [ (tv, mkTcSymCo (mkTcCoVarCo eq_var))
                                         | ((tv,_),eq_var) <- eq_spec `zip` eqs_vars ]
                  pat = case con of
-                        RealDataCon data_con ->
+                        RealDataCon _ ->
                           noLoc $ ConPatOut { pat_con = noLoc con
                                             , pat_tvs = ex_tvs
                                             , pat_dicts = eqs_vars ++ theta_vars

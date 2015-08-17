@@ -94,7 +94,7 @@ ds_lhs_binds binds = do { ds_bs <- mapBagM dsLHsBind binds
                         ; return (foldBag appOL id nilOL ds_bs) }
 
 dsLHsBind :: LHsBind Id -> DsM (OrdList (Id,CoreExpr))
-dsLHsBind (L loc bind) = putSrcSpanDs loc $ pprTrace "dsLHsBind" (ppr bind) dsHsBind bind
+dsLHsBind (L loc bind) = putSrcSpanDs loc $ dsHsBind bind
 
 dsHsBind :: HsBind Id -> DsM (OrdList (Id,CoreExpr))
 

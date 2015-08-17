@@ -29,7 +29,6 @@ import CoreSyn
 import Var
 import Name
 import BasicTypes
-import DataCon
 import ConLike
 import SrcLoc
 import Util

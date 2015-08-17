@@ -51,7 +51,6 @@ import FastString
 import Data.List        ( partition, sort )
 import Maybes           ( orElse )
 import Control.Monad
-import Debug.Trace
 #if __GLASGOW_HASKELL__ < 709
 import Data.Traversable ( traverse )
 #endif
