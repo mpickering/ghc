@@ -241,22 +241,14 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                                                 lpat pat_ty univ_tvs
                                                 (zip (unLocFields rec_fields) arg_tys)
                                                 )
-       ; (tc_selector, tcg_env) <- tcPatSynRecSelBinds sigs selector_binds
+       ; tcg_env <- tcRecSelBinds (ValBindsOut selector_binds sigs)
 
-       ; return (patSyn, foldr unionBags matcher_bind tc_selector, tcg_env) }
+       ; return (patSyn, matcher_bind, tcg_env) }
   where
     qtvs = univ_tvs ++ ex_tvs
     theta = prov_theta ++ req_theta
     arg_tys = map (varType . fst) wrapped_args
 
-
-tcPatSynRecSelBinds :: [LSig Name] -> [LHsBinds Name] ->  TcM  ([LHsBinds TcId], TcGblEnv)
-tcPatSynRecSelBinds sigs binds
-  = tcExtendGlobalValEnv [sel_id | L _ (IdSig sel_id) <- sigs] $
-    do { (rec_sel_binds, tcg_env) <-
-        discardWarnings (tcValBinds TopLevel (zip (repeat NonRecursive) binds) sigs getGblEnv)
-       ; let rec_sel_binds' = map snd rec_sel_binds
-       ; return (rec_sel_binds', tcg_env) }
 
 
 {-
@@ -358,7 +350,7 @@ mkPatSynRecSelBinds :: PatSyn
                     -> Type
                     -> [TyVar]
                     -> [(RecordPatSynField Name, Type)] -- ^ Visible field labels
-                    -> [(LSig Name, LHsBinds Name)]
+                    -> [(LSig Name, (RecFlag, LHsBinds Name))]
 mkPatSynRecSelBinds ps lpat data_ty univ_ty_vars fields =
     map (mkPatSynRecSelBind ps lpat data_ty univ_ty_vars) fields
 
@@ -367,11 +359,11 @@ mkPatSynRecSelBind :: PatSyn
                    -> Type
                    -> [TyVar]
                    -> (RecordPatSynField Name, Type)
-                   -> (LSig Name, LHsBinds Name)
+                   -> (LSig Name, (RecFlag, LHsBinds Name))
 mkPatSynRecSelBind ps lpat data_ty _univ_ty_vars
                      ((RecordPatSynField sel_name sel_pat_name), field_ty)
   =
-      (L loc (IdSig sel_id) , unitBag (L loc sel_bind))
+      (L loc (IdSig sel_id) , (NonRecursive, unitBag (L loc sel_bind)))
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId (PatSynSelId ps) sel_name sel_ty
