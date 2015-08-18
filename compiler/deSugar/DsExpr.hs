@@ -494,7 +494,7 @@ We also handle @C{}@ as valid construction syntax for an unlabelled
 constructor @C@, setting all of @C@'s fields to bottom.
 -}
 
-dsExpr (RecordCon (L _ data_con_id) con_expr rbinds) = do
+dsExpr (RecordCon (L _ con_like_id) con_expr rbinds) = do
     con_expr' <- dsExpr con_expr
     let
         (arg_tys, _) = tcSplitFunTys (exprType con_expr')
@@ -508,7 +508,7 @@ dsExpr (RecordCon (L _ data_con_id) con_expr rbinds) = do
               []         -> mkErrorAppDs rEC_CON_ERROR_ID arg_ty (ppr lbl)
         unlabelled_bottom arg_ty = mkErrorAppDs rEC_CON_ERROR_ID arg_ty Outputable.empty
 
-        labels = dataConFieldLabels (idDataCon data_con_id)
+        labels = conLikeFieldLabels (idConLike con_like_id)
         -- The data_con_id is guaranteed to be the wrapper id of the constructor
 
     con_args <- if null labels
@@ -560,7 +560,11 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
   = ASSERT2( notNull cons_to_upd, ppr expr )
 
     do  { record_expr' <- dsLExpr record_expr
+        ; pprTrace ("record_expr") (ppr record_expr) (return ())
+        ; pprTrace ("record_expr'") (ppr record_expr') (return ())
         ; field_binds' <- mapM ds_field fields
+        ; pprTrace ("fields") (ppr fields) (return ())
+        ; pprTrace ("field_binds'") (ppr field_binds') (return ())
         ; let upd_fld_env :: NameEnv Id -- Maps field name to the LocalId of the field binding
               upd_fld_env = mkNameEnv [(f,l) | (f,l,_) <- field_binds']
 
@@ -614,9 +618,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
            ; eqs_vars   <- mapM newPredVarDs (substTheta subst (eqSpecPreds eq_spec))
            ; theta_vars <- mapM newPredVarDs (substTheta subst theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
-           ; let field_labels = case con of
-                                  RealDataCon data_con -> dataConFieldLabels data_con
-                                  PatSynCon pat_syn   -> patSynFieldLabels pat_syn
+           ; let field_labels = conLikeFieldLabels con
            ; let val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
                  mk_val_arg field_name pat_arg_id
@@ -651,8 +653,8 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
 
                  wrap_subst = mkVarEnv [ (tv, mkTcSymCo (mkTcCoVarCo eq_var))
                                         | ((tv,_),eq_var) <- eq_spec `zip` eqs_vars ]
-                 pat = case con of
-                        RealDataCon _ ->
+                 pat = --case con of
+                       -- RealDataCon _ ->
                           noLoc $ ConPatOut { pat_con = noLoc con
                                             , pat_tvs = ex_tvs
                                             , pat_dicts = eqs_vars ++ theta_vars
@@ -660,7 +662,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                                             , pat_args = PrefixCon $ map nlVarPat arg_ids
                                             , pat_arg_tys = in_inst_tys
                                             , pat_wrap = idHsWrapper }
-                        PatSynCon pat_syn -> patSynRHSPat pat_syn
+                      --  PatSynCon pat_syn -> patSynRHSPat pat_syn
 
                  (match :: Located (Match Var (Located (HsExpr Var)))) = (mkSimpleMatch [pat] wrapped_rhs)
            ; return $ pprTrace "match" (pprMatch (PatBindRhs :: HsMatchContext Var) (unLoc match)) match  }

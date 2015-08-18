@@ -534,18 +534,18 @@ to support expressions like this:
 -}
 
 tcExpr (RecordCon (L loc con_name) _ rbinds) res_ty
-  = do  { data_con <- tcLookupDataCon con_name
+  = do  { con_like <- tcLookupConLike con_name
 
         -- Check for missing fields
-        ; checkMissingFields data_con rbinds
+        ; checkMissingFields con_like rbinds
 
         ; (con_expr, con_tau) <- tcInferId con_name
-        ; let arity = dataConSourceArity data_con
+        ; let arity = conLikeArity con_like
               (arg_tys, actual_res_ty) = tcSplitFunTysN con_tau arity
-              con_id = dataConWrapId data_con
+              con_id = conLikeWrapId con_like
 
         ; co_res <- unifyType actual_res_ty res_ty
-        ; rbinds' <- tcRecordBinds (RealDataCon data_con) arg_tys rbinds
+        ; rbinds' <- tcRecordBinds con_like arg_tys rbinds
         ; return $ mkHsWrapCo co_res $
           RecordCon (L loc con_id) con_expr rbinds' }
 
@@ -1493,23 +1493,23 @@ tcRecordBinds con_like arg_tys (HsRecFields rbinds dd)
       = do { addErrTc (badFieldCon con_like field_lbl)
            ; return Nothing }
 
-checkMissingFields ::  DataCon -> HsRecordBinds Name -> TcM ()
-checkMissingFields data_con rbinds
+checkMissingFields ::  ConLike -> HsRecordBinds Name -> TcM ()
+checkMissingFields con_like rbinds
   | null field_labels   -- Not declared as a record;
                         -- But C{} is still valid if no strict fields
   = if any isBanged field_strs then
         -- Illegal if any arg is strict
-        addErrTc (missingStrictFields data_con [])
+        addErrTc (missingStrictFields con_like [])
     else
         return ()
 
   | otherwise = do              -- A record
     unless (null missing_s_fields)
-           (addErrTc (missingStrictFields data_con missing_s_fields))
+           (addErrTc (missingStrictFields con_like missing_s_fields))
 
     warn <- woptM Opt_WarnMissingFields
     unless (not (warn && notNull missing_ns_fields))
-           (warnTc True (missingFields data_con missing_ns_fields))
+           (warnTc True (missingFields con_like missing_ns_fields))
 
   where
     missing_s_fields
@@ -1524,13 +1524,13 @@ checkMissingFields data_con rbinds
           ]
 
     field_names_used = hsRecFields rbinds
-    field_labels     = dataConFieldLabels data_con
+    field_labels     = conLikeFieldLabels con_like
 
     field_info = zipEqual "missingFields"
                           field_labels
                           field_strs
 
-    field_strs = dataConImplBangs data_con
+    field_strs = conLikeImplBangs con_like
 
 {-
 ************************************************************************
@@ -1686,7 +1686,7 @@ mixedSelectors
   = ptext (sLit "Mixture of pattern and record synonym selectors")
 
 
-missingStrictFields :: DataCon -> [FieldLabel] -> SDoc
+missingStrictFields :: ConLike -> [FieldLabel] -> SDoc
 missingStrictFields con fields
   = header <> rest
   where
@@ -1697,7 +1697,7 @@ missingStrictFields con fields
     header = ptext (sLit "Constructor") <+> quotes (ppr con) <+>
              ptext (sLit "does not have the required strict field(s)")
 
-missingFields :: DataCon -> [FieldLabel] -> SDoc
+missingFields :: ConLike -> [FieldLabel] -> SDoc
 missingFields con fields
   = ptext (sLit "Fields of") <+> quotes (ppr con) <+> ptext (sLit "not initialised:")
         <+> pprWithCommas ppr fields

@@ -59,7 +59,7 @@ module Id (
         isPrimOpId, isPrimOpId_maybe,
         isFCallId, isFCallId_maybe,
         isDataConWorkId, isDataConWorkId_maybe, isDataConId_maybe, idDataCon,
-        isConLikeId, isBottomingId, idIsFrom,
+        idConLike, isConLikeId, isBottomingId, idIsFrom,
         hasNoBinding,
 
         -- ** Evidence variables
@@ -133,6 +133,8 @@ import UniqSupply
 import FastString
 import Util
 import StaticFlags
+import {-# SOURCE #-} ConLike ( ConLike(..) )
+import {-# SOURCE #-} PatSyn ( PatSyn )
 
 -- infixl so you can say (id `set` a `set` b)
 infixl  1 `setIdUnfoldingLazily`,
@@ -429,6 +431,17 @@ idDataCon :: Id -> DataCon
 --
 -- INVARIANT: @idDataCon (dataConWrapId d) = d@: remember, 'dataConWrapId' can return either the wrapper or the worker
 idDataCon id = isDataConId_maybe id `orElse` pprPanic "idDataCon" (ppr id)
+
+idConLike :: Id -> ConLike
+idConLike id = (RealDataCon <$> isDataConId_maybe id)
+                `orElse` (PatSynCon <$> isPatSynConId_maybe id)
+                `orElse` pprPanic "idConLike" (ppr id)
+
+isPatSynConId_maybe :: Id -> Maybe PatSyn
+isPatSynConId_maybe id = case Var.idDetails id of
+                           PatSynWorkId ps -> Just ps
+                           PatSynWrapId ps -> Just ps
+                           _               -> Nothing
 
 hasNoBinding :: Id -> Bool
 -- ^ Returns @True@ of an 'Id' which may not have a

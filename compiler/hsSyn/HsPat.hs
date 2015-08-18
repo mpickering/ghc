@@ -42,7 +42,7 @@ import BasicTypes
 import PprCore          ( {- instance OutputableBndr TyVar -} )
 import TysWiredIn
 import Var
-import ConLike
+import {-# SOURCE #-} ConLike
 import DataCon
 import TyCon
 import Outputable

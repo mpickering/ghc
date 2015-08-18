@@ -15,12 +15,14 @@ module ConLike (
         , conLikeExTyVars
         , conLikeName
         , conLikeStupidTheta
+        , conLikeWrapId
+        , conLikeImplBangs
     ) where
 
 #include "HsVersions.h"
 
-import {-# SOURCE #-} DataCon
-import {-# SOURCE #-} PatSyn
+import DataCon
+import PatSyn
 import Outputable
 import Unique
 import Util
@@ -33,6 +35,7 @@ import Var
 import Data.Function (on)
 import qualified Data.Data as Data
 import qualified Data.Typeable
+import Data.Maybe (fromJust) -- ARHG
 
 {-
 ************************************************************************
@@ -116,3 +119,13 @@ conLikeName (PatSynCon pat_syn)    = patSynName pat_syn
 conLikeStupidTheta :: ConLike -> ThetaType
 conLikeStupidTheta (RealDataCon data_con) = dataConStupidTheta data_con
 conLikeStupidTheta (PatSynCon {})         = []
+
+conLikeWrapId :: ConLike -> Id
+conLikeWrapId (RealDataCon data_con) = dataConWrapId data_con
+-- TODO: Unpartialify
+conLikeWrapId (PatSynCon pat_syn)    = fst . fromJust $ patSynBuilder pat_syn
+
+conLikeImplBangs :: ConLike -> [HsImplBang]
+conLikeImplBangs (RealDataCon data_con) = dataConImplBangs data_con
+conLikeImplBangs (PatSynCon pat_syn)         =
+    replicate (length (patSynFieldLabels pat_syn)) HsLazy

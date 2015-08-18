@@ -209,7 +209,9 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                  (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
                  wrapped_args
                  pat_ty rec_fields
-  = do { traceTc "tc_patsyn_finish {" $
+  = do { fixM $ \ ~(patSyn, _, _) -> do {
+
+        traceTc "tc_patsyn_finish {" $
            ppr (unLoc lname) $$ ppr (unLoc lpat') $$
            ppr (univ_tvs, req_theta, req_ev_binds, req_dicts) $$
            ppr (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts) $$
@@ -219,21 +221,14 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                                          (univ_tvs, req_theta, req_ev_binds, req_dicts)
                                          (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
                                          wrapped_args
-                                         pat_ty
+                                         pat_ty patSyn
 
-       ; builder_id <- mkPatSynBuilderId dir lname qtvs theta arg_tys pat_ty
+       ; builder_id <- mkPatSynBuilderId dir lname qtvs theta arg_tys pat_ty patSyn
+
 
 
        ; let field_labels = map (unLoc . recordPatSynId) rec_fields
 
-       ; let patSyn = mkPatSyn (unLoc lname) is_infix
-                        (univ_tvs, req_theta)
-                        (ex_tvs, prov_theta)
-                        arg_tys
-                        pat_ty
-                        matcher_id builder_id
-                        field_labels
-                        lpat'
 
        -- Selectors, after making patSyn as we need patSyn for PatSynSelId
        ; let unLocFields fs = map (fmap unLoc) fs
@@ -242,8 +237,16 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                                                 (zip (unLocFields rec_fields) arg_tys)
                                                 )
        ; tcg_env <- tcRecSelBinds (ValBindsOut selector_binds sigs)
+       ; let patSyn = mkPatSyn (unLoc lname) is_infix
+                        (univ_tvs, req_theta)
+                        (ex_tvs, prov_theta)
+                        arg_tys
+                        pat_ty
+                        matcher_id builder_id
+                        field_labels
+                        lpat'
+       ; return (patSyn, matcher_bind, tcg_env) } }
 
-       ; return (patSyn, matcher_bind, tcg_env) }
   where
     qtvs = univ_tvs ++ ex_tvs
     theta = prov_theta ++ req_theta
@@ -264,13 +267,13 @@ tcPatSynMatcher :: Located Name
                 -> ([TcTyVar], ThetaType, TcEvBinds, [EvVar])
                 -> ([TcTyVar], [TcType], ThetaType, TcEvBinds, [EvVar])
                 -> [(Var, HsWrapper)]
-                -> TcType
+                -> TcType -> PatSyn
                 -> TcM ((Id, Bool), LHsBinds Id)
 -- See Note [Matchers and builders for pattern synonyms] in PatSyn
 tcPatSynMatcher (L loc name) lpat
                 (univ_tvs, req_theta, req_ev_binds, req_dicts)
                 (ex_tvs, ex_tys, prov_theta, prov_ev_binds, prov_dicts)
-                wrapped_args pat_ty
+                wrapped_args pat_ty pat_syn
   = do { uniq <- newUnique
        ; let tv_name = mkInternalName uniq (mkTyVarOcc "r") loc
              res_tv  = mkTcTyVar tv_name openTypeKind (SkolemTv False)
@@ -293,7 +296,7 @@ tcPatSynMatcher (L loc name) lpat
 
        ; let matcher_tau   = mkFunTys [pat_ty, cont_ty, fail_ty] res_ty
              matcher_sigma = mkSigmaTy (res_tv:univ_tvs) req_theta matcher_tau
-             matcher_id    = mkExportedLocalId VanillaId matcher_name matcher_sigma
+             matcher_id    = mkExportedLocalId (PatSynWorkId pat_syn) matcher_name matcher_sigma
                              -- See Note [Exported LocalIds] in Id
 
              cont_dicts = map nlHsVar prov_dicts
@@ -417,15 +420,15 @@ isUnidirectional ExplicitBidirectional{} = False
 -}
 
 mkPatSynBuilderId :: HsPatSynDir a -> Located Name
-                  -> [TyVar] -> ThetaType -> [Type] -> Type
+                  -> [TyVar] -> ThetaType -> [Type] -> Type -> PatSyn
                   -> TcM (Maybe (Id, Bool))
-mkPatSynBuilderId dir  (L _ name) qtvs theta arg_tys pat_ty
+mkPatSynBuilderId dir  (L _ name) qtvs theta arg_tys pat_ty pat_syn
   | isUnidirectional dir
   = return Nothing
   | otherwise
   = do { builder_name <- newImplicitBinder name mkBuilderOcc
        ; let builder_sigma = mkSigmaTy qtvs theta (mkFunTys builder_arg_tys pat_ty)
-             builder_id    = mkExportedLocalId VanillaId builder_name builder_sigma
+             builder_id    = mkExportedLocalId (PatSynWrapId pat_syn) builder_name builder_sigma
                              -- See Note [Exported LocalIds] in Id
        ; return (Just (builder_id, need_dummy_arg)) }
   where
