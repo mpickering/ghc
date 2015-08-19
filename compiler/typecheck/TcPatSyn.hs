@@ -244,7 +244,6 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                         pat_ty
                         matcher_id builder_id
                         field_labels
-                        lpat'
        ; return (patSyn, matcher_bind, tcg_env) } }
 
   where

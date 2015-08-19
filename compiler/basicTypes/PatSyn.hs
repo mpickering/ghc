@@ -17,7 +17,6 @@ module PatSyn (
         patSynMatcher, patSynBuilder,
         patSynExTyVars, patSynSig,
         patSynInstArgTys, patSynInstResTy, patSynFieldLabels,
-        patSynRHSPat,
 
         tidyPatSynIds
     ) where
@@ -60,7 +59,6 @@ data PatSyn
         psArity       :: Arity,        -- == length psArgs
         psInfix       :: Bool,         -- True <=> declared infix
         psFieldLabels :: [FieldLabel], -- List of fields for a a record pattern synonym
-        psRHSPat      :: LPat Id,      -- Original pattern, needed for record updates
 
         psUnivTyVars  :: [TyVar],      -- Universially-quantified type variables
         psReqTheta    :: ThetaType,    -- Required dictionaries
@@ -252,7 +250,6 @@ mkPatSyn :: Name
          -> (Id, Bool)           -- ^ Name of matcher
          -> Maybe (Id, Bool)     -- ^ Name of builder
          -> [FieldLabel]         -- ^ Names of fields for a record pattern synonym
-         -> LPat Id              -- ^ Pattern
          -> PatSyn
 mkPatSyn name declared_infix
          (univ_tvs, req_theta)
@@ -260,7 +257,6 @@ mkPatSyn name declared_infix
          orig_args
          orig_res_ty
          matcher builder field_labels
-         orig_pat
     = MkPatSyn {psName = name, psUnique = getUnique name,
                 psUnivTyVars = univ_tvs, psExTyVars = ex_tvs,
                 psProvTheta = prov_theta, psReqTheta = req_theta,
@@ -270,8 +266,8 @@ mkPatSyn name declared_infix
                 psOrigResTy = orig_res_ty,
                 psMatcher = matcher,
                 psBuilder = builder,
-                psFieldLabels = field_labels,
-                psRHSPat = orig_pat }
+                psFieldLabels = field_labels
+                }
 
 -- | The 'Name' of the 'PatSyn', giving it a unique, rooted identification
 patSynName :: PatSyn -> Name
@@ -299,10 +295,6 @@ patSynArgs = psArgs
 
 patSynFieldLabels :: PatSyn -> [FieldLabel]
 patSynFieldLabels = psFieldLabels
-
-patSynRHSPat :: PatSyn -> LPat Id
-patSynRHSPat = psRHSPat
-
 
 patSynTyDetails :: PatSyn -> HsPatSynDetails Type
 patSynTyDetails (MkPatSyn { psInfix = is_infix, psArgs = arg_tys })
