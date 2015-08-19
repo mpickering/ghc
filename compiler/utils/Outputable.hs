@@ -106,7 +106,6 @@ import System.IO        ( Handle )
 import System.FilePath
 import Text.Printf
 import Data.Graph (SCC(..))
-import Debug.Trace
 
 import GHC.Fingerprint
 import GHC.Show         ( showMultiLineString )
