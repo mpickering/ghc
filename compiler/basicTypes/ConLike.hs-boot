@@ -8,9 +8,9 @@ import Data.Data (Data)
 
 data ConLike = RealDataCon DataCon
              | PatSynCon PatSyn
-  deriving Data.Typeable.Typeable
 
 instance Eq ConLike
+instance Typeable ConLike
 instance Ord ConLike
 instance NamedThing ConLike
 instance Data ConLike
