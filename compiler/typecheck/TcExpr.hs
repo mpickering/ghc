@@ -30,7 +30,7 @@ import TcEnv
 import TcArrows
 import TcMatches
 import TcHsType
-import TcPatSyn( tcPatSynBuilderOcc )
+import TcPatSyn( tcPatSynBuilderOcc, nonBidirectionalErr )
 import TcPat
 import TcMType
 import TcType
@@ -542,12 +542,13 @@ tcExpr (RecordCon (L loc con_name) _ rbinds) res_ty
         ; (con_expr, con_tau) <- tcInferId con_name
         ; let arity = conLikeArity con_like
               (arg_tys, actual_res_ty) = tcSplitFunTysN con_tau arity
-              con_id = conLikeWrapId con_like
-
-        ; co_res <- unifyType actual_res_ty res_ty
-        ; rbinds' <- tcRecordBinds con_like arg_tys rbinds
-        ; return $ mkHsWrapCo co_res $
-          RecordCon (L loc con_id) con_expr rbinds' }
+        ; case conLikeWrapId con_like of
+               Nothing -> nonBidirectionalErr (conLikeName con_like)
+               Just con_id -> do {
+                  co_res <- unifyType actual_res_ty res_ty
+                ; rbinds' <- tcRecordBinds con_like arg_tys rbinds
+                ; return $ mkHsWrapCo co_res $
+                    RecordCon (L loc con_id) con_expr rbinds' } }
 
 {-
 Note [Type of a record update]
@@ -668,8 +669,9 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ _) res_ty
                            not (isPatSynRecordSelector sel_id),       -- Excludes class ops
                            let L loc fld_name = hsRecFieldId (unLoc fld) ]
         ; unless (null bad_guys) (sequence bad_guys >> failM)
-        -- Note that there are occasions when this might make sense when
-        -- the pattern synonym refers to a record.
+        -- Note that there are occasions when it might make sense to mix
+        -- pattern and record selectors (when a pattern refers to a record)
+        -- but we forbid it for clarity.
         ; unless (all isRecordSelector sel_ids || all isPatSynRecordSelector sel_ids)
             (addErrTc mixedSelectors >> failM)
 
@@ -759,12 +761,16 @@ tcPatSynRecordUpd :: LHsExpr Name
                   -> [Id]
                   -> TcM (HsExpr TcId)
 tcPatSynRecordUpd record_expr rbinds res_ty sel_ids = do {
+
         -- STEP 1
-        -- No need to figure out the data cons as there is only one.
+        -- No need to figure out the data cons as there is only one
+        -- but we do need to check if it is bidirectional.
         ; let PatSynSelId patSyn = idDetails $ head sel_ids
               (con1_tvs, _, _, _, con1_arg_tys, con1_res_ty) = patSynSig patSyn
               con1_flds = patSynFieldLabels patSyn
---        ; con1_res_ty = mkFamilyTyConApp tycon (mkTyVarTys con1_tvs)
+        ; case patSynBuilder patSyn of
+            Nothing -> nonBidirectionalErr (patSynName patSyn)
+            _ -> return ()
 
         -- STEP 2
         -- Check that the pattern synonym has the named fields
@@ -1471,9 +1477,7 @@ tcRecordBinds con_like arg_tys (HsRecFields rbinds dd)
   = do  { mb_binds <- mapM do_bind rbinds
         ; return (HsRecFields (catMaybes mb_binds) dd) }
   where
-    fields = case con_like of
-               RealDataCon data_con -> dataConFieldLabels data_con
-               PatSynCon pat_syn    -> patSynFieldLabels pat_syn
+    fields = conLikeFieldLabels con_like
     flds_w_tys = zipEqual "tcRecordBinds" fields arg_tys
     do_bind (L l fld@(HsRecField { hsRecFieldId = L loc field_lbl
                                  , hsRecFieldArg = rhs }))

@@ -8,7 +8,7 @@
 {-# LANGUAGE CPP #-}
 
 module TcPatSyn ( tcInferPatSynDecl, tcCheckPatSynDecl
-                , tcPatSynBuilderBind, tcPatSynBuilderOcc
+                , tcPatSynBuilderBind, tcPatSynBuilderOcc, nonBidirectionalErr
   ) where
 
 import HsSyn
@@ -507,9 +507,7 @@ tcPatSynBuilderOcc orig ps
          else return ( inst_fun, rho ) }
 
   | otherwise  -- Unidirectional
-  = failWithTc $
-    ptext (sLit "non-bidirectional pattern synonym")
-    <+> quotes (ppr name) <+> ptext (sLit "used in an expression")
+    = nonBidirectionalErr name
   where
     name    = patSynName ps
     builder = patSynBuilder ps
@@ -610,6 +608,11 @@ nPlusKPatInPatSynErr pat
   = failWithTc $
     hang (ptext (sLit "Pattern synonym definition cannot contain n+k-pattern:"))
        2 (ppr pat)
+
+nonBidirectionalErr :: Outputable name => name -> TcM a
+nonBidirectionalErr name = failWithTc $
+    ptext (sLit "non-bidirectional pattern synonym")
+    <+> quotes (ppr name) <+> ptext (sLit "used in an expression")
 
 tcPatToExpr :: [Located Name] -> LPat Name -> Maybe (LHsExpr Name)
 tcPatToExpr args = go

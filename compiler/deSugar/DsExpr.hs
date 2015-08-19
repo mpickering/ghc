@@ -620,9 +620,9 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                                          field_labels arg_ids
                  mk_val_arg field_name pat_arg_id
                      = nlHsVar (lookupNameEnv upd_fld_env field_name `orElse` pat_arg_id)
-                 wrap_id = case con of
-                             RealDataCon data_con -> dataConWrapId data_con
-                             PatSynCon pat_syn    -> fst . fromJust . patSynBuilder $ pat_syn
+                 -- SAFE: the typechecker will complain if the synonym is
+                 -- not bidirectional
+                 wrap_id = fromJust $ conLikeWrapId con
                  inst_con = noLoc $ HsWrap wrap (HsVar wrap_id)
                         -- Reconstruct with the WrapId so that unpacking happens
                  wrap = mkWpEvVarApps theta_vars          <.>

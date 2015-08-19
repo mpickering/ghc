@@ -7,6 +7,7 @@ import TcRnTypes ( TcM )
 import PatSyn    ( PatSyn )
 import TcPat     ( TcPatSynInfo )
 import TcRnMonad ( TcGblEnv )
+import Outputable ( Outputable )
 
 tcInferPatSynDecl :: PatSynBind Name Name
                   -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
@@ -17,3 +18,5 @@ tcCheckPatSynDecl :: PatSynBind Name Name
 
 tcPatSynBuilderBind :: PatSynBind Name Name
                     -> TcM (LHsBinds Id)
+
+nonBidirectionalErr :: Outputable name => name -> TcM a

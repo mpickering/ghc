@@ -120,10 +120,10 @@ conLikeStupidTheta :: ConLike -> ThetaType
 conLikeStupidTheta (RealDataCon data_con) = dataConStupidTheta data_con
 conLikeStupidTheta (PatSynCon {})         = []
 
-conLikeWrapId :: ConLike -> Id
-conLikeWrapId (RealDataCon data_con) = dataConWrapId data_con
+conLikeWrapId :: ConLike -> Maybe Id
+conLikeWrapId (RealDataCon data_con) = Just $ dataConWrapId data_con
 -- TODO: Unpartialify
-conLikeWrapId (PatSynCon pat_syn)    = fst . fromJust $ patSynBuilder pat_syn
+conLikeWrapId (PatSynCon pat_syn)    = fst <$> patSynBuilder pat_syn
 
 conLikeImplBangs :: ConLike -> [HsImplBang]
 conLikeImplBangs (RealDataCon data_con) = dataConImplBangs data_con
