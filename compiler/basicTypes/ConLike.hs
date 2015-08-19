@@ -17,6 +17,7 @@ module ConLike (
         , conLikeStupidTheta
         , conLikeWrapId
         , conLikeImplBangs
+        , conLikeResTy
     ) where
 
 #include "HsVersions.h"
@@ -31,6 +32,7 @@ import TyCon
 import BasicTypes
 import {-# SOURCE #-} TypeRep (Type, ThetaType)
 import Var
+import Type (mkTyConApp)
 
 import Data.Function (on)
 import qualified Data.Data as Data
@@ -122,10 +124,14 @@ conLikeStupidTheta (PatSynCon {})         = []
 
 conLikeWrapId :: ConLike -> Maybe Id
 conLikeWrapId (RealDataCon data_con) = Just $ dataConWrapId data_con
--- TODO: Unpartialify
 conLikeWrapId (PatSynCon pat_syn)    = fst <$> patSynBuilder pat_syn
 
 conLikeImplBangs :: ConLike -> [HsImplBang]
 conLikeImplBangs (RealDataCon data_con) = dataConImplBangs data_con
 conLikeImplBangs (PatSynCon pat_syn)         =
     replicate (length (patSynFieldLabels pat_syn)) HsLazy
+
+
+conLikeResTy :: ConLike -> [Type] -> Type
+conLikeResTy (RealDataCon con) tys = mkTyConApp (dataConTyCon con) tys
+conLikeResTy (PatSynCon ps)    tys = patSynInstResTy ps tys

@@ -653,7 +653,7 @@ In the outgoing (HsRecordUpd scrut binds cons in_inst_tys out_inst_tys):
         family example], in_inst_tys = [t1,t2], out_inst_tys = [t3,t2]
 -}
 
-tcExpr (RecordUpd record_expr rbinds _ _ _ _ _) res_ty
+tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
   = ASSERT( notNull upd_fld_names )
     do  {
         -- STEP 0
@@ -833,7 +833,7 @@ tcPatSynRecordUpd record_expr rbinds res_ty sel_ids = do {
         -- Phew!
         ; return $ mkHsWrapCo co_res $
           RecordUpd record_expr' rbinds'
-                    [PatSynCon patSyn] scrut_inst_tys result_inst_tys scrut_ty scrut_ty }
+                    [PatSynCon patSyn] scrut_inst_tys result_inst_tys }
 
   where
     upd_fld_names = hsRecFields rbinds
@@ -952,7 +952,7 @@ tcRecordUpd record_expr rbinds res_ty sel_ids = do {
         -- Phew!
         ; return $ mkHsWrapCo co_res $
           RecordUpd (mkLHsWrap scrut_co record_expr') rbinds'
-                    (map RealDataCon relevant_cons) scrut_inst_tys result_inst_tys scrut_ty rec_res_ty }
+                    (map RealDataCon relevant_cons) scrut_inst_tys result_inst_tys }
   where
     upd_fld_names = hsRecFields rbinds
 

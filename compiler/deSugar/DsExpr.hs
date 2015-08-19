@@ -553,7 +553,7 @@ So we need to cast (T a Int) to (T a b).  Sigh.
 -}
 
 dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
-                       cons_to_upd in_inst_tys out_inst_tys in_ty out_ty)
+                       cons_to_upd in_inst_tys out_inst_tys )
   | null fields
   = dsLExpr record_expr
   | otherwise
@@ -570,6 +570,8 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
         -- constructor aguments.
         ; alts <- mapM (mk_alt upd_fld_env) cons_to_upd
         ; pprTrace ("in/out ty") (ppr in_ty $$ ppr out_ty) (return ())
+        ; pprTrace ("in cons") (ppr $ conLikeResTy (head cons_to_upd) in_inst_tys) (return ())
+        ; pprTrace ("out cons") (ppr $ conLikeResTy (head cons_to_upd) out_inst_tys) (return ())
         ; ([discrim_var], matching_code)
                 <- matchWrapper RecUpd (MG { mg_alts = alts, mg_arg_tys = [in_ty]
                                            , mg_res_ty = out_ty, mg_origin = FromSource })
@@ -593,12 +595,13 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
 
         -- Awkwardly, for families, the match goes
         -- from instance type to family type
-     {-
     (in_ty, out_ty) =
       case (head cons_to_upd) of
         RealDataCon data_con ->
+          let tycon = dataConTyCon data_con in
           (mkTyConApp tycon in_inst_tys, mkFamilyTyConApp tycon out_inst_tys)
-    -}
+        PatSynCon pat_syn ->
+          (patSynInstResTy pat_syn in_inst_tys, patSynInstResTy pat_syn out_inst_tys)
     mk_alt upd_fld_env con
       = do { let (univ_tvs, ex_tvs, eq_spec,
                   theta, arg_tys, _) =
