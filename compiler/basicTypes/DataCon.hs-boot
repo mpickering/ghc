@@ -5,7 +5,6 @@ import {-# SOURCE #-} TyCon( TyCon, FieldLabel )
 import Unique ( Uniquable )
 import Outputable ( Outputable, OutputableBndr )
 import BasicTypes (Arity)
-import qualified Data.Data as Data
 import {-# SOURCE #-} TypeRep (Type, ThetaType)
 
 data DataCon
