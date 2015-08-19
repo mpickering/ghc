@@ -340,7 +340,9 @@ sort_alts = sortWith (dataConTag . alt_pat)
 
 mkPatSynCase :: Id -> Type -> CaseAlt PatSyn -> CoreExpr -> DsM CoreExpr
 mkPatSynCase var ty alt fail = do
-    matcher <- dsLExpr $ mkLHsWrap wrapper $ nlHsTyApp matcher [ty]
+    matcher <- dsLExpr $ mkLHsWrap wrapper $ nlHsTyApp matcher' [ty]
+    pprTrace "ty" (ppr ty) (return ())
+    pprTrace "ty" (ppr (exprType matcher) $$  ppr matcher) (return ())
     let MatchResult _ mkCont = match_result
     cont <- mkCoreLams bndrs <$> mkCont fail
     return $ mkCoreAppsDs matcher [Var var, ensure_unstrict cont, Lam voidArgId fail]
@@ -349,7 +351,7 @@ mkPatSynCase var ty alt fail = do
                alt_bndrs = bndrs,
                alt_wrapper = wrapper,
                alt_result = match_result} = alt
-    (matcher, needs_void_lam) = patSynMatcher psyn
+    (matcher', needs_void_lam) = patSynMatcher psyn
 
     -- See Note [Matchers and builders for pattern synonyms] in PatSyns
     -- on these extra Void# arguments

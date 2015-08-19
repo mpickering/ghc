@@ -560,11 +560,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
   = ASSERT2( notNull cons_to_upd, ppr expr )
 
     do  { record_expr' <- dsLExpr record_expr
-        ; pprTrace ("record_expr") (ppr record_expr) (return ())
-        ; pprTrace ("record_expr'") (ppr record_expr') (return ())
         ; field_binds' <- mapM ds_field fields
-        ; pprTrace ("fields") (ppr fields) (return ())
-        ; pprTrace ("field_binds'") (ppr field_binds') (return ())
         ; let upd_fld_env :: NameEnv Id -- Maps field name to the LocalId of the field binding
               upd_fld_env = mkNameEnv [(f,l) | (f,l,_) <- field_binds']
 
@@ -573,12 +569,12 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
         -- so that everything works when we are doing fancy unboxing on the
         -- constructor aguments.
         ; alts <- mapM (mk_alt upd_fld_env) cons_to_upd
+        ; pprTrace ("in/out ty") (ppr in_ty $$ ppr out_ty) (return ())
         ; ([discrim_var], matching_code)
                 <- matchWrapper RecUpd (MG { mg_alts = alts, mg_arg_tys = [in_ty]
                                            , mg_res_ty = out_ty, mg_origin = FromSource })
                                            -- FromSource is not strictly right, but we
                                            -- want incomplete pattern-match warnings
-
         ; return (add_field_binds field_binds' $
                   bindNonRec discrim_var record_expr' matching_code) }
   where
@@ -619,6 +615,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
            ; theta_vars <- mapM newPredVarDs (substTheta subst theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
            ; let field_labels = conLikeFieldLabels con
+           ; let req_wrap = mkWpTyApps (mkTyVarTys univ_tvs)
            ; let val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
                  mk_val_arg field_name pat_arg_id
@@ -661,11 +658,11 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                                             , pat_binds = emptyTcEvBinds
                                             , pat_args = PrefixCon $ map nlVarPat arg_ids
                                             , pat_arg_tys = in_inst_tys
-                                            , pat_wrap = idHsWrapper }
+                                            , pat_wrap = req_wrap }
                       --  PatSynCon pat_syn -> patSynRHSPat pat_syn
 
                  (match :: Located (Match Var (Located (HsExpr Var)))) = (mkSimpleMatch [pat] wrapped_rhs)
-           ; return $ pprTrace "match" (pprMatch (PatBindRhs :: HsMatchContext Var) (unLoc match)) match  }
+           ; return $ match  }
 
 -- Here is where we desugar the Template Haskell brackets and escapes
 

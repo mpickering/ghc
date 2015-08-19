@@ -1029,7 +1029,7 @@ pprTrace :: String -> SDoc -> a -> a
 -- ^ If debug output is on, show some 'SDoc' on the screen
 pprTrace str doc x
    | opt_NoDebugOutput = x
-   | otherwise         = pprDebugAndThen unsafeGlobalDynFlags traceStack (text str) doc x
+   | otherwise         = pprDebugAndThen unsafeGlobalDynFlags trace (text str) doc x
 
 warnPprTrace :: Bool -> String -> Int -> SDoc -> a -> a
 -- ^ Just warn about an assertion failure, recording the given file and line number.

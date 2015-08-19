@@ -131,10 +131,11 @@ mkCoreApp :: CoreExpr -> CoreExpr -> CoreExpr
 --   See CoreSyn Note [CoreSyn let/app invariant]
 mkCoreApp fun (Type ty) = App fun (Type ty)
 mkCoreApp fun (Coercion co) = App fun (Coercion co)
-mkCoreApp fun arg       = ASSERT2( isFunTy fun_ty, ppr fun $$ ppr arg )
-                          mk_val_app fun arg arg_ty res_ty
+mkCoreApp fun arg       = ASSERT2( isFunTy fun_ty, ppr fun $$ ppr arg $$ ppr fun_ty $$ ppr aty)
+                          (mk_val_app fun arg arg_ty res_ty)
                       where
                         fun_ty = exprType fun
+                        aty = exprType arg
                         (arg_ty, res_ty) = splitFunTy fun_ty
 
 -- | Construct an expression which represents the application of a number of

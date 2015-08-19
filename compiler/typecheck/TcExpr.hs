@@ -827,7 +827,7 @@ tcPatSynRecordUpd record_expr rbinds res_ty sel_ids = do {
         -- Phew!
         ; return $ mkHsWrapCo co_res $
           RecordUpd record_expr' rbinds'
-                    [PatSynCon patSyn] scrut_inst_tys result_inst_tys scrut_ty rec_res_ty }
+                    [PatSynCon patSyn] scrut_inst_tys result_inst_tys scrut_ty scrut_ty }
 
   where
     upd_fld_names = hsRecFields rbinds
