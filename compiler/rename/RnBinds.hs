@@ -293,8 +293,7 @@ rnValBindsRHS :: HsSigCtxt
 rnValBindsRHS ctxt (ValBindsIn mbinds sigs)
   = do { (sigs', sig_fvs) <- renameSigs ctxt sigs
        ; binds_w_dus <- mapBagM (rnLBind (mkSigTvFn sigs')) mbinds
-       ; traceRn (text "dep_anal" <+> (ppr (depAnalBinds binds_w_dus)))
-       ; case (depAnalBinds binds_w_dus) of
+       ; case depAnalBinds binds_w_dus of
            (anal_binds, anal_dus) -> return (valbind', valbind'_dus)
               where
                 valbind' = ValBindsOut anal_binds sigs'

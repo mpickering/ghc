@@ -8,7 +8,7 @@
 {-# LANGUAGE CPP, RankNTypes, ScopedTypeVariables #-}
 
 module TcBinds ( tcLocalBinds, tcTopBinds, tcRecSelBinds,
-                 tcHsBootSigs, tcPolyCheck, tcValBinds,
+                 tcHsBootSigs, tcPolyCheck,
                  tcSpecPrags, tcSpecWrapper,
                  tcVectDecls,
                  TcSigInfo(..), TcSigFun,

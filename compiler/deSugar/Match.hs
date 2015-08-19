@@ -795,8 +795,7 @@ matchWrapper ctxt (MG { mg_alts = matches
                       , mg_arg_tys = arg_tys
                       , mg_res_ty = rhs_ty
                       , mg_origin = origin })
-  = do  { pprTrace "res_ty" (ppr rhs_ty) (return ())
-        ; eqns_info   <- mapM mk_eqn_info matches
+  = do  { eqns_info   <- mapM mk_eqn_info matches
         ; new_vars    <- case matches of
                            []    -> mapM newSysLocalDs arg_tys
                            (m:_) -> selectMatchVars (map unLoc (hsLMatchPats m))
@@ -821,6 +820,7 @@ matchEquations ctxt vars eqns_info rhs_ty
   = do  { locn <- getSrcSpanDs
         ; let   ds_ctxt   = DsMatchContext ctxt locn
                 error_doc = matchContextErrString ctxt
+
         ; match_result <- matchCheck ds_ctxt vars rhs_ty eqns_info
 
         ; fail_expr <- mkErrorAppDs pAT_ERROR_ID rhs_ty error_doc

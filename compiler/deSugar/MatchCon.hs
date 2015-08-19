@@ -89,8 +89,7 @@ matchConFamily :: [Id]
                -> DsM MatchResult
 -- Each group of eqns is for a single constructor
 matchConFamily (var:vars) ty groups
-  =
-    do dflags <- getDynFlags
+  = do dflags <- getDynFlags
        alts <- mapM (fmap toRealAlt . matchOneConLike vars ty) groups
        return (mkCoAlgCaseMatchResult dflags var ty alts)
   where
@@ -104,8 +103,7 @@ matchPatSyn :: [Id]
             -> [EquationInfo]
             -> DsM MatchResult
 matchPatSyn (var:vars) ty eqns
-  = do
-       alt <- fmap toSynAlt $ matchOneConLike vars ty eqns
+  = do alt <- fmap toSynAlt $ matchOneConLike vars ty eqns
        return (mkCoSynCaseMatchResult var ty alt)
   where
     toSynAlt alt = case alt_pat alt of

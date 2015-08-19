@@ -100,7 +100,6 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; req_theta  <- zonkTcThetaType req_theta
 
        ; pat_ty     <- zonkTcType pat_ty
-
        ; args       <- mapM zonkId args
 
        ; traceTc "tcInferPatSynDecl }" $ ppr name
@@ -176,7 +175,6 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
            { let origin = PatOrigin -- TODO
            ; emitWanteds origin prov_theta' }
 
-       ; traceTc "tcCheckPatSynDecl }" $ ppr name
        ; traceTc "tcCheckPatSynDecl }" $ ppr name
        ; tc_patsyn_finish lname dir is_infix lpat lpat'
                           (univ_tvs, req_theta, req_ev_binds, req_dicts)

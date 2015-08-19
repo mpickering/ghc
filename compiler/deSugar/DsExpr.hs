@@ -7,7 +7,6 @@ Desugaring exporessions.
 -}
 
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module DsExpr ( dsExpr, dsLExpr, dsLocalBinds, dsValBinds, dsLit ) where
 
@@ -553,7 +552,7 @@ So we need to cast (T a Int) to (T a b).  Sigh.
 -}
 
 dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
-                       cons_to_upd in_inst_tys out_inst_tys )
+                       cons_to_upd in_inst_tys out_inst_tys)
   | null fields
   = dsLExpr record_expr
   | otherwise
@@ -569,14 +568,12 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
         -- so that everything works when we are doing fancy unboxing on the
         -- constructor aguments.
         ; alts <- mapM (mk_alt upd_fld_env) cons_to_upd
-        ; pprTrace ("in/out ty") (ppr in_ty $$ ppr out_ty) (return ())
-        ; pprTrace ("in cons") (ppr $ conLikeResTy (head cons_to_upd) in_inst_tys) (return ())
-        ; pprTrace ("out cons") (ppr $ conLikeResTy (head cons_to_upd) out_inst_tys) (return ())
         ; ([discrim_var], matching_code)
                 <- matchWrapper RecUpd (MG { mg_alts = alts, mg_arg_tys = [in_ty]
                                            , mg_res_ty = out_ty, mg_origin = FromSource })
                                            -- FromSource is not strictly right, but we
                                            -- want incomplete pattern-match warnings
+
         ; return (add_field_binds field_binds' $
                   bindNonRec discrim_var record_expr' matching_code) }
   where
@@ -625,7 +622,9 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                      = nlHsVar (lookupNameEnv upd_fld_env field_name `orElse` pat_arg_id)
                  -- SAFE: the typechecker will complain if the synonym is
                  -- not bidirectional
-                 wrap_id = fromJust $ conLikeWrapId con
+                 wrap_id = case conLikeWrapId con of
+                             Just w_id -> w_id
+                             Nothing -> panic "dsExpr:mk_alt"
                  inst_con = noLoc $ HsWrap wrap (HsVar wrap_id)
                         -- Reconstruct with the WrapId so that unpacking happens
                  wrap = mkWpEvVarApps theta_vars          <.>
@@ -653,19 +652,15 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
 
                  wrap_subst = mkVarEnv [ (tv, mkTcSymCo (mkTcCoVarCo eq_var))
                                         | ((tv,_),eq_var) <- eq_spec `zip` eqs_vars ]
-                 pat = --case con of
-                       -- RealDataCon _ ->
-                          noLoc $ ConPatOut { pat_con = noLoc con
-                                            , pat_tvs = ex_tvs
-                                            , pat_dicts = eqs_vars ++ theta_vars
-                                            , pat_binds = emptyTcEvBinds
-                                            , pat_args = PrefixCon $ map nlVarPat arg_ids
-                                            , pat_arg_tys = in_inst_tys
-                                            , pat_wrap = req_wrap }
-                      --  PatSynCon pat_syn -> patSynRHSPat pat_syn
+                 pat = noLoc $ ConPatOut { pat_con = noLoc con
+                                         , pat_tvs = ex_tvs
+                                         , pat_dicts = eqs_vars ++ theta_vars
+                                         , pat_binds = emptyTcEvBinds
+                                         , pat_args = PrefixCon $ map nlVarPat arg_ids
+                                         , pat_arg_tys = in_inst_tys
+                                         , pat_wrap = req_wrap }
 
-                 (match :: Located (Match Var (Located (HsExpr Var)))) = (mkSimpleMatch [pat] wrapped_rhs)
-           ; return $ match  }
+           ; return (mkSimpleMatch [pat] wrapped_rhs)  }
 
 -- Here is where we desugar the Template Haskell brackets and escapes
 

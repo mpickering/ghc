@@ -813,7 +813,7 @@ applyTy, applyTys
 -- Panics if no application is possible.
 applyTy :: Type -> KindOrType -> Type
 applyTy ty arg | Just ty' <- coreView ty = applyTy ty' arg
-applyTy (ForAllTy tv ty) arg = pprTrace "applyTy" (ppr tv <+> ppr ty $$ ppr arg) (substTyWith [tv] [arg] ty)
+applyTy (ForAllTy tv ty) arg = substTyWith [tv] [arg] ty
 applyTy _                _   = panic "applyTy"
 
 applyTys :: Type -> [KindOrType] -> Type

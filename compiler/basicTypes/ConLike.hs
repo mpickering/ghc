@@ -37,7 +37,6 @@ import Type (mkTyConApp)
 import Data.Function (on)
 import qualified Data.Data as Data
 import qualified Data.Typeable
-import Data.Maybe (fromJust) -- ARHG
 
 {-
 ************************************************************************

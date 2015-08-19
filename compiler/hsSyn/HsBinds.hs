@@ -954,7 +954,6 @@ instance Foldable HsPatSynDetails where
     null (PrefixPatSyn args) = Data.List.null args
     null (RecordPatSyn args) = Data.List.null args
 
-
     toList (InfixPatSyn left right) = [left, right]
     toList (PrefixPatSyn args) = args
     toList (RecordPatSyn args) = foldMap toList args
