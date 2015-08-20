@@ -615,7 +615,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
            ; theta_vars <- mapM newPredVarDs (substTheta subst theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
            ; let field_labels = conLikeFieldLabels con
-           ; let req_wrap = mkWpTyApps (mkTyVarTys univ_tvs)
+           ; let req_wrap = mkWpTyApps in_inst_tys
            ; let val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
                  mk_val_arg field_name pat_arg_id
