@@ -135,6 +135,8 @@ import Util
 import StaticFlags
 import {-# SOURCE #-} ConLike ( ConLike(..) )
 import {-# SOURCE #-} PatSyn ( PatSyn )
+import Control.Applicative ((<$>))
+import Prelude
 
 -- infixl so you can say (id `set` a `set` b)
 infixl  1 `setIdUnfoldingLazily`,
