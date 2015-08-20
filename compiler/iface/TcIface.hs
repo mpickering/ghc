@@ -463,7 +463,8 @@ tc_iface_decl _ _ (IfacePatSyn{ ifName = occ_name
                               , ifPatProvCtxt = prov_ctxt
                               , ifPatReqCtxt = req_ctxt
                               , ifPatArgs = args
-                              , ifPatTy = pat_ty })
+                              , ifPatTy = pat_ty
+                              , ifFieldLabels = field_labels })
   = do { name <- lookupIfaceTop occ_name
        ; traceIf (ptext (sLit "tc_iface_decl") <+> ppr name)
        ; matcher <- tc_pr if_matcher
@@ -475,9 +476,10 @@ tc_iface_decl _ _ (IfacePatSyn{ ifName = occ_name
                 ; req_theta  <- tcIfaceCtxt req_ctxt
                 ; pat_ty     <- tcIfaceType pat_ty
                 ; arg_tys    <- mapM tcIfaceType args
+                ; field_labels' <- mapM lookupIfaceTop field_labels
                 ; return $ buildPatSyn name is_infix matcher builder
                                        (univ_tvs, req_theta) (ex_tvs, prov_theta)
-                                       arg_tys pat_ty undefined }
+                                       arg_tys pat_ty field_labels' }
        ; return $ AConLike . PatSynCon $ patsyn }}}
   where
      mk_doc n = ptext (sLit "Pattern synonym") <+> ppr n

@@ -151,7 +151,8 @@ data IfaceDecl
                   ifPatProvCtxt   :: IfaceContext,
                   ifPatReqCtxt    :: IfaceContext,
                   ifPatArgs       :: [IfaceType],
-                  ifPatTy         :: IfaceType }
+                  ifPatTy         :: IfaceType,
+                  ifFieldLabels   :: [IfaceTopBndr] }
 
 
 data IfaceTyConParent
@@ -1415,7 +1416,7 @@ instance Binary IfaceDecl where
         put_ bh a3
         put_ bh a4
 
-    put_ bh (IfacePatSyn name a2 a3 a4 a5 a6 a7 a8 a9 a10) = do
+    put_ bh (IfacePatSyn name a2 a3 a4 a5 a6 a7 a8 a9 a10 a11) = do
         putByte bh 7
         put_ bh (occNameFS name)
         put_ bh a2
@@ -1427,6 +1428,8 @@ instance Binary IfaceDecl where
         put_ bh a8
         put_ bh a9
         put_ bh a10
+
+        put_ bh a11
 
     get bh = do
         h <- getByte bh
@@ -1492,8 +1495,9 @@ instance Binary IfaceDecl where
                     a8 <- get bh
                     a9 <- get bh
                     a10 <- get bh
+                    a11 <- get bh
                     occ <- return $! mkDataOccFS a1
-                    return (IfacePatSyn occ a2 a3 a4 a5 a6 a7 a8 a9 a10)
+                    return (IfacePatSyn occ a2 a3 a4 a5 a6 a7 a8 a9 a10 a11)
             _ -> panic (unwords ["Unknown IfaceDecl tag:", show h])
 
 instance Binary IfaceFamTyConFlav where

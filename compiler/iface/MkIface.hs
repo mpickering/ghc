@@ -1519,6 +1519,7 @@ patSynToIfaceDecl ps
                 , ifPatReqCtxt    = tidyToIfaceContext env2 req_theta
                 , ifPatArgs       = map (tidyToIfaceType env2) args
                 , ifPatTy         = tidyToIfaceType env2 rhs_ty
+                , ifFieldLabels   = map getOccName (patSynFieldLabels ps)
                 }
   where
     (univ_tvs, ex_tvs, prov_theta, req_theta, args, rhs_ty) = patSynSig ps
