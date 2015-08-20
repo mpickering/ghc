@@ -17,6 +17,7 @@ module ConLike (
         , conLikeStupidTheta
         , conLikeWrapId
         , conLikeImplBangs
+        , conLikeFullSig
         , conLikeResTy
     ) where
 
@@ -134,3 +135,14 @@ conLikeImplBangs (PatSynCon pat_syn)         =
 conLikeResTy :: ConLike -> [Type] -> Type
 conLikeResTy (RealDataCon con) tys = mkTyConApp (dataConTyCon con) tys
 conLikeResTy (PatSynCon ps)    tys = patSynInstResTy ps tys
+
+conLikeFullSig :: ConLike
+               -> ([TyVar], [TyVar], [(TyVar,Type)], ThetaType, ThetaType, [Type], Type)
+conLikeFullSig (RealDataCon con) =
+  let (univ_tvs, ex_tvs, eq_spec, theta, arg_tys, res_ty) = dataConFullSig con
+  -- Prov and req thetas are equal
+  in (univ_tvs, ex_tvs, eq_spec, theta, theta, arg_tys, res_ty)
+conLikeFullSig (PatSynCon pat_syn) =
+ let (univ_tvs, ex_tvs, prov, req, arg_tys, res_ty) = patSynSig pat_syn
+ -- eqSpec is empty
+ in (univ_tvs, ex_tvs, [], prov, req, arg_tys, res_ty)

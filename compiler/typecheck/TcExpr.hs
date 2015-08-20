@@ -58,7 +58,6 @@ import Maybes
 import ErrUtils
 import Outputable
 import FastString
-import PatSyn
 import Control.Monad
 import Class(classTyCon)
 import Data.Function
@@ -675,13 +674,129 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
         ; unless (all isRecordSelector sel_ids || all isPatSynRecordSelector sel_ids)
             (addErrTc mixedSelectors >> failM)
 
-        -- Branch as dealing with pattern synonym selectors is much simple
-        -- as there is only one constructor
-        ; case sel_ids of
-            (sel_id: _) | isRecordSelector sel_id -> tcRecordUpd  record_expr rbinds res_ty sel_ids
-            _ -> tcPatSynRecordUpd record_expr rbinds res_ty sel_ids }
+        -- STEP 1
+        -- Figure out the tycon and data cons from the first field name
+        ; let   -- It's OK to use the non-tc splitters here (for a selector)
+              sel_id : _  = sel_ids
+              mtycon  = case idDetails sel_id of             -- We've failed already if
+                          RecSelId tycon _ -> Just tycon     -- it's not a field label
+                          _ -> Nothing
+              con_likes  = case mtycon of
+                            Nothing -> [PatSynCon (fst $ patSynSelectorFieldLabel sel_id)]
+                            Just tycon -> map RealDataCon (tyConDataCons tycon)
+                -- NB: for a data type family, the tycon is the instance tycon
+
+              relevant_cons   = filter is_relevant con_likes
+              is_relevant con = all (`elem` conLikeFieldLabels con) upd_fld_names
+                -- A constructor is only relevant to this process if
+                -- it contains *all* the fields that are being updated
+                -- Other ones will cause a runtime error if they occur
+
+                -- Take apart a representative constructor
+              con1 = ASSERT( not (null relevant_cons) ) head relevant_cons
+              (con1_tvs, _, _, _, _, con1_arg_tys, _) = conLikeFullSig con1
+              con1_flds = conLikeFieldLabels con1
+              def_res_ty  = conLikeResTy con1
+              con1_res_ty =
+                (maybe def_res_ty mkFamilyTyConApp mtycon) (mkTyVarTys con1_tvs)
+
+        ; case conLikeWrapId con1 of
+            Nothing -> nonBidirectionalErr (conLikeName con1)
+            _ -> return ()
+
+        -- Step 2
+        -- Check that at least one constructor has all the named fields
+        -- i.e. has an empty set of bad fields returned by badFields
+        ; checkTc (not (null relevant_cons)) (badFieldsUpd rbinds con_likes)
+
+        -- STEP 3    Note [Criteria for update]
+        -- Check that each updated field is polymorphic; that is, its type
+        -- mentions only the universally-quantified variables of the data con
+        ; let flds1_w_tys = zipEqual "tcExpr:RecConUpd" con1_flds con1_arg_tys
+              upd_flds1_w_tys = filter is_updated flds1_w_tys
+              is_updated (fld,_) = fld `elem` upd_fld_names
+
+              bad_upd_flds = filter bad_fld upd_flds1_w_tys
+              con1_tv_set = mkVarSet con1_tvs
+              bad_fld (fld, ty) = fld `elem` upd_fld_names &&
+                                      not (tyVarsOfType ty `subVarSet` con1_tv_set)
+        ; checkTc (null bad_upd_flds) (badFieldTypes bad_upd_flds)
+
+        -- STEP 4  Note [Type of a record update]
+        -- Figure out types for the scrutinee and result
+        -- Both are of form (T a b c), with fresh type variables, but with
+        -- common variables where the scrutinee and result must have the same type
+        -- These are variables that appear in *any* arg of *any* of the
+        -- relevant constructors *except* in the updated fields
+        --
+        ; let fixed_tvs = getFixedTyVars con1_tvs relevant_cons
+              is_fixed_tv tv = tv `elemVarSet` fixed_tvs
+
+              mk_inst_ty :: TvSubst -> (TKVar, TcType) -> TcM (TvSubst, TcType)
+              -- Deals with instantiation of kind variables
+              --   c.f. TcMType.tcInstTyVars
+              mk_inst_ty subst (tv, result_inst_ty)
+                | is_fixed_tv tv   -- Same as result type
+                = return (extendTvSubst subst tv result_inst_ty, result_inst_ty)
+                | otherwise        -- Fresh type, of correct kind
+                = do { new_ty <- newFlexiTyVarTy (TcType.substTy subst (tyVarKind tv))
+                     ; return (extendTvSubst subst tv new_ty, new_ty) }
+
+        ; (result_subst, con1_tvs') <- tcInstTyVars con1_tvs
+        ; let result_inst_tys = mkTyVarTys con1_tvs'
+
+        ; (scrut_subst, scrut_inst_tys) <- mapAccumLM mk_inst_ty emptyTvSubst
+                                                      (con1_tvs `zip` result_inst_tys)
+
+        ; let rec_res_ty    = TcType.substTy result_subst con1_res_ty
+              scrut_ty      = TcType.substTy scrut_subst  con1_res_ty
+              con1_arg_tys' = map (TcType.substTy result_subst) con1_arg_tys
+
+        ; co_res <- unifyType rec_res_ty res_ty
+
+        -- STEP 5
+        -- Typecheck the thing to be updated, and the bindings
+        ; record_expr' <- tcMonoExpr record_expr scrut_ty
+        ; rbinds'      <- tcRecordBinds con1 con1_arg_tys' rbinds
+
+        -- STEP 6: Deal with the stupid theta
+        ; let theta' = substTheta scrut_subst (conLikeStupidTheta con1)
+        ; instStupidTheta RecordUpdOrigin theta'
+
+        -- Step 7: make a cast for the scrutinee, in the case that it's from a type family
+        ; let scrut_co | Just co_con <- tyConFamilyCoercion_maybe =<< mtycon
+                       = mkWpCast (mkTcUnbranchedAxInstCo Representational co_con scrut_inst_tys)
+                       | otherwise
+                       = idHsWrapper
+        -- Phew!
+        ; return $ mkHsWrapCo co_res $
+          RecordUpd (mkLHsWrap scrut_co record_expr') rbinds'
+                    relevant_cons scrut_inst_tys result_inst_tys }
   where
     upd_fld_names = hsRecFields rbinds
+
+    getFixedTyVars :: [TyVar] -> [ConLike] -> TyVarSet
+    -- These tyvars must not change across the updates
+    getFixedTyVars tvs1 cons
+      = mkVarSet [tv1 | con <- cons
+                      -- TODO: Move this into conlike
+                      , let (univ_tvs, ex_tvs, eqspec, _prov_theta, req_theta, arg_tys, _)
+                              = conLikeFullSig con
+                            tvs = univ_tvs ++ ex_tvs
+                            theta = eqSpecPreds eqspec ++ req_theta
+                            flds = conLikeFieldLabels con
+                            fixed_tvs = exactTyVarsOfTypes fixed_tys
+                                    -- fixed_tys: See Note [Type of a record update]
+                                        `unionVarSet` tyVarsOfTypes theta
+                                    -- Universally-quantified tyvars that
+                                    -- appear in any of the *implicit*
+                                    -- arguments to the constructor are fixed
+                                    -- See Note [Implicit type sharing]
+
+                            fixed_tys = [ty | (fld,ty) <- zip flds arg_tys
+                                            , not (fld `elem` upd_fld_names)]
+                      , (tv1,tv) <- tvs1 `zip` tvs      -- Discards existentials in tvs
+                      , tv `elemVarSet` fixed_tvs ]
 
 
 
@@ -748,232 +863,6 @@ tcExpr other _ = pprPanic "tcMonoExpr" (ppr other)
   -- Include ArrForm, ArrApp, which shouldn't appear at all
   -- Also HsTcBracketOut, HsQuasiQuoteE
   --
-{-
-************************************************************************
-*                                                                      *
-                Record Updates
-*                                                                      *
-************************************************************************
--}
-tcPatSynRecordUpd :: LHsExpr Name
-                  -> HsRecFields Name (LHsExpr Name)
-                  -> TcTauType
-                  -> [Id]
-                  -> TcM (HsExpr TcId)
-tcPatSynRecordUpd record_expr rbinds res_ty sel_ids = do {
-
-        -- STEP 1
-        -- No need to figure out the data cons as there is only one
-        -- but we do need to check if it is bidirectional.
-        ; let PatSynSelId patSyn = idDetails $ head sel_ids
-              (con1_tvs, _, _, _, con1_arg_tys, con1_res_ty) = patSynSig patSyn
-              con1_flds = patSynFieldLabels patSyn
-        ; case patSynBuilder patSyn of
-            Nothing -> nonBidirectionalErr (patSynName patSyn)
-            _ -> return ()
-
-        -- STEP 2
-        -- Check that the pattern synonym has the named fields
-        ; checkTc (all (`elem` con1_flds) upd_fld_names) (text "TODO")
-
-        -- STEP 3
-        ; let flds1_w_tys = zipEqual "tcExpr:RecConUpd" con1_flds con1_arg_tys
-              upd_flds1_w_tys = filter is_updated flds1_w_tys
-              is_updated (fld,_) = fld `elem` upd_fld_names
-
-              bad_upd_flds = filter bad_fld upd_flds1_w_tys
-              con1_tv_set = mkVarSet con1_tvs
-              bad_fld (fld, ty) = fld `elem` upd_fld_names &&
-                                      not (tyVarsOfType ty `subVarSet` con1_tv_set)
-        ; checkTc (null bad_upd_flds) (badFieldTypes bad_upd_flds)
-
-        -- STEP 4  Note [Type of a record update]
-        -- Figure out types for the scrutinee and result
-        -- Both are of form (T a b c), with fresh type variables, but with
-        -- common variables where the scrutinee and result must have the same type
-        -- These are variables that appear in *any* arg of *any* of the
-        -- relevant constructors *except* in the updated fields
-        --
-        ; let fixed_tvs = getFixedTyVars con1_tvs patSyn
-              is_fixed_tv tv = tv `elemVarSet` fixed_tvs
-
-              mk_inst_ty :: TvSubst -> (TKVar, TcType) -> TcM (TvSubst, TcType)
-              -- Deals with instantiation of kind variables
-              --   c.f. TcMType.tcInstTyVars
-              mk_inst_ty subst (tv, result_inst_ty)
-                | is_fixed_tv tv   -- Same as result type
-                = return (extendTvSubst subst tv result_inst_ty, result_inst_ty)
-                | otherwise        -- Fresh type, of correct kind
-                = do { new_ty <- newFlexiTyVarTy (TcType.substTy subst (tyVarKind tv))
-                     ; return (extendTvSubst subst tv new_ty, new_ty) }
-
-        ; (result_subst, con1_tvs') <- tcInstTyVars con1_tvs
-        ; let result_inst_tys = mkTyVarTys con1_tvs'
-
-        ; (scrut_subst, scrut_inst_tys) <- mapAccumLM mk_inst_ty emptyTvSubst
-                                                      (con1_tvs `zip` result_inst_tys)
-
-        ; let rec_res_ty    = TcType.substTy result_subst con1_res_ty
-              scrut_ty      = TcType.substTy scrut_subst  con1_res_ty
-              con1_arg_tys' = map (TcType.substTy result_subst) con1_arg_tys
-
-        ; traceTc "rec_res_ty" (ppr rec_res_ty $$ ppr scrut_ty)
-
-        ; co_res <- unifyType rec_res_ty res_ty
-        ; traceTc "co_res" (ppr co_res)
-
-        -- STEP 5
-        -- Typecheck the thing to be updated, and the bindings
-        ; record_expr' <- tcMonoExpr record_expr scrut_ty
-        ; rbinds'      <- tcRecordBinds (PatSynCon patSyn) con1_arg_tys' rbinds
-        ; traceTc "record_expr'" (ppr record_expr')
-
-        -- STEP 6: Deal with the stupid theta, does this need to be here?
-        ; instStupidTheta RecordUpdOrigin  []
-        -- Phew!
-        ; return $ mkHsWrapCo co_res $
-          RecordUpd record_expr' rbinds'
-                    [PatSynCon patSyn] scrut_inst_tys result_inst_tys }
-
-  where
-    upd_fld_names = hsRecFields rbinds
-    getFixedTyVars :: [TyVar] -> PatSyn -> TyVarSet
-    -- These tyvars must not change across the updates
-    getFixedTyVars tvs1 patSyn
-      = mkVarSet [tv1 | (tv1,tv) <- tvs1 `zip` tvs      -- Discards existentials in tvs
-                      , tv `elemVarSet` fixed_tvs ]
-      where
-        (univ_tvs, ex_tvs, prov_theta, _req_theta, arg_tys, _) = patSynSig patSyn
-        tvs = univ_tvs ++ ex_tvs
-        flds = patSynFieldLabels patSyn
-        fixed_tvs = exactTyVarsOfTypes fixed_tys
-                -- fixed_tys: See Note [Type of a record update]
-                          `unionVarSet` tyVarsOfTypes prov_theta
-                -- Universally-quantified tyvars that
-                -- appear in any of the *implicit*
-                -- arguments to the constructor are fixed
-                -- See Note [Implicit type sharing]
-
-        fixed_tys = [ty | (fld,ty) <- zip flds arg_tys
-                        , not (fld `elem` upd_fld_names)]
-
-
-tcRecordUpd :: LHsExpr Name
-            -> HsRecFields Name (LHsExpr Name)
-            -> TcTauType
-            -> [Id]
-            -> TcM (HsExpr TcId)
-tcRecordUpd record_expr rbinds res_ty sel_ids = do {
-
-        -- STEP 1
-        -- Figure out the tycon and data cons from the first field name
-        ; let   -- It's OK to use the non-tc splitters here (for a selector)
-              sel_id : _  = sel_ids
-              (tycon, _)  = recordSelectorFieldLabel sel_id     -- We've failed already if
-              data_cons   = tyConDataCons tycon                 -- it's not a field label
-                -- NB: for a data type family, the tycon is the instance tycon
-
-              relevant_cons   = filter is_relevant data_cons
-              is_relevant con = all (`elem` dataConFieldLabels con) upd_fld_names
-                -- A constructor is only relevant to this process if
-                -- it contains *all* the fields that are being updated
-                -- Other ones will cause a runtime error if they occur
-
-                -- Take apart a representative constructor
-              con1 = ASSERT( not (null relevant_cons) ) head relevant_cons
-              (con1_tvs, _, _, _, con1_arg_tys, _) = dataConFullSig con1
-              con1_flds = dataConFieldLabels con1
-              con1_res_ty = mkFamilyTyConApp tycon (mkTyVarTys con1_tvs)
-
-        -- Step 2
-        -- Check that at least one constructor has all the named fields
-        -- i.e. has an empty set of bad fields returned by badFields
-        ; checkTc (not (null relevant_cons)) (badFieldsUpd rbinds data_cons)
-
-        -- STEP 3    Note [Criteria for update]
-        -- Check that each updated field is polymorphic; that is, its type
-        -- mentions only the universally-quantified variables of the data con
-        ; let flds1_w_tys = zipEqual "tcExpr:RecConUpd" con1_flds con1_arg_tys
-              upd_flds1_w_tys = filter is_updated flds1_w_tys
-              is_updated (fld,_) = fld `elem` upd_fld_names
-
-              bad_upd_flds = filter bad_fld upd_flds1_w_tys
-              con1_tv_set = mkVarSet con1_tvs
-              bad_fld (fld, ty) = fld `elem` upd_fld_names &&
-                                      not (tyVarsOfType ty `subVarSet` con1_tv_set)
-        ; checkTc (null bad_upd_flds) (badFieldTypes bad_upd_flds)
-
-        -- STEP 4  Note [Type of a record update]
-        -- Figure out types for the scrutinee and result
-        -- Both are of form (T a b c), with fresh type variables, but with
-        -- common variables where the scrutinee and result must have the same type
-        -- These are variables that appear in *any* arg of *any* of the
-        -- relevant constructors *except* in the updated fields
-        --
-        ; let fixed_tvs = getFixedTyVars con1_tvs relevant_cons
-              is_fixed_tv tv = tv `elemVarSet` fixed_tvs
-
-              mk_inst_ty :: TvSubst -> (TKVar, TcType) -> TcM (TvSubst, TcType)
-              -- Deals with instantiation of kind variables
-              --   c.f. TcMType.tcInstTyVars
-              mk_inst_ty subst (tv, result_inst_ty)
-                | is_fixed_tv tv   -- Same as result type
-                = return (extendTvSubst subst tv result_inst_ty, result_inst_ty)
-                | otherwise        -- Fresh type, of correct kind
-                = do { new_ty <- newFlexiTyVarTy (TcType.substTy subst (tyVarKind tv))
-                     ; return (extendTvSubst subst tv new_ty, new_ty) }
-
-        ; (result_subst, con1_tvs') <- tcInstTyVars con1_tvs
-        ; let result_inst_tys = mkTyVarTys con1_tvs'
-
-        ; (scrut_subst, scrut_inst_tys) <- mapAccumLM mk_inst_ty emptyTvSubst
-                                                      (con1_tvs `zip` result_inst_tys)
-
-        ; let rec_res_ty    = TcType.substTy result_subst con1_res_ty
-              scrut_ty      = TcType.substTy scrut_subst  con1_res_ty
-              con1_arg_tys' = map (TcType.substTy result_subst) con1_arg_tys
-
-        ; co_res <- unifyType rec_res_ty res_ty
-
-        -- STEP 5
-        -- Typecheck the thing to be updated, and the bindings
-        ; record_expr' <- tcMonoExpr record_expr scrut_ty
-        ; rbinds'      <- tcRecordBinds (RealDataCon con1) con1_arg_tys' rbinds
-
-        -- STEP 6: Deal with the stupid theta
-        ; let theta' = substTheta scrut_subst (dataConStupidTheta con1)
-        ; instStupidTheta RecordUpdOrigin theta'
-
-        -- Step 7: make a cast for the scrutinee, in the case that it's from a type family
-        ; let scrut_co | Just co_con <- tyConFamilyCoercion_maybe tycon
-                       = mkWpCast (mkTcUnbranchedAxInstCo Representational co_con scrut_inst_tys)
-                       | otherwise
-                       = idHsWrapper
-        -- Phew!
-        ; return $ mkHsWrapCo co_res $
-          RecordUpd (mkLHsWrap scrut_co record_expr') rbinds'
-                    (map RealDataCon relevant_cons) scrut_inst_tys result_inst_tys }
-  where
-    upd_fld_names = hsRecFields rbinds
-
-    getFixedTyVars :: [TyVar] -> [DataCon] -> TyVarSet
-    -- These tyvars must not change across the updates
-    getFixedTyVars tvs1 cons
-      = mkVarSet [tv1 | con <- cons
-                      , let (tvs, theta, arg_tys, _) = dataConSig con
-                            flds = dataConFieldLabels con
-                            fixed_tvs = exactTyVarsOfTypes fixed_tys
-                                    -- fixed_tys: See Note [Type of a record update]
-                                        `unionVarSet` tyVarsOfTypes theta
-                                    -- Universally-quantified tyvars that
-                                    -- appear in any of the *implicit*
-                                    -- arguments to the constructor are fixed
-                                    -- See Note [Implicit type sharing]
-
-                            fixed_tys = [ty | (fld,ty) <- zip flds arg_tys
-                                            , not (fld `elem` upd_fld_names)]
-                      , (tv1,tv) <- tvs1 `zip` tvs      -- Discards existentials in tvs
-                      , tv `elemVarSet` fixed_tvs ]
 
 {-
 ************************************************************************
@@ -1602,7 +1491,7 @@ badFieldTypes prs
 
 badFieldsUpd
   :: HsRecFields Name a -- Field names that don't belong to a single datacon
-  -> [DataCon] -- Data cons of the type which the first field name belongs to
+  -> [ConLike] -- Data cons of the type which the first field name belongs to
   -> SDoc
 badFieldsUpd rbinds data_cons
   = hang (ptext (sLit "No constructor has all these fields:"))
@@ -1639,7 +1528,7 @@ badFieldsUpd rbinds data_cons
           hsRecFields rbinds
 
     fieldLabelSets :: [Set.Set Name]
-    fieldLabelSets = map (Set.fromList . dataConFieldLabels) data_cons
+    fieldLabelSets = map (Set.fromList . conLikeFieldLabels) data_cons
 
     -- Sort in order of increasing number of True, so that a smaller
     -- conflicting set can be found.

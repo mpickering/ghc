@@ -45,7 +45,6 @@ import TysWiredIn
 import Type
 import ConLike
 import DataCon
-import PatSyn( patSynInstResTy )
 import Name
 import NameSet
 import Var

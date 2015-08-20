@@ -38,7 +38,7 @@ module Id (
 
         -- ** Taking an Id apart
         idName, idType, idUnique, idInfo, idDetails, idRepArity,
-        recordSelectorFieldLabel,
+        recordSelectorFieldLabel, patSynSelectorFieldLabel,
 
         -- ** Modifying an Id
         setIdName, setIdUnique, Id.setIdType,
@@ -362,6 +362,13 @@ recordSelectorFieldLabel id
   = case Var.idDetails id of
         RecSelId { sel_tycon = tycon } -> (tycon, idName id)
         _ -> panic "recordSelectorFieldLabel"
+
+
+patSynSelectorFieldLabel :: Id -> (PatSyn, FieldLabel)
+patSynSelectorFieldLabel id
+  = case Var.idDetails id of
+        PatSynSelId pat_syn -> (pat_syn, idName id)
+        _ -> panic "patSynSelectorFieldLabel"
 
 isRecordSelector        :: Id -> Bool
 isNaughtyRecordSelector :: Id -> Bool

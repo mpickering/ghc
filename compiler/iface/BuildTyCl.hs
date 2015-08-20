@@ -35,7 +35,6 @@ import Type
 import Id
 import Coercion
 import TcType
-import HsPat
 
 import DynFlags
 import TcRnMonad
