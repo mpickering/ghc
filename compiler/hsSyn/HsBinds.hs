@@ -938,11 +938,11 @@ instance Foldable HsPatSynDetails where
 
     foldl1 f (InfixPatSyn left right) = left `f` right
     foldl1 f (PrefixPatSyn args) = Data.List.foldl1 f args
-    foldl1 f (RecordPatSyn args) = Data.List.foldl1 f (map (Data.List.foldl1 f) args)
+    foldl1 f (RecordPatSyn args) = Data.List.foldl1 f (map (Data.Foldable.foldl1 f) args)
 
     foldr1 f (InfixPatSyn left right) = left `f` right
     foldr1 f (PrefixPatSyn args) = Data.List.foldr1 f args
-    foldr1 f (RecordPatSyn args) = Data.List.foldr1 f (map (Data.List.foldr1 f) args)
+    foldr1 f (RecordPatSyn args) = Data.List.foldr1 f (map (Data.Foldable.foldr1 f) args)
 
 -- TODO: After a few more versions, we should probably use these.
 #if __GLASGOW_HASKELL__ >= 709
