@@ -118,7 +118,6 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    --      Need to do this before (D2) because rnTopBindsLHS
    --      looks up those pattern synonyms (Trac #9889)
    pat_syn_bndrs <- mapM newTopSrcBinder (hsPatSynBinders val_decls) ;
-   traceRn  (ppr pat_syn_bndrs) ;
    tc_envs <- extendGlobalRdrEnvRn (map Avail pat_syn_bndrs) local_fix_env ;
    setEnvs tc_envs $ do {
    inNewEnv (extendPatternSynSelectorEnv val_decls) $ \_ -> do {
@@ -1600,13 +1599,12 @@ extendPatternSynSelectorEnv (ValBindsIn bs _)
         ; field_env' <- foldrM get_field (tcg_field_env tcg_env) all_pat_syn_sels
         ; return (tcg_env { tcg_field_env = field_env' }) }
   where
-    -- we want to lookup:
-    --  (a) a patterns synonym field
+    -- we want to lookuk patterns synonym fields
     -- knowing that they're from this module.
     -- lookupLocatedTopBndrRn does this, because it does a lookupGreLocalRn_maybe,
     -- which keeps only the local ones.
     lookup x = do { x' <- lookupLocatedTopBndrRn x
-                    ; return $ unLoc x'}
+                  ; return $ unLoc x'}
 
     pat_syn_decls =
       [psb | L _ (PatSynBind psb) <- bagToList bs]
@@ -1616,10 +1614,9 @@ extendPatternSynSelectorEnv (ValBindsIn bs _)
     get_field (RecordPatSynField visible _)
             (RecFields env fld_set)
         = do { fname <- lookup visible
---             ; let env'    = foldl (\e c -> extendNameEnv e c flds') env cons'
-
              ; let fld_set' = extendNameSetList fld_set [fname]
              ; return $ (RecFields env fld_set') }
+
 extendPatternSynSelectorEnv (ValBindsOut {}) = panic "extendPatternSynSelectorEnv"
 
 {-

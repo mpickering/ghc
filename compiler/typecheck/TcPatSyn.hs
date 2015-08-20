@@ -228,13 +228,14 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
        ; let field_labels = map (unLoc . recordPatSynId) rec_fields
 
 
-       -- Selectors, after making patSyn as we need patSyn for PatSynSelId
+       -- Selectors
        ; let unLocFields fs = map (fmap unLoc) fs
        ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds patSyn
                                                 lpat pat_ty univ_tvs
                                                 (zip (unLocFields rec_fields) arg_tys)
                                                 )
        ; tcg_env <- tcRecSelBinds (ValBindsOut selector_binds sigs)
+
        ; let patSyn = mkPatSyn (unLoc lname) is_infix
                         (univ_tvs, req_theta)
                         (ex_tvs, prov_theta)
@@ -248,8 +249,6 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
     qtvs = univ_tvs ++ ex_tvs
     theta = prov_theta ++ req_theta
     arg_tys = map (varType . fst) wrapped_args
-
-
 
 {-
 ************************************************************************
@@ -368,20 +367,17 @@ mkPatSynRecSelBind ps lpat data_ty _univ_ty_vars
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId (PatSynSelId ps) sel_name sel_ty
 
-    -- Selector type; Note [Polymorphic selectors]
+    -- Selector type; Note [Polymorphic selectors] in TcTyClsDecls
     data_tvs   = tyVarsOfType data_ty
     is_naughty = not (tyVarsOfType field_ty `subVarSet` data_tvs)
     (field_tvs, field_theta, field_tau) = tcSplitSigmaTy field_ty
-    sel_ty | is_naughty = unitTy  -- See Note [Naughty record selectors]
+    sel_ty | is_naughty = unitTy  -- See Note [Naughty record selectors] in TcTyClsDecls
            | otherwise  = mkForAllTys (varSetElemsKvsFirst $
                                        data_tvs `extendVarSetList` field_tvs) $
-                          mkPhiTy []                        $   -- Urgh!
                           mkPhiTy field_theta               $   -- Urgh!
                           mkFunTy data_ty field_tau
 
-    -- Make the binding: sel (C2 { fld = x }) = x
-    --                   sel (C7 { fld = x }) = x
-    --    where cons_w_field = [C2,C7]
+    -- Make the binding
     sel_bind = mkTopFunBind Generated sel_lname alts
       where
         alts | is_naughty = [mkSimpleMatch [] unit_rhs]

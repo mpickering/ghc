@@ -1428,7 +1428,6 @@ instance Binary IfaceDecl where
         put_ bh a8
         put_ bh a9
         put_ bh a10
-
         put_ bh a11
 
     get bh = do

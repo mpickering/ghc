@@ -650,6 +650,36 @@ In the outgoing (HsRecordUpd scrut binds cons in_inst_tys out_inst_tys):
   * in_inst_tys, out_inst_tys have same length, and instantiate the
         *representation* tycon of the data cons.  In Note [Data
         family example], in_inst_tys = [t1,t2], out_inst_tys = [t3,t2]
+
+Note [Mixed Record Field Updates]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Consider the following pattern synonym.
+
+  data MyRec = MyRec { foo :: Int, qux :: String }
+
+  pattern HisRec{f1, f2} = MyRec{foo = f1, qux=f2}
+
+This allows updates such as the following
+
+  updater :: MyRec -> MyRec
+  updater a = a {f1 = 1 }
+
+It would also make sense to allow the following update (which we reject).
+
+  updater a = a {f1 = 1, qux = "two" } ==? MyRec 1 "two"
+
+This leads to confusing behaviour when the selectors in fact refer the same field.
+
+  updater a = a {f1 = 1, foo = 2} ==? ???
+
+For this reason, we reject a mixture of pattern synonym and normal record selectors in the same update block. Although of course we still allow the following.
+
+  updater a = (a {f1 = 1}) {foo = 2}
+
+  > updater (MyRec 0 "str")
+  MyRec 2 "str"
+
 -}
 
 tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
@@ -668,9 +698,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
                            not (isPatSynRecordSelector sel_id),       -- Excludes class ops
                            let L loc fld_name = hsRecFieldId (unLoc fld) ]
         ; unless (null bad_guys) (sequence bad_guys >> failM)
-        -- Note that there are occasions when it might make sense to mix
-        -- pattern and record selectors (when a pattern refers to a record)
-        -- but we forbid it for clarity.
+        -- See note [Mixed Record Selectors]
         ; unless (all isRecordSelector sel_ids || all isPatSynRecordSelector sel_ids)
             (addErrTc mixedSelectors >> failM)
 
@@ -779,7 +807,6 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
     -- These tyvars must not change across the updates
     getFixedTyVars tvs1 cons
       = mkVarSet [tv1 | con <- cons
-                      -- TODO: Move this into conlike
                       , let (univ_tvs, ex_tvs, eqspec, _prov_theta, req_theta, arg_tys, _)
                               = conLikeFullSig con
                             tvs = univ_tvs ++ ex_tvs
@@ -797,8 +824,6 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
                                             , not (fld `elem` upd_fld_names)]
                       , (tv1,tv) <- tvs1 `zip` tvs      -- Discards existentials in tvs
                       , tv `elemVarSet` fixed_tvs ]
-
-
 
 {-
 ************************************************************************
@@ -862,7 +887,6 @@ tcExpr (HsRnBracketOut brack ps) res_ty = tcUntypedBracket brack ps res_ty
 tcExpr other _ = pprPanic "tcMonoExpr" (ppr other)
   -- Include ArrForm, ArrApp, which shouldn't appear at all
   -- Also HsTcBracketOut, HsQuasiQuoteE
-  --
 
 {-
 ************************************************************************
