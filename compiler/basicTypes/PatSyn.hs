@@ -34,7 +34,6 @@ import FastString
 import Var
 import HsBinds( HsPatSynDetails(..) )
 import TyCon
-import HsPat
 
 import qualified Data.Data as Data
 import qualified Data.Typeable
