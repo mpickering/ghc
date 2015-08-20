@@ -688,7 +688,7 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                                  _ -> []
 
         ; fvs' `seq` -- See Note [Free-variable space leak]
-          return (bind', name : selector_names , fvs')
+          return (bind', name : selector_names , fvs1)
           -- See Note [Pattern synonym builders don't yield dependencies]
       }
   where
