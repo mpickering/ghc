@@ -135,8 +135,9 @@ import Util
 import StaticFlags
 import {-# SOURCE #-} ConLike ( ConLike(..) )
 import {-# SOURCE #-} PatSyn ( PatSyn )
+#if __GLASGOW_HASKELL__ <= 708
 import Control.Applicative ((<$>))
-import Prelude
+#endif
 
 -- infixl so you can say (id `set` a `set` b)
 infixl  1 `setIdUnfoldingLazily`,
