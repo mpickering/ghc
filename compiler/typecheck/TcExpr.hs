@@ -720,22 +720,26 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
                 -- it contains *all* the fields that are being updated
                 -- Other ones will cause a runtime error if they occur
 
-                -- Take apart a representative constructor
-              con1 = ASSERT( not (null relevant_cons) ) head relevant_cons
+
+
+        -- Step 2
+        -- Check that at least one constructor has all the named fields
+        -- i.e. has an empty set of bad fields returned by badFields
+        ; checkTc (not (null relevant_cons)) (badFieldsUpd rbinds con_likes)
+
+        -- Take apart a representative constructor
+        ; let con1 = ASSERT( not (null relevant_cons) ) head relevant_cons
               (con1_tvs, _, _, _, _, con1_arg_tys, _) = conLikeFullSig con1
               con1_flds = conLikeFieldLabels con1
               def_res_ty  = conLikeResTy con1
               con1_res_ty =
                 (maybe def_res_ty mkFamilyTyConApp mtycon) (mkTyVarTys con1_tvs)
 
+        -- Check that we're not dealing with a unidirectional pattern
+        -- synonym
         ; case conLikeWrapId con1 of
             Nothing -> nonBidirectionalErr (conLikeName con1)
             _ -> return ()
-
-        -- Step 2
-        -- Check that at least one constructor has all the named fields
-        -- i.e. has an empty set of bad fields returned by badFields
-        ; checkTc (not (null relevant_cons)) (badFieldsUpd rbinds con_likes)
 
         -- STEP 3    Note [Criteria for update]
         -- Check that each updated field is polymorphic; that is, its type
