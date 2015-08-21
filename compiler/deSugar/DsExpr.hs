@@ -601,12 +601,12 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
           (patSynInstResTy pat_syn in_inst_tys, patSynInstResTy pat_syn out_inst_tys)
     mk_alt upd_fld_env con
       = do { let (univ_tvs, ex_tvs, eq_spec,
-                  _prov_theta, theta, arg_tys, _) = conLikeFullSig con
+                  prov_theta, _req_theta, arg_tys, _) = conLikeFullSig con
                  subst = mkTopTvSubst (univ_tvs `zip` in_inst_tys)
 
                 -- I'm not bothering to clone the ex_tvs
            ; eqs_vars   <- mapM newPredVarDs (substTheta subst (eqSpecPreds eq_spec))
-           ; theta_vars <- mapM newPredVarDs (substTheta subst theta)
+           ; theta_vars <- mapM newPredVarDs (substTheta subst prov_theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
            ; let field_labels = conLikeFieldLabels con
                  req_wrap = mkWpTyApps in_inst_tys
