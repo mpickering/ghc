@@ -6,9 +6,8 @@ import Outputable ( Outputable, OutputableBndr )
 import Unique ( Uniquable )
 import BasicTypes (Arity)
 import {-# SOURCE #-} TypeRep (Type)
-import Var (TyVar, Id)
+import Var (TyVar)
 import Name (Name)
-import TyCon (FieldLabel)
 
 data PatSyn
 
@@ -16,9 +15,6 @@ patSynArity :: PatSyn -> Arity
 patSynInstArgTys :: PatSyn -> [Type] -> [Type]
 patSynExTyVars :: PatSyn -> [TyVar]
 patSynName :: PatSyn -> Name
-patSynFieldLabels :: PatSyn -> [FieldLabel]
-patSynBuilder :: PatSyn -> Maybe (Id, Bool)
-
 
 
 
