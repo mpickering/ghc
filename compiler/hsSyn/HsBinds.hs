@@ -525,7 +525,8 @@ instance (OutputableBndr idL, OutputableBndr idR) => Outputable (PatSynBind idL 
       (is_infix, ppr_details) = case details of
           InfixPatSyn v1 v2 -> (True, hsep [ppr v1, pprInfixOcc psyn, ppr v2])
           PrefixPatSyn vs   -> (False, hsep (pprPrefixOcc psyn : map ppr vs))
-          RecordPatSyn vs   -> (False, pprPrefixOcc psyn <> (braces (sep (punctuate comma (map ppr vs)))))
+          RecordPatSyn vs   ->
+            (False, pprPrefixOcc psyn <> braces (sep (punctuate comma (map ppr vs))))
 
       ppr_rhs = case dir of
           Unidirectional           -> ppr_simple (ptext (sLit "<-"))

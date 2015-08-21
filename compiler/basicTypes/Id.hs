@@ -443,15 +443,13 @@ idDataCon :: Id -> DataCon
 idDataCon id = isDataConId_maybe id `orElse` pprPanic "idDataCon" (ppr id)
 
 idConLike :: Id -> ConLike
-idConLike id = (RealDataCon <$> isDataConId_maybe id)
-                `orElse` (PatSynCon <$> isPatSynConId_maybe id)
-                `orElse` pprPanic "idConLike" (ppr id)
-
-isPatSynConId_maybe :: Id -> Maybe PatSyn
-isPatSynConId_maybe id = case Var.idDetails id of
-                           PatSynWorkId ps -> Just ps
-                           PatSynWrapId ps -> Just ps
-                           _               -> Nothing
+idConLike id =
+  case Var.idDetails id of
+       DataConWorkId con -> RealDataCon con
+       DataConWrapId con -> RealDataCon con
+       PatSynWorkId ps -> PatSynCon ps
+       PatSynWrapId ps -> PatSynCon ps
+       _               -> pprPanic "idConLike" (ppr id)
 
 hasNoBinding :: Id -> Bool
 -- ^ Returns @True@ of an 'Id' which may not have a

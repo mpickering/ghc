@@ -39,6 +39,7 @@ import Id
 import IdInfo
 import ConLike
 import DataCon
+import PatSyn
 import Name
 import TyCon
 import Type
@@ -669,11 +670,14 @@ It would also make sense to allow the following update (which we reject).
 
   updater a = a {f1 = 1, qux = "two" } ==? MyRec 1 "two"
 
-This leads to confusing behaviour when the selectors in fact refer the same field.
+This leads to confusing behaviour when the selectors in fact refer the same
+field.
 
   updater a = a {f1 = 1, foo = 2} ==? ???
 
-For this reason, we reject a mixture of pattern synonym and normal record selectors in the same update block. Although of course we still allow the following.
+For this reason, we reject a mixture of pattern synonym and normal record
+selectors in the same update block. Although of course we still allow the
+following.
 
   updater a = (a {f1 = 1}) {foo = 2}
 
@@ -700,7 +704,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
         ; unless (null bad_guys) (sequence bad_guys >> failM)
         -- See note [Mixed Record Selectors]
         ; unless (all isRecordSelector sel_ids || all isPatSynRecordSelector sel_ids)
-            (addErrTc mixedSelectors >> failM)
+            (addErrTc (mixedSelectors sel_ids) >> failM)
 
         -- STEP 1
         -- Figure out the tycon and data cons from the first field name
@@ -737,9 +741,8 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
 
         -- Check that we're not dealing with a unidirectional pattern
         -- synonym
-        ; case conLikeWrapId_maybe con1 of
-            Nothing -> nonBidirectionalErr (conLikeName con1)
-            _ -> return ()
+        ; unless (isJust $ conLikeWrapId_maybe con1)
+                  (nonBidirectionalErr (conLikeName con1))
 
         -- STEP 3    Note [Criteria for update]
         -- Check that each updated field is polymorphic; that is, its type
@@ -811,10 +814,10 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
     -- These tyvars must not change across the updates
     getFixedTyVars tvs1 cons
       = mkVarSet [tv1 | con <- cons
-                      , let (univ_tvs, ex_tvs, eqspec, _prov_theta, req_theta, arg_tys, _)
+                      , let (univ_tvs, ex_tvs, eqspec, prov_theta, _req_theta, arg_tys, _)
                               = conLikeFullSig con
                             tvs = univ_tvs ++ ex_tvs
-                            theta = eqSpecPreds eqspec ++ req_theta
+                            theta = eqSpecPreds eqspec ++ prov_theta
                             flds = conLikeFieldLabels con
                             fixed_tvs = exactTyVarsOfTypes fixed_tys
                                     -- fixed_tys: See Note [Type of a record update]
@@ -1602,9 +1605,22 @@ notSelector :: Name -> SDoc
 notSelector field
   = hsep [quotes (ppr field), ptext (sLit "is not a record selector")]
 
-mixedSelectors :: SDoc
-mixedSelectors
-  = ptext (sLit "Mixture of pattern and record synonym selectors")
+mixedSelectors :: [Id] -> SDoc
+mixedSelectors names
+  = ptext (sLit "Cannot use a mixture of pattern synonym and record selectors") $$
+    ptext (sLit "Record selectors defined by")
+      <+> quotes (ppr (tyConName rep_dc))
+      <> text ":"
+      <+> pprWithCommas ppr rec_sels $$
+    ptext (sLit "Pattern synonym selectors defined by")
+      <+> quotes (ppr (patSynName rep_ps))
+      <> text ":"
+      <+> pprWithCommas ppr pat_sels
+  where
+    pat_sels@(ps_rep_id:_) = filter isPatSynRecordSelector names
+    rec_sels@(dc_rep_id:_) = filter isRecordSelector names
+    (rep_ps, _) = patSynSelectorFieldLabel ps_rep_id
+    (rep_dc, _) = recordSelectorFieldLabel dc_rep_id
 
 
 missingStrictFields :: ConLike -> [FieldLabel] -> SDoc

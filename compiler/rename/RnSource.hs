@@ -119,7 +119,7 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    --      looks up those pattern synonyms (Trac #9889)
    pat_syn_bndrs <- mapM newTopSrcBinder (hsPatSynBinders val_decls) ;
    tc_envs <- extendGlobalRdrEnvRn (map Avail pat_syn_bndrs) local_fix_env ;
-   setEnvs tc_envs $ do {
+   setEnvs tc_envs $
    inNewEnv (extendPatternSynSelectorEnv val_decls) $ \_ -> do {
 
    -- (D2) Rename the left-hand sides of the value bindings.
@@ -219,7 +219,7 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    traceRn (text "finish rnSrc" <+> ppr rn_group) ;
    traceRn (text "finish Dus" <+> ppr src_dus ) ;
    return (final_tcg_env, rn_group)
-                    }}}}}}
+                    }}}}}
 
 -- some utils because we do this a bunch above
 -- compute and install the new env

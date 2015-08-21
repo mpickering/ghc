@@ -616,9 +616,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                      = nlHsVar (lookupNameEnv upd_fld_env field_name `orElse` pat_arg_id)
                  -- SAFE: the typechecker will complain if the synonym is
                  -- not bidirectional
-                 wrap_id = case conLikeWrapId_maybe con of
-                             Just w_id -> w_id
-                             Nothing -> panic "dsExpr:mk_alt"
+                 wrap_id = expectJust "dsExpr:mk_alt" (conLikeWrapId_maybe con)
                  inst_con = noLoc $ HsWrap wrap (HsVar wrap_id)
                         -- Reconstruct with the WrapId so that unpacking happens
                  wrap = mkWpEvVarApps theta_vars          <.>
@@ -633,8 +631,9 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                   case con of
                     RealDataCon data_con ->
                       let
-                        wrap_co = mkTcTyConAppCo Nominal (dataConTyCon data_con)
-                                       [ lookup tv ty | (tv,ty) <- univ_tvs `zip` out_inst_tys ]
+                        wrap_co =
+                          mkTcTyConAppCo Nominal (dataConTyCon data_con)
+                            [ lookup tv ty | (tv,ty) <- univ_tvs `zip` out_inst_tys ]
                         lookup univ_tv ty = case lookupVarEnv wrap_subst univ_tv of
                                                 Just co' -> co'
                                                 Nothing  -> mkTcReflCo Nominal ty
