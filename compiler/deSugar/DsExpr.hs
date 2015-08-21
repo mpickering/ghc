@@ -616,7 +616,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                      = nlHsVar (lookupNameEnv upd_fld_env field_name `orElse` pat_arg_id)
                  -- SAFE: the typechecker will complain if the synonym is
                  -- not bidirectional
-                 wrap_id = case conLikeWrapId con of
+                 wrap_id = case conLikeWrapId_maybe con of
                              Just w_id -> w_id
                              Nothing -> panic "dsExpr:mk_alt"
                  inst_con = noLoc $ HsWrap wrap (HsVar wrap_id)
