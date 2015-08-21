@@ -601,13 +601,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
           (patSynInstResTy pat_syn in_inst_tys, patSynInstResTy pat_syn out_inst_tys)
     mk_alt upd_fld_env con
       = do { let (univ_tvs, ex_tvs, eq_spec,
-                  theta, arg_tys, _) =
-                    case con of
-                      (RealDataCon data_con) -> dataConFullSig data_con
-                      (PatSynCon patSyn)     ->
-                        let (univ_tvs, ex_tvs, _prov_theta, req_theta, arg_tys, f)
-                              = patSynSig patSyn
-                        in (univ_tvs, ex_tvs, [], req_theta, arg_tys, f)
+                  _prov_theta, theta, arg_tys, _) = conLikeFullSig con
                  subst = mkTopTvSubst (univ_tvs `zip` in_inst_tys)
 
                 -- I'm not bothering to clone the ex_tvs
@@ -615,8 +609,8 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
            ; theta_vars <- mapM newPredVarDs (substTheta subst theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
            ; let field_labels = conLikeFieldLabels con
-           ; let req_wrap = mkWpTyApps in_inst_tys
-           ; let val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
+                 req_wrap = mkWpTyApps in_inst_tys
+                 val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
                  mk_val_arg field_name pat_arg_id
                      = nlHsVar (lookupNameEnv upd_fld_env field_name `orElse` pat_arg_id)
