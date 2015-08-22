@@ -1,0 +1,14 @@
+
+records-exquant.hs:8:7: error:
+    Couldn't match expected type ‘Showable -> t’ with actual type ‘()’
+    Relevant bindings include
+      qux :: t (bound at records-exquant.hs:8:1)
+    The function ‘a’ is applied to one argument,
+    but its type ‘()’ has none
+    In the expression: a (Showable True)
+    In an equation for ‘qux’: qux = a (Showable True)
+
+records-exquant.hs:10:7: error:
+    Record update for insufficiently polymorphic field: a :: a
+    In the expression: (Showable ()) {a = True}
+    In an equation for ‘foo’: foo = (Showable ()) {a = True}
