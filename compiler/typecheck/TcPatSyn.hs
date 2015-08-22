@@ -231,7 +231,7 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
        -- Selectors
        ; let unLocFields fs = map (fmap unLoc) fs
        ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds patSyn
-                                                lpat pat_ty univ_tvs
+                                                lpat req_theta pat_ty univ_tvs
                                                 (zip (unLocFields rec_fields) arg_tys)
                                                 )
        ; tcg_env <- tcRecSelBinds (ValBindsOut selector_binds sigs)
@@ -346,20 +346,22 @@ tcPatSynMatcher (L loc name) lpat
 --
 mkPatSynRecSelBinds :: PatSyn
                     -> LPat Name -- ^ RHS pattern
+                    -> ThetaType -- ^ Req Theta
                     -> Type
                     -> [TyVar]
                     -> [(RecordPatSynField Name, Type)] -- ^ Visible field labels
                     -> [(LSig Name, (RecFlag, LHsBinds Name))]
-mkPatSynRecSelBinds ps lpat data_ty univ_ty_vars fields =
-    map (mkPatSynRecSelBind ps lpat data_ty univ_ty_vars) fields
+mkPatSynRecSelBinds ps lpat req_theta data_ty univ_ty_vars fields =
+    map (mkPatSynRecSelBind ps lpat req_theta data_ty univ_ty_vars) fields
 
 mkPatSynRecSelBind :: PatSyn
                    -> LPat Name
+                   -> ThetaType
                    -> Type
                    -> [TyVar]
                    -> (RecordPatSynField Name, Type)
                    -> (LSig Name, (RecFlag, LHsBinds Name))
-mkPatSynRecSelBind ps lpat data_ty _univ_ty_vars
+mkPatSynRecSelBind ps lpat req_theta data_ty univ_ty_vars
                      ((RecordPatSynField sel_name sel_pat_name), field_ty)
   =
       (L loc (IdSig sel_id) , (NonRecursive, unitBag (L loc sel_bind)))
@@ -374,7 +376,7 @@ mkPatSynRecSelBind ps lpat data_ty _univ_ty_vars
     sel_ty | is_naughty = unitTy  -- See Note [Naughty record selectors] in TcTyClsDecls
            | otherwise  = mkForAllTys (varSetElemsKvsFirst $
                                        data_tvs `extendVarSetList` field_tvs) $
-                          mkPhiTy field_theta               $   -- Urgh!
+                          mkPhiTy (field_theta ++ req_theta)            $   -- Urgh!
                           mkFunTy data_ty field_tau
 
     -- Make the binding
