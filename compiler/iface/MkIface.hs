@@ -111,6 +111,7 @@ import Maybes
 import ListSetOps
 import Binary
 import Fingerprint
+import Bag
 import Exception
 
 import Control.Monad
@@ -1648,16 +1649,14 @@ tyConToIfaceDecl env tycon
             axn  = coAxiomName ax
     to_if_fam_flav (ClosedSynFamilyTyCon Nothing)
       = IfaceClosedSynFamilyTyCon Nothing
-    to_if_fam_flav AbstractClosedSynFamilyTyCon
-      = IfaceAbstractClosedSynFamilyTyCon
+    to_if_fam_flav AbstractClosedSynFamilyTyCon = IfaceAbstractClosedSynFamilyTyCon
+    to_if_fam_flav (DataFamilyTyCon {})         = IfaceDataFamilyTyCon
+    to_if_fam_flav (BuiltInSynFamTyCon {})      = IfaceBuiltInSynFamTyCon
 
-    to_if_fam_flav (BuiltInSynFamTyCon {})
-      = IfaceBuiltInSynFamTyCon
 
 
     ifaceConDecls (NewTyCon { data_con = con })    flds = IfNewTyCon  (ifaceConDecl con) (ifaceOverloaded flds) (ifaceFields flds)
     ifaceConDecls (DataTyCon { data_cons = cons }) flds = IfDataTyCon (map ifaceConDecl cons) (ifaceOverloaded flds) (ifaceFields flds)
-    ifaceConDecls (DataFamilyTyCon {})             _    = IfDataFamTyCon
     ifaceConDecls (TupleTyCon { data_con = con })  _    = IfDataTyCon [ifaceConDecl con] False []
     ifaceConDecls (AbstractTyCon distinct)         _    = IfAbstractTyCon distinct
         -- The AbstractTyCon case happens when a TyCon has been trimmed
