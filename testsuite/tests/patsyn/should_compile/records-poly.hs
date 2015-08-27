@@ -14,6 +14,3 @@ expr3 a = a { msnd = 2}
 
 expr2 :: (a, b) -> a
 expr2 a = mfst a
-
-
-

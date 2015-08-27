@@ -686,7 +686,7 @@ following.
 
 -}
 
-tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
+tcExpr (RecordUpd record_expr rbinds _ _ _ _ _) res_ty
   = ASSERT( notNull upd_fld_names )
     do  {
         -- STEP 0
@@ -733,7 +733,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
 
         -- Take apart a representative constructor
         ; let con1 = ASSERT( not (null relevant_cons) ) head relevant_cons
-              (con1_tvs, _, _, _, _, con1_arg_tys, _) = conLikeFullSig con1
+              (con1_tvs, _, _, prov_theta, req_theta, con1_arg_tys, _) = conLikeFullSig con1
               con1_flds = conLikeFieldLabels con1
               def_res_ty  = conLikeResTy con1
               con1_res_ty =
@@ -803,10 +803,20 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
                        = mkWpCast (mkTcUnbranchedAxInstCo Representational co_con scrut_inst_tys)
                        | otherwise
                        = idHsWrapper
+
+        -- Step 8: Check that the req constraints are satisfied
+        ; let req_theta' = substTheta scrut_subst req_theta
+        ; req_wrap <- instCallConstraints PatOrigin req_theta'
+
+
+        ; let prov_theta' = substTheta result_subst prov_theta
+        ; prov_wrap <- instCallConstraints PatOrigin prov_theta'
+
+
         -- Phew!
         ; return $ mkHsWrapCo co_res $
           RecordUpd (mkLHsWrap scrut_co record_expr') rbinds'
-                    relevant_cons scrut_inst_tys result_inst_tys }
+                    relevant_cons scrut_inst_tys result_inst_tys req_wrap prov_wrap }
   where
     upd_fld_names = hsRecFields rbinds
 

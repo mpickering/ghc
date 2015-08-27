@@ -552,7 +552,7 @@ So we need to cast (T a Int) to (T a b).  Sigh.
 -}
 
 dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
-                       cons_to_upd in_inst_tys out_inst_tys)
+                        cons_to_upd in_inst_tys out_inst_tys dict_req_wrap prov_wrap)
   | null fields
   = dsLExpr record_expr
   | otherwise
@@ -601,15 +601,19 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
           (patSynInstResTy pat_syn in_inst_tys, patSynInstResTy pat_syn out_inst_tys)
     mk_alt upd_fld_env con
       = do { let (univ_tvs, ex_tvs, eq_spec,
-                  prov_theta, _req_theta, arg_tys, _) = conLikeFullSig con
+                  prov_theta, req_theta, arg_tys, _) = conLikeFullSig con
                  subst = mkTopTvSubst (univ_tvs `zip` in_inst_tys)
 
                 -- I'm not bothering to clone the ex_tvs
            ; eqs_vars   <- mapM newPredVarDs (substTheta subst (eqSpecPreds eq_spec))
            ; theta_vars <- mapM newPredVarDs (substTheta subst prov_theta)
+           ; req_vars <- mapM newPredVarDs (substTheta subst req_theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
+           ; pprTrace "in_inst_tys" (ppr in_inst_tys) (return ())
+           ; pprTrace "in_inst_tys" (ppr out_inst_tys) (return ())
+           ; pprTrace "in_inst_tys" (ppr arg_tys) (return ())
+           ; pprTrace "in_inst_tys" (ppr out_ty) (return ())
            ; let field_labels = conLikeFieldLabels con
-                 req_wrap = mkWpTyApps in_inst_tys
                  val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
                  mk_val_arg field_name pat_arg_id
@@ -619,7 +623,10 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                  wrap_id = expectJust "dsExpr:mk_alt" (conLikeWrapId_maybe con)
                  inst_con = noLoc $ HsWrap wrap (HsVar wrap_id)
                         -- Reconstruct with the WrapId so that unpacking happens
-                 wrap = mkWpEvVarApps theta_vars          <.>
+                 wrap =
+                        dict_req_wrap <.>
+                        prov_wrap <.>
+                        --mkWpEvVarApps theta_vars          <.>
                         mkWpTyApps    (mkTyVarTys ex_tvs) <.>
                         mkWpTyApps [ty | (tv, ty) <- univ_tvs `zip` out_inst_tys
                                        , not (tv `elemVarEnv` wrap_subst) ]
@@ -645,6 +652,8 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
 
                  wrap_subst = mkVarEnv [ (tv, mkTcSymCo (mkTcCoVarCo eq_var))
                                         | ((tv,_),eq_var) <- eq_spec `zip` eqs_vars ]
+
+                 req_wrap = dict_req_wrap <.> mkWpTyApps in_inst_tys
                  pat = noLoc $ ConPatOut { pat_con = noLoc con
                                          , pat_tvs = ex_tvs
                                          , pat_dicts = eqs_vars ++ theta_vars

@@ -35,6 +35,7 @@ import Lexeme
 import Util
 import FastString
 import Outputable
+import TcEvidence
 
 import qualified Data.ByteString as BS
 import Control.Monad( unless, liftM, ap )
@@ -714,7 +715,8 @@ cvtl e = wrapL (cvt e)
                               ; flds' <- mapM cvtFld flds
                               ; return $ RecordUpd e'
                                           (HsRecFields flds' Nothing)
-                                          PlaceHolder PlaceHolder PlaceHolde
+                                          PlaceHolder PlaceHolder PlaceHolder
+                                          idHsWrapper idHsWrapper }
     cvt (StaticE e)      = fmap HsStatic $ cvtl e
 
 {- Note [Dropping constructors]

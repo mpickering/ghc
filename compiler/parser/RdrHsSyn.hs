@@ -1178,8 +1178,10 @@ mkRecConstrOrUpdate (L l (HsVar c)) _ (fs,dd)
   | isRdrDataCon c
   = return (RecordCon (L l c) noPostTcExpr (mk_rec_fields fs dd))
 mkRecConstrOrUpdate exp _ (fs,dd)
+<<<<<<< HEAD
   = return (RecordUpd exp (mk_rec_fields fs dd)
-                      PlaceHolder PlaceHolder PlaceHolder)
+                      PlaceHolder PlaceHolder PlaceHolder
+                      idHsWrapper idHsWrapper)
 
 mk_rec_fields :: [LHsRecField id arg] -> Bool -> HsRecFields id arg
 mk_rec_fields fs False = HsRecFields { rec_flds = fs, rec_dotdot = Nothing }

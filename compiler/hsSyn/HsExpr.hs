@@ -301,6 +301,8 @@ data HsExpr id
                 (PostTc id [Type])  --              and  *output* record type
                                    -- The original type can be reconstructed
                                    -- with conLikeResTy
+                HsWrapper          -- Req wrapper
+                HsWrapper          -- Prov wrapper
   -- For a type family, the arg types are of the *instance* tycon,
   -- not the family tycon
 
@@ -701,7 +703,7 @@ ppr_expr (ExplicitPArr _ exprs)
 ppr_expr (RecordCon con_id _ rbinds)
   = hang (ppr con_id) 2 (ppr rbinds)
 
-ppr_expr (RecordUpd aexp rbinds _ _ _)
+ppr_expr (RecordUpd aexp rbinds _ _ _ _ _)
   = hang (pprLExpr aexp) 2 (ppr rbinds)
 
 ppr_expr (ExprWithTySig expr sig _)
