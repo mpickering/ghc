@@ -10,6 +10,10 @@ pattern MyTuple{mfst, msnd} = (mfst, msnd)
 expr1 :: (Int, String) -> (Int, Int)
 expr1 a = a { msnd = 2}
 
+expr3 a = a { msnd = 2}
+
 expr2 :: (a, b) -> a
 expr2 a = mfst a
+
+
 
