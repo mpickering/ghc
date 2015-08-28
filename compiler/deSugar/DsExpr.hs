@@ -607,7 +607,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                 -- I'm not bothering to clone the ex_tvs
            ; eqs_vars   <- mapM newPredVarDs (substTheta subst (eqSpecPreds eq_spec))
            ; theta_vars <- mapM newPredVarDs (substTheta subst prov_theta)
-           ; req_vars <- mapM newPredVarDs (substTheta subst req_theta)
+           --; req_vars <- mapM newPredVarDs (substTheta subst req_theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
            ; pprTrace "in_inst_tys" (ppr in_inst_tys) (return ())
            ; pprTrace "in_inst_tys" (ppr out_inst_tys) (return ())
