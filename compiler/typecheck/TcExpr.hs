@@ -733,7 +733,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ _) res_ty
 
         -- Take apart a representative constructor
         ; let con1 = ASSERT( not (null relevant_cons) ) head relevant_cons
-              (con1_tvs, _, _, prov_theta, req_theta, con1_arg_tys, _) = conLikeFullSig con1
+              (con1_tvs, _, _, _prov_theta, req_theta, con1_arg_tys, _) = conLikeFullSig con1
               con1_flds = conLikeFieldLabels con1
               def_res_ty  = conLikeResTy con1
               con1_res_ty =
