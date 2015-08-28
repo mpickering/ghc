@@ -552,7 +552,7 @@ So we need to cast (T a Int) to (T a b).  Sigh.
 -}
 
 dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
-                        cons_to_upd in_inst_tys out_inst_tys dict_req_wrap _prov_wrap)
+                        cons_to_upd in_inst_tys out_inst_tys dict_req_wrap )
   | null fields
   = dsLExpr record_expr
   | otherwise

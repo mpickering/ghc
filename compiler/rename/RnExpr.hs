@@ -255,10 +255,10 @@ rnExpr (RecordCon con_id _ rbinds)
         ; return (RecordCon conname noPostTcExpr rbinds',
                   fvRbinds `addOneFV` unLoc conname) }
 
-rnExpr (RecordUpd expr rbinds _ _ _ req_wrap prov_wrap)
+rnExpr (RecordUpd expr rbinds _ _ _ req_wrap)
   = do  { (expr', fvExpr) <- rnLExpr expr
         ; (rbinds', fvRbinds) <- rnHsRecBinds HsRecFieldUpd rbinds
-        ; return (RecordUpd expr' rbinds' PlaceHolder PlaceHolder PlaceHolder req_wrap prov_wrap,
+        ; return (RecordUpd expr' rbinds' PlaceHolder PlaceHolder PlaceHolder req_wrap
                   fvExpr `plusFV` fvRbinds) }
 
 rnExpr (ExprWithTySig expr pty PlaceHolder)

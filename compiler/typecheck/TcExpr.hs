@@ -686,7 +686,7 @@ following.
 
 -}
 
-tcExpr (RecordUpd record_expr rbinds _ _ _ _ _) res_ty
+tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
   = ASSERT( notNull upd_fld_names )
     do  {
         -- STEP 0
@@ -805,21 +805,16 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ _) res_ty
                        = idHsWrapper
 
         -- Step 8: Check that the req constraints are satisfied
+        -- For normal data constructors req_theta is empty but we must do
+        -- this check for pattern synonyms.
         ; let req_theta' = substTheta scrut_subst req_theta
         ; req_wrap <- instCallConstraints PatOrigin req_theta'
+        ; pprTrace "result_inst_tys" (ppr result_inst_tys) (return ())
 
-  --      ; pprTrace "checking prov_wrap_
-
-{-
-        ; let prov_theta' = substTheta result_subst prov_theta
-        ; prov_wrap <- instCallConstraints PatOrigin prov_theta'
-        -}
-
-        ; let prov_wrap = idHsWrapper
         -- Phew!
         ; return $ mkHsWrapCo co_res $
           RecordUpd (mkLHsWrap scrut_co record_expr') rbinds'
-                    relevant_cons scrut_inst_tys result_inst_tys req_wrap prov_wrap }
+                    relevant_cons scrut_inst_tys result_inst_tys req_wrap }
   where
     upd_fld_names = hsRecFields rbinds
 
