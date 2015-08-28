@@ -361,7 +361,7 @@ mkPatSynRecSelBind :: PatSyn
                    -> [TyVar]
                    -> (RecordPatSynField Name, Type)
                    -> (LSig Name, (RecFlag, LHsBinds Name))
-mkPatSynRecSelBind ps lpat req_theta data_ty univ_ty_vars
+mkPatSynRecSelBind ps lpat req_theta data_ty _univ_ty_vars
                      ((RecordPatSynField sel_name sel_pat_name), field_ty)
   =
       (L loc (IdSig sel_id) , (NonRecursive, unitBag (L loc sel_bind)))
