@@ -19,5 +19,8 @@ data A = A | B deriving (Show, Eq)
 f3 :: T Int A
 f3 = (MkT 42 A) { x = B }
 
+f5 :: T Int A
+f5 = (ExNumPat A) { x = B }
+
 
 f4 = (MkG 42 True) { y = False }

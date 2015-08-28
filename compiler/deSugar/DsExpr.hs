@@ -552,7 +552,7 @@ So we need to cast (T a Int) to (T a b).  Sigh.
 -}
 
 dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
-                        cons_to_upd in_inst_tys out_inst_tys dict_req_wrap prov_wrap)
+                        cons_to_upd in_inst_tys out_inst_tys dict_req_wrap _prov_wrap)
   | null fields
   = dsLExpr record_expr
   | otherwise
@@ -621,8 +621,8 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                         -- Reconstruct with the WrapId so that unpacking happens
                  wrap =
                         dict_req_wrap <.>
-                        prov_wrap <.>
-                        --mkWpEvVarApps theta_vars          <.>
+                        --prov_wrap <.>
+                        mkWpEvVarApps theta_vars          <.>
                         mkWpTyApps    (mkTyVarTys ex_tvs) <.>
                         mkWpTyApps [ty | (tv, ty) <- univ_tvs `zip` out_inst_tys
                                        , not (tv `elemVarEnv` wrap_subst) ]
