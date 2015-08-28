@@ -609,10 +609,6 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
            ; theta_vars <- mapM newPredVarDs (substTheta subst prov_theta)
            --; req_vars <- mapM newPredVarDs (substTheta subst req_theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
-           ; pprTrace "in_inst_tys" (ppr in_inst_tys) (return ())
-           ; pprTrace "in_inst_tys" (ppr out_inst_tys) (return ())
-           ; pprTrace "in_inst_tys" (ppr arg_tys) (return ())
-           ; pprTrace "in_inst_tys" (ppr out_ty) (return ())
            ; let field_labels = conLikeFieldLabels con
                  val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
