@@ -1133,7 +1133,7 @@ repE (RecordCon c _ flds)
  = do { x <- lookupLOcc c;
         fs <- repFields flds;
         repRecCon x fs }
-repE (RecordUpd e flds _ _ _)
+repE (RecordUpdOut e flds _ _ _)
  = do { x <- repLE e;
         fs <- repFields flds;
         repRecUpd x fs }

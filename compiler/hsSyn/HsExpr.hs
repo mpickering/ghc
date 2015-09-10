@@ -290,21 +290,21 @@ data HsExpr id
   -- For details on above see note [Api annotations] in ApiAnnotation
   | RecordUpd   (LHsExpr id)
                 (HsRecordBinds id)
---              (HsMatchGroup Id)  -- Filled in by the type checker to be
---                                 -- a match that does the job
-                [DataCon]          -- Filled in by the type checker to the
-                                   -- _non-empty_ list of DataCons that have
-                                   -- all the upd'd fields
-                [PostTc id Type]   -- Argument types of *input* record type
-                [PostTc id Type]   --              and  *output* record type
-  -- For a type family, the arg types are of the *instance* tycon,
-  -- not the family tycon
 
   -- | Expression with an explicit type signature. @e :: type@
   --
   --  - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnDcolon'
 
   -- For details on above see note [Api annotations] in ApiAnnotation
+  | RecordUpdOut (LHsExpr id)
+                 (HsRecordBinds id)
+                 [DataCon]          -- Filled in by the type checker to the
+                                   -- _non-empty_ list of DataCons that have
+                                   -- all the upd'd fields
+                 [PostTc id Type]   -- Argument types of *input* record type
+                 [PostTc id Type]   --              and  *output* record type
+  -- For a type family, the arg types are of the *instance* tycon,
+  -- not the family tycon
   | ExprWithTySig
                 (LHsExpr id)
                 (LHsType id)
@@ -697,7 +697,9 @@ ppr_expr (ExplicitPArr _ exprs)
 ppr_expr (RecordCon con_id _ rbinds)
   = hang (ppr con_id) 2 (ppr rbinds)
 
-ppr_expr (RecordUpd aexp rbinds _ _ _)
+ppr_expr (RecordUpd aexp rbinds)
+  = hang (pprLExpr aexp) 2 (ppr rbinds)
+ppr_expr (RecordUpdOut aexp rbinds _ _ _)
   = hang (pprLExpr aexp) 2 (ppr rbinds)
 
 ppr_expr (ExprWithTySig expr sig _)

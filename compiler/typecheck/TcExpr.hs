@@ -650,7 +650,7 @@ In the outgoing (HsRecordUpd scrut binds cons in_inst_tys out_inst_tys):
         family example], in_inst_tys = [t1,t2], out_inst_tys = [t3,t2]
 -}
 
-tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
+tcExpr (RecordUpd record_expr rbinds) res_ty
   = ASSERT( notNull upd_fld_names )
     do  {
         -- STEP 0
@@ -750,7 +750,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _) res_ty
                        = idHsWrapper
         -- Phew!
         ; return $ mkHsWrapCo co_res $
-          RecordUpd (mkLHsWrap scrut_co record_expr') rbinds'
+          RecordUpdOut (mkLHsWrap scrut_co record_expr') rbinds'
                     relevant_cons scrut_inst_tys result_inst_tys  }
   where
     upd_fld_names = hsRecFields rbinds

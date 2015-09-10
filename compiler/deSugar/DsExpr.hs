@@ -548,7 +548,7 @@ But if x::T a b, then
 So we need to cast (T a Int) to (T a b).  Sigh.
 -}
 
-dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
+dsExpr expr@(RecordUpdOut record_expr (HsRecFields { rec_flds = fields })
                        cons_to_upd in_inst_tys out_inst_tys)
   | null fields
   = dsLExpr record_expr
