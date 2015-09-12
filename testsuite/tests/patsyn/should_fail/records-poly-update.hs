@@ -11,5 +11,3 @@ p1 = Just True
 p6 = p1 {j = A}
 
 main = print p6
-
-
