@@ -822,10 +822,10 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
     -- These tyvars must not change across the updates
     getFixedTyVars tvs1 cons
       = mkVarSet [tv1 | con <- cons
-                      , let (univ_tvs, ex_tvs, eqspec, prov_theta, _req_theta, arg_tys, _)
+                      , let (univ_tvs, ex_tvs, eqspec, prov_theta, req_theta, arg_tys, _)
                               = conLikeFullSig con
                             tvs = univ_tvs ++ ex_tvs
-                            theta = eqSpecPreds eqspec ++ prov_theta
+                            theta = eqSpecPreds eqspec ++ prov_theta ++ req_theta
                             flds = conLikeFieldLabels con
                             fixed_tvs = exactTyVarsOfTypes fixed_tys
                                     -- fixed_tys: See Note [Type of a record update]
