@@ -809,7 +809,6 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
         -- this check for pattern synonyms.
         ; let req_theta' = substTheta scrut_subst req_theta
         ; req_wrap <- instCallConstraints PatOrigin req_theta'
-        ; pprTrace "result_inst_tys" (ppr result_inst_tys) (return ())
 
         -- Phew!
         ; return $ mkHsWrapCo co_res $

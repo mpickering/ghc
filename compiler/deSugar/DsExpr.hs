@@ -609,7 +609,6 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
            ; theta_vars <- mapM newPredVarDs (substTheta subst prov_theta)
            ; arg_ids    <- newSysLocalsDs (substTys subst arg_tys)
            ; let field_labels = conLikeFieldLabels con
-                 --req_wrap = mkWpEvVarApps req_theta_vars <.> mkWpTyApps in_inst_tys
                  val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
                  mk_val_arg field_name pat_arg_id
@@ -621,7 +620,6 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                         -- Reconstruct with the WrapId so that unpacking happens
                  wrap =
                         dict_req_wrap <.>
-                        --prov_wrap <.>
                         mkWpEvVarApps theta_vars          <.>
                         mkWpTyApps    (mkTyVarTys ex_tvs) <.>
                         mkWpTyApps [ty | (tv, ty) <- univ_tvs `zip` out_inst_tys

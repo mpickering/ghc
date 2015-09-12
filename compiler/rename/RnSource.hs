@@ -1599,7 +1599,7 @@ extendPatternSynSelectorEnv (ValBindsIn bs _)
         ; field_env' <- foldrM get_field (tcg_field_env tcg_env) all_pat_syn_sels
         ; return (tcg_env { tcg_field_env = field_env' }) }
   where
-    -- we want to lookuk patterns synonym fields
+    -- we want to lookup patterns synonym fields
     -- knowing that they're from this module.
     -- lookupLocatedTopBndrRn does this, because it does a lookupGreLocalRn_maybe,
     -- which keeps only the local ones.

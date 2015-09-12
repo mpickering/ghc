@@ -664,7 +664,6 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
 
 
         ; return ((pat', details'), fvs) }
-        ; traceRn (text "rnPatSynBind" <+> ppr pat')
         ; (dir', fvs2) <- case dir of
             Unidirectional -> return (Unidirectional, emptyFVs)
             ImplicitBidirectional -> return (ImplicitBidirectional, emptyFVs)
