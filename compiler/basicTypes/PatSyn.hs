@@ -57,7 +57,8 @@ data PatSyn
         psArgs        :: [Type],
         psArity       :: Arity,        -- == length psArgs
         psInfix       :: Bool,         -- True <=> declared infix
-        psFieldLabels :: [FieldLabel], -- List of fields for a a record pattern synonym
+        psFieldLabels :: [FieldLabel], -- List of fields for a
+                                       -- record pattern synonym
 
         psUnivTyVars  :: [TyVar],      -- Universially-quantified type variables
         psReqTheta    :: ThetaType,    -- Required dictionaries
@@ -248,7 +249,8 @@ mkPatSyn :: Name
          -> Type                 -- ^ Original result type
          -> (Id, Bool)           -- ^ Name of matcher
          -> Maybe (Id, Bool)     -- ^ Name of builder
-         -> [FieldLabel]         -- ^ Names of fields for a record pattern synonym
+         -> [FieldLabel]         -- ^ Names of fields for
+                                 --   a record pattern synonym
          -> PatSyn
 mkPatSyn name declared_infix
          (univ_tvs, req_theta)

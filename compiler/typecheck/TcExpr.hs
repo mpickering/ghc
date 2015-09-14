@@ -699,27 +699,32 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
         ; let bad_guys = [ setSrcSpan loc $ addErrTc (notSelector fld_name)
                          | (fld, sel_id) <- rec_flds rbinds `zip` sel_ids,
                            not (isRecordSelector sel_id),
-                           not (isPatSynRecordSelector sel_id),       -- Excludes class ops
+                           not (isPatSynRecordSelector sel_id),
+                           -- Excludes class ops
                            let L loc fld_name = hsRecFieldId (unLoc fld) ]
         ; unless (null bad_guys) (sequence bad_guys >> failM)
         -- See note [Mixed Record Selectors]
-        ; unless (all isRecordSelector sel_ids || all isPatSynRecordSelector sel_ids)
+        ; unless (all isRecordSelector sel_ids
+                   || all isPatSynRecordSelector sel_ids)
             (addErrTc (mixedSelectors sel_ids) >> failM)
 
         -- STEP 1
         -- Figure out the tycon and data cons from the first field name
         ; let   -- It's OK to use the non-tc splitters here (for a selector)
               sel_id : _  = sel_ids
-              mtycon  = case idDetails sel_id of             -- We've failed already if
-                          RecSelId tycon _ -> Just tycon     -- it's not a field label
+              mtycon  = case idDetails sel_id of
+                          RecSelId tycon _ -> Just tycon
                           _ -> Nothing
-              con_likes  = case mtycon of
-                            Nothing -> [PatSynCon (fst $ patSynSelectorFieldLabel sel_id)]
-                            Just tycon -> map RealDataCon (tyConDataCons tycon)
+              con_likes  =
+                case mtycon of
+                  Nothing ->
+                    [PatSynCon (fst $ patSynSelectorFieldLabel sel_id)]
+                  Just tycon -> map RealDataCon (tyConDataCons tycon)
                 -- NB: for a data type family, the tycon is the instance tycon
 
               relevant_cons   = filter is_relevant con_likes
-              is_relevant con = all (`elem` conLikeFieldLabels con) upd_fld_names
+              is_relevant con =
+                all (`elem` conLikeFieldLabels con) upd_fld_names
                 -- A constructor is only relevant to this process if
                 -- it contains *all* the fields that are being updated
                 -- Other ones will cause a runtime error if they occur
@@ -733,7 +738,8 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
 
         -- Take apart a representative constructor
         ; let con1 = ASSERT( not (null relevant_cons) ) head relevant_cons
-              (con1_tvs, _, _, _prov_theta, req_theta, con1_arg_tys, _) = conLikeFullSig con1
+              (con1_tvs, _, _, _prov_theta, req_theta, con1_arg_tys, _) =
+                conLikeFullSig con1
               con1_flds = conLikeFieldLabels con1
               def_res_ty  = conLikeResTy con1
               con1_res_ty =
@@ -821,10 +827,13 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
     -- These tyvars must not change across the updates
     getFixedTyVars tvs1 cons
       = mkVarSet [tv1 | con <- cons
-                      , let (univ_tvs, ex_tvs, eqspec, prov_theta, req_theta, arg_tys, _)
+                      , let (univ_tvs, ex_tvs, eqspec, prov_theta
+                             , req_theta, arg_tys, _)
                               = conLikeFullSig con
                             tvs = univ_tvs ++ ex_tvs
-                            theta = eqSpecPreds eqspec ++ prov_theta ++ req_theta
+                            theta = eqSpecPreds eqspec
+                                     ++ prov_theta
+                                     ++ req_theta
                             flds = conLikeFieldLabels con
                             fixed_tvs = exactTyVarsOfTypes fixed_tys
                                     -- fixed_tys: See Note [Type of a record update]
@@ -1614,7 +1623,8 @@ notSelector field
 
 mixedSelectors :: [Id] -> SDoc
 mixedSelectors names
-  = ptext (sLit "Cannot use a mixture of pattern synonym and record selectors") $$
+  = ptext
+      (sLit "Cannot use a mixture of pattern synonym and record selectors") $$
     ptext (sLit "Record selectors defined by")
       <+> quotes (ppr (tyConName rep_dc))
       <> text ":"

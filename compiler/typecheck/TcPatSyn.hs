@@ -70,7 +70,8 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; let (arg_names, is_infix) = case details of
                  PrefixPatSyn names      -> (map unLoc names, False)
                  InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
-                 RecordPatSyn names      -> (map (unLoc . recordPatSynArg) names, False)
+                 RecordPatSyn names
+                  -> (map (unLoc . recordPatSynArg) names, False)
        ; ((lpat', (args, pat_ty)), tclvl, wanted)
             <- pushLevelAndCaptureConstraints  $
                do { pat_ty <- newFlexiTyVarTy openTypeKind
@@ -133,7 +134,8 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; let (arg_names, is_infix) = case details of
                  PrefixPatSyn names      -> (map unLoc names, False)
                  InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
-                 RecordPatSyn names       -> (map (unLoc . recordPatSynArg) names, False)
+                 RecordPatSyn names
+                  -> (map (unLoc . recordPatSynArg) names, False)
 
        ; let rec_fields = case details of
                              RecordPatSyn names -> names
@@ -221,7 +223,8 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                                          wrapped_args
                                          pat_ty patSyn
 
-       ; builder_id <- mkPatSynBuilderId dir lname qtvs theta arg_tys pat_ty patSyn
+       ; builder_id <- mkPatSynBuilderId dir lname qtvs theta
+                                         arg_tys pat_ty patSyn
 
 
 
@@ -230,10 +233,11 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
 
        -- Selectors
        ; let unLocFields fs = map (fmap unLoc) fs
-       ; let (sigs, selector_binds) = unzip (mkPatSynRecSelBinds patSyn
-                                                lpat req_theta pat_ty univ_tvs
-                                                (zip (unLocFields rec_fields) arg_tys)
-                                                )
+       ; let (sigs, selector_binds) =
+                unzip (mkPatSynRecSelBinds patSyn
+                       lpat req_theta pat_ty univ_tvs
+                       (zip (unLocFields rec_fields) arg_tys)
+                      )
        ; tcg_env <- tcRecSelBinds (ValBindsOut selector_binds sigs)
 
        ; let patSyn = mkPatSyn (unLoc lname) is_infix
@@ -292,8 +296,10 @@ tcPatSynMatcher (L loc name) lpat
 
        ; let matcher_tau   = mkFunTys [pat_ty, cont_ty, fail_ty] res_ty
              matcher_sigma = mkSigmaTy (res_tv:univ_tvs) req_theta matcher_tau
-             matcher_id    = mkExportedLocalId (PatSynWorkId pat_syn) matcher_name matcher_sigma
-                             -- See Note [Exported LocalIds] in Id
+             matcher_id    =
+              -- See Note [Exported LocalIds] in Id
+              mkExportedLocalId (PatSynWorkId pat_syn)
+                                matcher_name matcher_sigma
 
              cont_dicts = map nlHsVar prov_dicts
              cont' = mkLHsWrap (mkWpLet prov_ev_binds) $
@@ -349,7 +355,8 @@ mkPatSynRecSelBinds :: PatSyn
                     -> ThetaType -- ^ Req Theta
                     -> Type
                     -> [TyVar]
-                    -> [(RecordPatSynField Name, Type)] -- ^ Visible field labels
+                    -> [(RecordPatSynField Name, Type)]
+                    -- ^ Visible field labels
                     -> [(LSig Name, (RecFlag, LHsBinds Name))]
 mkPatSynRecSelBinds ps lpat req_theta data_ty univ_ty_vars fields =
     map (mkPatSynRecSelBind ps lpat req_theta data_ty univ_ty_vars) fields
@@ -373,10 +380,11 @@ mkPatSynRecSelBind ps lpat req_theta data_ty _univ_ty_vars
     data_tvs   = tyVarsOfType data_ty
     is_naughty = not (tyVarsOfType field_ty `subVarSet` data_tvs)
     (field_tvs, field_theta, field_tau) = tcSplitSigmaTy field_ty
-    sel_ty | is_naughty = unitTy  -- See Note [Naughty record selectors] in TcTyClsDecls
+    -- See Note [Naughty record selectors] in TcTyClsDecls
+    sel_ty | is_naughty = unitTy
            | otherwise  = mkForAllTys (varSetElemsKvsFirst $
                                        data_tvs `extendVarSetList` field_tvs) $
-                          mkPhiTy (field_theta ++ req_theta)            $   -- Urgh!
+                          mkPhiTy (field_theta ++ req_theta)            $
                           mkFunTy data_ty field_tau
 
     -- Make the binding
@@ -423,8 +431,10 @@ mkPatSynBuilderId dir  (L _ name) qtvs theta arg_tys pat_ty pat_syn
   | otherwise
   = do { builder_name <- newImplicitBinder name mkBuilderOcc
        ; let builder_sigma = mkSigmaTy qtvs theta (mkFunTys builder_arg_tys pat_ty)
-             builder_id    = mkExportedLocalId (PatSynWrapId pat_syn) builder_name builder_sigma
-                             -- See Note [Exported LocalIds] in Id
+             builder_id    =
+              -- See Note [Exported LocalIds] in Id
+              mkExportedLocalId (PatSynWrapId pat_syn)
+                                builder_name builder_sigma
        ; return (Just (builder_id, need_dummy_arg)) }
   where
     builder_arg_tys | need_dummy_arg = [voidPrimTy]

@@ -598,7 +598,8 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
           let tycon = dataConTyCon data_con in
           (mkTyConApp tycon in_inst_tys, mkFamilyTyConApp tycon out_inst_tys)
         PatSynCon pat_syn ->
-          (patSynInstResTy pat_syn in_inst_tys, patSynInstResTy pat_syn out_inst_tys)
+          (patSynInstResTy pat_syn in_inst_tys
+          , patSynInstResTy pat_syn out_inst_tys)
     mk_alt upd_fld_env con
       = do { let (univ_tvs, ex_tvs, eq_spec,
                   prov_theta, _req_theta, arg_tys, _) = conLikeFullSig con
@@ -633,19 +634,23 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                     RealDataCon data_con ->
                       let
                         wrap_co =
-                          mkTcTyConAppCo Nominal (dataConTyCon data_con)
-                            [ lookup tv ty | (tv,ty) <- univ_tvs `zip` out_inst_tys ]
-                        lookup univ_tv ty = case lookupVarEnv wrap_subst univ_tv of
-                                                Just co' -> co'
-                                                Nothing  -> mkTcReflCo Nominal ty
+                          mkTcTyConAppCo Nominal
+                            (dataConTyCon data_con)
+                            [ lookup tv ty
+                              | (tv,ty) <- univ_tvs `zip` out_inst_tys ]
+                        lookup univ_tv ty =
+                          case lookupVarEnv wrap_subst univ_tv of
+                            Just co' -> co'
+                            Nothing  -> mkTcReflCo Nominal ty
                         in if null eq_spec
                              then rhs
                              else mkLHsWrap (mkWpCast (mkTcSubCo wrap_co)) rhs
                     -- eq_spec is always null for a PatSynCon
                     PatSynCon _ -> rhs
 
-                 wrap_subst = mkVarEnv [ (tv, mkTcSymCo (mkTcCoVarCo eq_var))
-                                        | ((tv,_),eq_var) <- eq_spec `zip` eqs_vars ]
+                 wrap_subst =
+                  mkVarEnv [ (tv, mkTcSymCo (mkTcCoVarCo eq_var))
+                           | ((tv,_),eq_var) <- eq_spec `zip` eqs_vars ]
 
                  req_wrap = dict_req_wrap <.> mkWpTyApps in_inst_tys
                  pat = noLoc $ ConPatOut { pat_con = noLoc con

@@ -858,7 +858,8 @@ hsPatSynBinders _ = panic "hsPatSynBinders"
 addPatSynBndr :: LHsBindLR id id -> [Located id] -> [Located id]
 -- See Note [SrcSpan for binders]
 addPatSynBndr bind pss
-  | L bind_loc (PatSynBind (PSB { psb_id = L _ n, psb_args = RecordPatSyn as })) <- bind
+  | L bind_loc (PatSynBind (PSB { psb_id = L _ n
+                                , psb_args = RecordPatSyn as })) <- bind
   = map recordPatSynId as ++ L bind_loc n : pss
   | L bind_loc (PatSynBind (PSB { psb_id = L _ n})) <- bind
   = L bind_loc n : pss

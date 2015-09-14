@@ -655,12 +655,14 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                       ; return (InfixPatSyn name1 name2, mkFVs (map unLoc [name1, name2])) }
                RecordPatSyn vars ->
                    do { checkDupRdrNames (map recordPatSynId vars)
-                      ; let rnRecordPatSynField (RecordPatSynField visible hidden) = do {
+                      ; let rnRecordPatSynField
+                              (RecordPatSynField visible hidden) = do {
                               ; visible' <- lookupLocatedTopBndrRn visible
                               ; hidden'  <- lookupVar hidden
                               ; return $ RecordPatSynField visible' hidden' }
                       ; names <- mapM rnRecordPatSynField  vars
-                      ; return (RecordPatSyn names, mkFVs (map (unLoc . recordPatSynArg) names) `plusFV` mkFVs (map (unLoc . recordPatSynArg) names)) }
+                      ; return (RecordPatSyn names
+                               , mkFVs (map (unLoc . recordPatSynArg) names)) }
 
 
         ; return ((pat', details'), fvs) }
@@ -683,7 +685,8 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                           , psb_dir = dir'
                           , psb_fvs = fvs' }
         ; let selector_names = case details' of
-                                 RecordPatSyn names -> map (unLoc . recordPatSynId) names
+                                 RecordPatSyn names ->
+                                  map (unLoc . recordPatSynId) names
                                  _ -> []
 
         ; fvs' `seq` -- See Note [Free-variable space leak]
