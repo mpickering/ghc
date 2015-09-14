@@ -258,8 +258,10 @@ rnExpr (RecordCon con_id _ rbinds)
 rnExpr (RecordUpd expr rbinds _ _ _ req_wrap)
   = do  { (expr', fvExpr) <- rnLExpr expr
         ; (rbinds', fvRbinds) <- rnHsRecBinds HsRecFieldUpd rbinds
-        ; return (RecordUpd expr' rbinds' PlaceHolder PlaceHolder PlaceHolder req_wrap,
-                  fvExpr `plusFV` fvRbinds) }
+        ; return (RecordUpd expr' rbinds'
+                            PlaceHolder PlaceHolder
+                            PlaceHolder req_wrap
+                 , fvExpr `plusFV` fvRbinds) }
 
 rnExpr (ExprWithTySig expr pty PlaceHolder)
   = do  { (pty', fvTy, wcs) <- rnLHsTypeWithWildCards ExprWithTySigCtx pty
