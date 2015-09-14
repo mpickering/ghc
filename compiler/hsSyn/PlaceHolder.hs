@@ -13,6 +13,7 @@ import RdrName
 import Var
 import Coercion
 import {-# SOURCE #-} ConLike (ConLike)
+import TcEvidence (HsWrapper)
 
 import Data.Data hiding ( Fixity )
 import BasicTypes       (Fixity)
@@ -105,4 +106,5 @@ type DataId id =
   , Data (PostTc id Coercion)
   , Data (PostTc id [Type])
   , Data (PostTc id [ConLike])
+  , Data (PostTc id HsWrapper)
   )

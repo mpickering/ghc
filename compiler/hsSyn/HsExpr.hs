@@ -301,7 +301,7 @@ data HsExpr id
                 (PostTc id [Type])  --              and  *output* record type
                                    -- The original type can be reconstructed
                                    -- with conLikeResTy
-                HsWrapper          -- Req wrapper
+                (PostTc id HsWrapper) -- Req wrapper
   -- For a type family, the arg types are of the *instance* tycon,
   -- not the family tycon
 
