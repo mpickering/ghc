@@ -12,7 +12,7 @@ import NameSet
 import RdrName
 import Var
 import Coercion
-import DataCon (DataCon)
+import {-# SOURCE #-} ConLike (ConLike)
 
 import Data.Data hiding ( Fixity )
 import BasicTypes       (Fixity)
