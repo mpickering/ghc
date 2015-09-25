@@ -151,6 +151,13 @@ void postProcSourceNoteEvent(const char *name,
                              uint32_t start_line, uint32_t start_col,
                              uint32_t end_line, uint32_t end_col);
 
+/* Statistical profiler */
+#ifdef STAT_PROFILE
+void postStatProfileSamples(Capability *cap, StgBool own_cap,
+                            StgWord32 sample_by, StgWord32 sample_type,
+                            StgWord32 cnt, void **samples, nat *weights);
+#endif /* STAT_PROFILE */
+
 void postHeapProfBegin(StgWord8 profile_id);
 
 void postHeapProfSampleBegin(StgInt era);
