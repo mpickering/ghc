@@ -11,7 +11,7 @@ module TcValidity (
   checkValidTheta, checkValidFamPats,
   checkValidInstance, validDerivPred,
   checkInstTermination, checkValidTyFamInst, checkTyFamFreeness,
-  checkConsistentFamInst,
+  checkValidTyFamEqn, checkConsistentFamInst,
   arityErr, badATErr
   ) where
 
@@ -1148,6 +1148,19 @@ checkValidTyFamInst :: Maybe ( Class, VarEnv Type )
 checkValidTyFamInst mb_clsinfo fam_tc
                     (CoAxBranch { cab_tvs = tvs, cab_lhs = typats
                                 , cab_rhs = rhs, cab_loc = loc })
+  = checkValidTyFamEqn mb_clsinfo fam_tc tvs typats rhs loc
+
+-- | Do validity checks on a type family equation, including consistency
+-- with any enclosing class instance head, termination, and lack of
+-- polytypes.
+checkValidTyFamEqn :: Maybe ClsInfo
+                   -> TyCon   -- ^ of the type family
+                   -> [TyVar] -- ^ bound tyvars in the equation
+                   -> [Type]  -- ^ type patterns
+                   -> Type    -- ^ rhs
+                   -> SrcSpan
+                   -> TcM ()
+checkValidTyFamEqn mb_clsinfo fam_tc tvs typats rhs loc
   = setSrcSpan loc $
     do { checkValidFamPats fam_tc tvs typats
 
