@@ -625,7 +625,7 @@ data Sig name
       --          'ApiAnnotation.AnnComma'
 
       -- For details on above see note [Api annotations] in ApiAnnotation
-    TypeSig 
+    TypeSig
        [Located name]         -- LHS of the signature; e.g.  f,g,h :: blah
        (LHsType name)         -- RHS of the signature
        (PostRn name [Name])   -- Wildcards (both named and anonymous) of the RHS
@@ -644,6 +644,7 @@ data Sig name
               (LHsContext name) -- Provided context
               (LHsContext name) -- Required context
               (LHsType name)
+              (PostRn name [Name])   -- Wildcards (both named and anonymous) of the RHS
 
         -- | A type signature for a default method inside a class
         --
@@ -839,7 +840,7 @@ ppr_sig (InlineSig var inl)       = pragBrackets (ppr inl <+> pprPrefixOcc (unLo
 ppr_sig (SpecInstSig _ ty)
   = pragBrackets (ptext (sLit "SPECIALIZE instance") <+> ppr ty)
 ppr_sig (MinimalSig _ bf)         = pragBrackets (pprMinimalSig bf)
-ppr_sig (PatSynSig name (flag, qtvs) (L _ prov) (L _ req) ty)
+ppr_sig (PatSynSig name (flag, qtvs) (L _ prov) (L _ req) ty _)
   = pprPatSynSig (unLoc name) False -- TODO: is_bindir
                  (pprHsForAll flag qtvs (noLoc []))
                  (pprHsContextMaybe prov) (pprHsContextMaybe req)

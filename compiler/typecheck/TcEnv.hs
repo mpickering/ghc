@@ -863,7 +863,7 @@ notFound name
        ; case stage of   -- See Note [Out of scope might be a staging error]
            Splice {} -> stageRestrictionError (quotes (ppr name))
            _ | isWildCard -> failWithTc $
-                             text "Unexpected wild card:" <+> quotes (ppr name)
+                             text "Unexpected wild card :" <+> quotes (ppr name)
            _ -> failWithTc $
                 vcat[ptext (sLit "GHC internal error:") <+> quotes (ppr name) <+>
                      ptext (sLit "is not in scope during type checking, but it passed the renamer"),

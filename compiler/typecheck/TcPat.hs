@@ -186,6 +186,7 @@ data TcIdSigBndr   -- See Note [Complete and partial type signatures]
 data TcPatSynInfo
   = TPSI {
         patsig_name  :: Name,
+        patsig_bndr  :: TcIdSigBndr,
         patsig_tau   :: TcSigmaType,
         patsig_ex    :: [TcTyVar],
         patsig_prov  :: TcThetaType,
