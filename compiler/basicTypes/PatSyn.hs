@@ -59,6 +59,9 @@ data PatSyn
         psInfix       :: Bool,         -- True <=> declared infix
         psFieldLabels :: [FieldLabel], -- List of fields for a
                                        -- record pattern synonym
+                                       -- INVARIANT: either empty if no
+                                       -- record pat syn or same length as
+                                       -- psArgs
 
         psUnivTyVars  :: [TyVar],      -- Universially-quantified type variables
         psReqTheta    :: ThetaType,    -- Required dictionaries

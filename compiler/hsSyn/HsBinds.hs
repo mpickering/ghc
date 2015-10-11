@@ -900,7 +900,6 @@ pprMinimalSig bf = ptext (sLit "MINIMAL") <+> ppr (fmap unLoc bf)
 data HsPatSynDetails a
   = InfixPatSyn a a
   | PrefixPatSyn [a]
-  -- Like field punning we duplicate the name
   | RecordPatSyn [RecordPatSynField a]
   deriving (Data, Typeable)
 
