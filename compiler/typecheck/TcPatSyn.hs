@@ -221,7 +221,7 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
                                          (univ_tvs, req_theta, req_ev_binds, req_dicts)
                                          (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
                                          wrapped_args
-                                         pat_ty patSyn
+                                         pat_ty
 
        ; builder_id <- mkPatSynBuilderId dir lname qtvs theta
                                          arg_tys pat_ty patSyn
@@ -267,13 +267,13 @@ tcPatSynMatcher :: Located Name
                 -> ([TcTyVar], ThetaType, TcEvBinds, [EvVar])
                 -> ([TcTyVar], [TcType], ThetaType, TcEvBinds, [EvVar])
                 -> [(Var, HsWrapper)]
-                -> TcType -> PatSyn
+                -> TcType
                 -> TcM ((Id, Bool), LHsBinds Id)
 -- See Note [Matchers and builders for pattern synonyms] in PatSyn
 tcPatSynMatcher (L loc name) lpat
                 (univ_tvs, req_theta, req_ev_binds, req_dicts)
                 (ex_tvs, ex_tys, prov_theta, prov_ev_binds, prov_dicts)
-                wrapped_args pat_ty pat_syn
+                wrapped_args pat_ty
   = do { uniq <- newUnique
        ; let tv_name = mkInternalName uniq (mkTyVarOcc "r") loc
              res_tv  = mkTcTyVar tv_name openTypeKind (SkolemTv False)
@@ -298,7 +298,7 @@ tcPatSynMatcher (L loc name) lpat
              matcher_sigma = mkSigmaTy (res_tv:univ_tvs) req_theta matcher_tau
              matcher_id    =
               -- See Note [Exported LocalIds] in Id
-              mkExportedLocalId (PatSynWorkId pat_syn)
+              mkExportedLocalId VanillaId
                                 matcher_name matcher_sigma
 
              cont_dicts = map nlHsVar prov_dicts
@@ -433,7 +433,7 @@ mkPatSynBuilderId dir  (L _ name) qtvs theta arg_tys pat_ty pat_syn
        ; let builder_sigma = mkSigmaTy qtvs theta (mkFunTys builder_arg_tys pat_ty)
              builder_id    =
               -- See Note [Exported LocalIds] in Id
-              mkExportedLocalId (PatSynWrapId pat_syn)
+              mkExportedLocalId (PatSynBuilderId pat_syn)
                                 builder_name builder_sigma
        ; return (Just (builder_id, need_dummy_arg)) }
   where

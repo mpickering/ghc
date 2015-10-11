@@ -35,7 +35,7 @@ import Lexeme
 import Util
 import FastString
 import Outputable
-import TcEvidence
+--import TcEvidence
 
 import qualified Data.ByteString as BS
 import Control.Monad( unless, liftM, ap )

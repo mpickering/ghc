@@ -444,8 +444,7 @@ idConLike id =
   case Var.idDetails id of
        DataConWorkId con -> RealDataCon con
        DataConWrapId con -> RealDataCon con
-       PatSynWorkId ps -> PatSynCon ps
-       PatSynWrapId ps -> PatSynCon ps
+       PatSynBuilderId ps -> PatSynCon ps
        _               -> pprPanic "idConLike" (ppr id)
 
 hasNoBinding :: Id -> Bool
