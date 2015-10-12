@@ -374,7 +374,7 @@ mkPatSynRecSelBind ps lpat req_theta data_ty _univ_ty_vars
       (L loc (IdSig sel_id) , (NonRecursive, unitBag (L loc sel_bind)))
   where
     loc    = getSrcSpan sel_name
-    sel_id = mkExportedLocalId (PatSynSelId ps) sel_name sel_ty
+    sel_id = mkExportedLocalId (RecSelId (Right ps) False) sel_name sel_ty
 
     -- Selector type; Note [Polymorphic selectors] in TcTyClsDecls
     data_tvs   = tyVarsOfType data_ty

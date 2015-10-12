@@ -1774,7 +1774,7 @@ tyThingParent_maybe (ATyCon tc)   = case tyConAssoc_maybe tc of
                                       Just cls -> Just (ATyCon (classTyCon cls))
                                       Nothing  -> Nothing
 tyThingParent_maybe (AnId id)     = case idDetails id of
-                                         RecSelId { sel_tycon = tc } -> Just (ATyCon tc)
+                                         RecSelId { sel_tycon = Left tc } -> Just (ATyCon tc)
                                          ClassOpId cls               -> Just (ATyCon (classTyCon cls))
                                          _other                      -> Nothing
 tyThingParent_maybe _other = Nothing

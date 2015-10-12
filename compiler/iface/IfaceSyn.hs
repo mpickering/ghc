@@ -316,7 +316,7 @@ data IfaceUnfolding
 
 data IfaceIdDetails
   = IfVanillaId
-  | IfRecSelId IfaceTyCon Bool
+  | IfRecSelId (Either IfaceTyCon IfaceDecl) Bool
   | IfDFunId
 
 {-
@@ -1139,7 +1139,8 @@ freeNamesIfAxBranch (IfaceAxBranch { ifaxbTyVars = tyvars
   freeNamesIfType rhs
 
 freeNamesIfIdDetails :: IfaceIdDetails -> NameSet
-freeNamesIfIdDetails (IfRecSelId tc _) = freeNamesIfTc tc
+freeNamesIfIdDetails (IfRecSelId tc _) =
+  either freeNamesIfTc freeNamesIfDecl tc
 freeNamesIfIdDetails _                 = emptyNameSet
 
 -- All other changes are handled via the version info on the tycon

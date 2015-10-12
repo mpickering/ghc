@@ -1834,7 +1834,9 @@ toIfaceIdDetails :: IdDetails -> IfaceIdDetails
 toIfaceIdDetails VanillaId                      = IfVanillaId
 toIfaceIdDetails (DFunId {})                    = IfDFunId
 toIfaceIdDetails (RecSelId { sel_naughty = n
-                           , sel_tycon = tc })  = IfRecSelId (toIfaceTyCon tc) n
+                           , sel_tycon = tc })  =
+  let iface = either (Left . toIfaceTyCon) (Right . patSynToIfaceDecl) tc
+  in IfRecSelId iface n
 
   -- Currently we don't persist these three "advisory" IdInfos
   -- through interface files.  We easily could if it mattered

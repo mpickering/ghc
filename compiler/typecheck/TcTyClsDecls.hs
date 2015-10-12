@@ -2038,7 +2038,7 @@ mkRecSelBind (tycon, sel_name)
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId rec_details sel_name sel_ty
-    rec_details = RecSelId { sel_tycon = tycon, sel_naughty = is_naughty }
+    rec_details = RecSelId { sel_tycon = Left tycon, sel_naughty = is_naughty }
 
     -- Find a representative constructor, con1
     all_cons     = tyConDataCons tycon

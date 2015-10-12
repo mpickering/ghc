@@ -1173,8 +1173,11 @@ tcIdDetails ty IfDFunId
     (_, _, cls, _) = tcSplitDFunTy ty
 
 tcIdDetails _ (IfRecSelId tc naughty)
-  = do { tc' <- tcIfaceTyCon tc
+  = do { tc' <- either (fmap Left . tcIfaceTyCon) (fmap (Right . tyThingPatSyn) . tcIfaceDecl False) tc
        ; return (RecSelId { sel_tycon = tc', sel_naughty = naughty }) }
+  where
+    tyThingPatSyn (AConLike (PatSynCon ps)) = ps
+    tyThingPatSyn _ = panic "tcIdDetails: expecting patsyn"
 
 tcIdInfo :: Bool -> Name -> Type -> IfaceIdInfo -> IfL IdInfo
 tcIdInfo ignore_prags name ty info

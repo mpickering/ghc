@@ -38,7 +38,7 @@ module Id (
 
         -- ** Taking an Id apart
         idName, idType, idUnique, idInfo, idDetails, idRepArity,
-        recordSelectorFieldLabel, patSynSelectorFieldLabel,
+        recordSelectorFieldLabel,
 
         -- ** Modifying an Id
         setIdName, setIdUnique, Id.setIdType,
@@ -55,6 +55,7 @@ module Id (
         isExportedId, isLocalId, isGlobalId,
         isRecordSelector, isNaughtyRecordSelector,
         isPatSynRecordSelector,
+        isDataConRecordSelector,
         isClassOpId_maybe, isDFunId,
         isPrimOpId, isPrimOpId_maybe,
         isFCallId, isFCallId_maybe,
@@ -357,22 +358,17 @@ That is what is happening in, say tidy_insts in TidyPgm.
 -}
 
 -- | If the 'Id' is that for a record selector, extract the 'sel_tycon' and label. Panic otherwise
-recordSelectorFieldLabel :: Id -> (TyCon, FieldLabel)
+recordSelectorFieldLabel :: Id -> Either TyCon PatSyn
 recordSelectorFieldLabel id
   = case Var.idDetails id of
-        RecSelId { sel_tycon = tycon } -> (tycon, idName id)
+        RecSelId { sel_tycon = tycon } -> tycon
         _ -> panic "recordSelectorFieldLabel"
 
-
-patSynSelectorFieldLabel :: Id -> (PatSyn, FieldLabel)
-patSynSelectorFieldLabel id
-  = case Var.idDetails id of
-        PatSynSelId pat_syn -> (pat_syn, idName id)
-        _ -> panic "patSynSelectorFieldLabel"
 
 isRecordSelector        :: Id -> Bool
 isNaughtyRecordSelector :: Id -> Bool
 isPatSynRecordSelector  :: Id -> Bool
+isDataConRecordSelector  :: Id -> Bool
 isPrimOpId              :: Id -> Bool
 isFCallId               :: Id -> Bool
 isDataConWorkId         :: Id -> Bool
@@ -384,11 +380,15 @@ isFCallId_maybe         :: Id -> Maybe ForeignCall
 isDataConWorkId_maybe   :: Id -> Maybe DataCon
 
 isRecordSelector id = case Var.idDetails id of
-                        RecSelId {}  -> True
+                        RecSelId {}     -> True
+                        _               -> False
+
+isDataConRecordSelector id = case Var.idDetails id of
+                        RecSelId {sel_tycon = Left _} -> True
                         _               -> False
 
 isPatSynRecordSelector id = case Var.idDetails id of
-                        PatSynSelId {}  -> True
+                        RecSelId {sel_tycon = Right _} -> True
                         _               -> False
 
 isNaughtyRecordSelector id = case Var.idDetails id of

@@ -109,12 +109,11 @@ data IdDetails
 
   -- | The 'Id' for a record selector
   | RecSelId
-    { sel_tycon   :: TyCon      -- ^ For a data type family, this is the /instance/ 'TyCon'
+    { sel_tycon   :: Either TyCon PatSyn      -- ^ For a data type family, this is the /instance/ 'TyCon'
                                 --   not the family 'TyCon'
     , sel_naughty :: Bool       -- True <=> a "naughty" selector which can't actually exist, for example @x@ in:
                                 --    data T = forall a. MkT { x :: a }
     }                           -- See Note [Naughty record selectors] in TcTyClsDecls
-  | PatSynSelId PatSyn
 
   | DataConWorkId DataCon       -- ^ The 'Id' is for a data constructor /worker/
   | DataConWrapId DataCon       -- ^ The 'Id' is for a data constructor /wrapper/
@@ -175,7 +174,6 @@ pprIdDetails other     = brackets (pp other)
    pp (RecSelId { sel_naughty = is_naughty })
                          = brackets $ ptext (sLit "RecSel")
                             <> ppWhen is_naughty (ptext (sLit "(naughty)"))
-   pp (PatSynSelId _)   = ptext (sLit "PatSynSelId")
    pp (PatSynBuilderId _)   = ptext (sLit "PatSynBuilder")
 
 {-
