@@ -704,9 +704,11 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
                            let L loc fld_name = hsRecFieldId (unLoc fld) ]
         ; unless (null bad_guys) (sequence bad_guys >> failM)
         -- See note [Mixed Record Selectors]
-        ; unless (all isRecordSelector sel_ids
-                   || all isPatSynRecordSelector sel_ids)
-            (addErrTc (mixedSelectors sel_ids) >> failM)
+        ; let (data_sels, pat_syn_sels) =
+                partition isDataConRecordSelector sel_ids
+        ; MASSERT( all isPatSynRecordSelector pat_syn_sels )
+        ; unless ( null data_sels || null pat_syn_sels )
+            (addErrTc (mixedSelectors data_sels pat_syn_sels) >> failM)
 
         -- STEP 1
         -- Figure out the tycon and data cons from the first field name
@@ -1621,23 +1623,22 @@ notSelector :: Name -> SDoc
 notSelector field
   = hsep [quotes (ppr field), ptext (sLit "is not a record selector")]
 
-mixedSelectors :: [Id] -> SDoc
-mixedSelectors names
+mixedSelectors :: [Id] -> [Id] -> SDoc
+mixedSelectors data_sels@(dc_rep_id:_) pat_syn_sels@(ps_rep_id:_)
   = ptext
       (sLit "Cannot use a mixture of pattern synonym and record selectors") $$
     ptext (sLit "Record selectors defined by")
       <+> quotes (ppr (tyConName rep_dc))
       <> text ":"
-      <+> pprWithCommas ppr rec_sels $$
+      <+> pprWithCommas ppr data_sels $$
     ptext (sLit "Pattern synonym selectors defined by")
       <+> quotes (ppr (patSynName rep_ps))
       <> text ":"
-      <+> pprWithCommas ppr pat_sels
+      <+> pprWithCommas ppr pat_syn_sels
   where
-    pat_sels@(ps_rep_id:_) = filter isPatSynRecordSelector names
-    rec_sels@(dc_rep_id:_) = filter isDataConRecordSelector names
     Right rep_ps = recordSelectorFieldLabel ps_rep_id
     Left rep_dc = recordSelectorFieldLabel dc_rep_id
+mixedSelectors _ _ = panic "TcExpr: mixedSelectors emptylists"
 
 
 missingStrictFields :: ConLike -> [FieldLabel] -> SDoc

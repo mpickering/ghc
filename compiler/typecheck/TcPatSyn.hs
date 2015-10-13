@@ -17,7 +17,6 @@ import TcRnMonad
 import TcEnv
 import TcMType
 import TysPrim
-import TysWiredIn
 import TypeRep
 import Name
 import SrcLoc
@@ -40,7 +39,9 @@ import VarSet
 import MkId
 import VarEnv
 import Inst
-import MkCore
+import TcTyClsDecls
+import ConLike
+import TyCon (FieldLabel)
 #if __GLASGOW_HASKELL__ < 709
 import Data.Monoid
 #endif
@@ -104,7 +105,7 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        ; args       <- mapM zonkId args
 
        ; traceTc "tcInferPatSynDecl }" $ ppr name
-       ; tc_patsyn_finish lname dir is_infix lpat lpat'
+       ; tc_patsyn_finish lname dir is_infix lpat'
                           (univ_tvs, req_theta, ev_binds, req_dicts)
                           (ex_tvs, map mkTyVarTy ex_tvs, prov_theta, emptyTcEvBinds, prov_dicts)
                           (zip args $ repeat idHsWrapper)
@@ -178,7 +179,7 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
            ; emitWanteds origin prov_theta' }
 
        ; traceTc "tcCheckPatSynDecl }" $ ppr name
-       ; tc_patsyn_finish lname dir is_infix lpat lpat'
+       ; tc_patsyn_finish lname dir is_infix lpat'
                           (univ_tvs, req_theta, req_ev_binds, req_dicts)
                           (ex_tvs, ex_tys, prov_theta, prov_ev_binds, prov_dicts)
                           wrapped_args
@@ -196,7 +197,6 @@ wrongNumberOfParmsErr ty_arity
 tc_patsyn_finish :: Located Name
                  -> HsPatSynDir Name
                  -> Bool
-                 -> LPat Name
                  -> LPat Id
                  -> ([TcTyVar], [PredType], TcEvBinds, [EvVar])
                  -> ([TcTyVar], [TcType], [PredType], TcEvBinds, [EvVar])
@@ -204,7 +204,7 @@ tc_patsyn_finish :: Located Name
                  -> TcType
                  -> [RecordPatSynField (Located Name)]
                  -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
-tc_patsyn_finish lname dir is_infix lpat lpat'
+tc_patsyn_finish lname dir is_infix lpat'
                  (univ_tvs, req_theta, req_ev_binds, req_dicts)
                  (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
                  wrapped_args
@@ -231,23 +231,23 @@ tc_patsyn_finish lname dir is_infix lpat lpat'
        ; let field_labels = map (unLoc . recordPatSynId) rec_fields
 
 
-       -- Selectors
-       ; let unLocFields fs = map (fmap unLoc) fs
-       ; let (sigs, selector_binds) =
-                unzip (mkPatSynRecSelBinds patSyn
-                       lpat req_theta pat_ty univ_tvs
-                       (zip (unLocFields rec_fields) arg_tys)
-                      )
-       ; tcg_env <- tcRecSelBinds (ValBindsOut selector_binds sigs)
-
-       ; let patSyn = mkPatSyn (unLoc lname) is_infix
+       ; let patSyn' = mkPatSyn (unLoc lname) is_infix
                         (univ_tvs, req_theta)
                         (ex_tvs, prov_theta)
                         arg_tys
                         pat_ty
                         matcher_id builder_id
                         field_labels
-       ; return (patSyn, matcher_bind, tcg_env) } }
+       -- Selectors
+       ; let (sigs, selector_binds) =
+                unzip (mkPatSynRecSelBinds patSyn' field_labels)
+       ; let tything = AConLike (PatSynCon patSyn')
+       ; tcg_env <-
+          tcExtendGlobalEnv [tything] $
+            tcRecSelBinds
+              (ValBindsOut (zip (repeat NonRecursive) selector_binds) sigs)
+
+       ; return (patSyn', matcher_bind, tcg_env) } }
 
   where
     qtvs = univ_tvs ++ ex_tvs
@@ -348,66 +348,12 @@ tcPatSynMatcher (L loc name) lpat
 
        ; return ((matcher_id, is_unlifted), matcher_bind) }
 
--- = ValBindsOut [(NonRecursive, b) | b <- binds] sigs
---
 mkPatSynRecSelBinds :: PatSyn
-                    -> LPat Name -- ^ RHS pattern
-                    -> ThetaType -- ^ Req Theta
-                    -> Type
-                    -> [TyVar]
-                    -> [(RecordPatSynField Name, Type)]
+                    -> [FieldLabel]
                     -- ^ Visible field labels
-                    -> [(LSig Name, (RecFlag, LHsBinds Name))]
-mkPatSynRecSelBinds ps lpat req_theta data_ty univ_ty_vars fields =
-    map (mkPatSynRecSelBind ps lpat req_theta data_ty univ_ty_vars) fields
-
-mkPatSynRecSelBind :: PatSyn
-                   -> LPat Name
-                   -> ThetaType
-                   -> Type
-                   -> [TyVar]
-                   -> (RecordPatSynField Name, Type)
-                   -> (LSig Name, (RecFlag, LHsBinds Name))
-mkPatSynRecSelBind ps lpat req_theta data_ty _univ_ty_vars
-                     ((RecordPatSynField sel_name sel_pat_name), field_ty)
-  =
-      (L loc (IdSig sel_id) , (NonRecursive, unitBag (L loc sel_bind)))
-  where
-    loc    = getSrcSpan sel_name
-    sel_id = mkExportedLocalId (RecSelId (Right ps) False) sel_name sel_ty
-
-    -- Selector type; Note [Polymorphic selectors] in TcTyClsDecls
-    data_tvs   = tyVarsOfType data_ty
-    is_naughty = not (tyVarsOfType field_ty `subVarSet` data_tvs)
-    (field_tvs, field_theta, field_tau) = tcSplitSigmaTy field_ty
-    -- See Note [Naughty record selectors] in TcTyClsDecls
-    sel_ty | is_naughty = unitTy
-           | otherwise  = mkForAllTys (varSetElemsKvsFirst $
-                                       data_tvs `extendVarSetList` field_tvs) $
-                          mkPhiTy (field_theta ++ req_theta)            $
-                          mkFunTy data_ty field_tau
-
-    -- Make the binding
-    sel_bind = mkTopFunBind Generated sel_lname alts
-      where
-        alts | is_naughty = [mkSimpleMatch [] unit_rhs]
-             | otherwise =  [mk_match, deflt]
-    mk_match = mkSimpleMatch [lpat]
-                                 (L loc (HsVar sel_pat_name))
-    sel_lname = L loc sel_name
-
-    -- Add catch-all default case
-    -- It is hard to tell when the LHS is exhaustive as it can be any
-    -- pattern
-    deflt
-      = mkSimpleMatch [L loc (WildPat placeHolderType)]
-                            (mkHsApp (L loc (HsVar (getName rEC_SEL_ERROR_ID)))
-                                     (L loc (HsLit msg_lit)))
-
-    unit_rhs = mkLHsTupleExpr []
-    msg_lit = HsStringPrim "" $ unsafeMkByteString $
-              occNameString (getOccName sel_name)
-
+                    -> [(LSig Name, LHsBinds Name)]
+mkPatSynRecSelBinds ps fields =
+    map (mkOneSelector [PatSynCon ps] (Right ps)) fields
 
 isUnidirectional :: HsPatSynDir a -> Bool
 isUnidirectional Unidirectional          = True

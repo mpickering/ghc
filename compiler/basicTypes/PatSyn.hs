@@ -17,6 +17,7 @@ module PatSyn (
         patSynMatcher, patSynBuilder,
         patSynExTyVars, patSynSig,
         patSynInstArgTys, patSynInstResTy, patSynFieldLabels,
+        patSynFieldType,
 
         tidyPatSynIds
     ) where
@@ -299,6 +300,13 @@ patSynArgs = psArgs
 
 patSynFieldLabels :: PatSyn -> [FieldLabel]
 patSynFieldLabels = psFieldLabels
+
+-- | Extract the type for any given labelled field of the 'PatSyn'
+patSynFieldType :: PatSyn -> FieldLabel -> Type
+patSynFieldType ps label
+  = case lookup label (psFieldLabels ps `zip` psArgs ps) of
+      Just ty -> ty
+      Nothing -> pprPanic "patSynFieldType" (ppr ps <+> ppr label)
 
 patSynTyDetails :: PatSyn -> HsPatSynDetails Type
 patSynTyDetails (MkPatSyn { psInfix = is_infix, psArgs = arg_tys })

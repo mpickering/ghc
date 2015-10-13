@@ -19,6 +19,7 @@ module ConLike (
         , conLikeImplBangs
         , conLikeFullSig
         , conLikeResTy
+        , conLikeFieldType
     ) where
 
 #include "HsVersions.h"
@@ -116,7 +117,7 @@ conLikeInstOrigArgTys (RealDataCon data_con) tys =
 conLikeInstOrigArgTys (PatSynCon pat_syn) tys =
     patSynInstArgTys pat_syn tys
 
--- | Existentially qualified type variables
+-- | Existentially quantified type variables
 conLikeExTyVars :: ConLike -> [TyVar]
 conLikeExTyVars (RealDataCon dcon1) = dataConExTyVars dcon1
 conLikeExTyVars (PatSynCon psyn1)   = patSynExTyVars psyn1
@@ -179,3 +180,8 @@ conLikeFullSig (PatSynCon pat_syn) =
  let (univ_tvs, ex_tvs, prov, req, arg_tys, res_ty) = patSynSig pat_syn
  -- eqSpec is empty
  in (univ_tvs, ex_tvs, [], prov, req, arg_tys, res_ty)
+
+-- | Extract the type for any given labelled field of the 'ConLike'
+conLikeFieldType :: ConLike -> FieldLabel -> Type
+conLikeFieldType (PatSynCon ps) label = patSynFieldType ps label
+conLikeFieldType (RealDataCon dc) label = dataConFieldType dc label
