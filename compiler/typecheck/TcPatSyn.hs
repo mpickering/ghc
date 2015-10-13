@@ -353,7 +353,7 @@ mkPatSynRecSelBinds :: PatSyn
                     -- ^ Visible field labels
                     -> [(LSig Name, LHsBinds Name)]
 mkPatSynRecSelBinds ps fields =
-    map (mkOneSelector [PatSynCon ps] (Right ps)) fields
+    map (mkOneRecordSelector [PatSynCon ps] (Right ps)) fields
 
 isUnidirectional :: HsPatSynDir a -> Bool
 isUnidirectional Unidirectional          = True

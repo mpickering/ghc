@@ -16,7 +16,7 @@ module TcTyClsDecls (
         kcDataDefn, tcConDecls, dataDeclChecks, checkValidTyCon,
         tcFamTyPats, tcTyFamInstEqn, famTyConShape,
         tcAddTyFamInstCtxt, tcMkDataFamInstCtxt, tcAddDataFamInstCtxt,
-        wrongKindOfFamily, dataConCtxt, badDataConTyCon, mkOneSelector
+        wrongKindOfFamily, dataConCtxt, badDataConTyCon, mkOneRecordSelector
     ) where
 
 #include "HsVersions.h"
@@ -2037,15 +2037,15 @@ mkRecSelBinds tycons
 
 mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, LHsBinds Name)
 mkRecSelBind (tycon, sel_name)
-  = mkOneSelector all_cons (Left tycon) sel_name
+  = mkOneRecordSelector all_cons (Left tycon) sel_name
   where
     all_cons     = map RealDataCon (tyConDataCons tycon)
 
 
 
-mkOneSelector :: [ConLike] -> Either TyCon PatSyn -> FieldLabel
+mkOneRecordSelector :: [ConLike] -> Either TyCon PatSyn -> FieldLabel
               -> (LSig Name, LHsBinds Name)
-mkOneSelector all_cons idDet sel_name = (L loc (IdSig sel_id), unitBag (L loc sel_bind))
+mkOneRecordSelector all_cons idDet sel_name = (L loc (IdSig sel_id), unitBag (L loc sel_bind))
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId rec_details sel_name sel_ty
