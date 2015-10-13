@@ -860,7 +860,7 @@ addPatSynBndr :: LHsBindLR id id -> [Located id] -> [Located id]
 addPatSynBndr bind pss
   | L bind_loc (PatSynBind (PSB { psb_id = L _ n
                                 , psb_args = RecordPatSyn as })) <- bind
-  = map recordPatSynId as ++ L bind_loc n : pss
+  = map recordPatSynSelectorId as ++ L bind_loc n : pss
   | L bind_loc (PatSynBind (PSB { psb_id = L _ n})) <- bind
   = L bind_loc n : pss
   | otherwise

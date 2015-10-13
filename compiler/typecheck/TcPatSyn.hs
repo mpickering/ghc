@@ -72,7 +72,7 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                  PrefixPatSyn names      -> (map unLoc names, False)
                  InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
                  RecordPatSyn names
-                  -> (map (unLoc . recordPatSynArg) names, False)
+                  -> (map (unLoc . recordPatSynPatVar) names, False)
        ; ((lpat', (args, pat_ty)), tclvl, wanted)
             <- pushLevelAndCaptureConstraints  $
                do { pat_ty <- newFlexiTyVarTy openTypeKind
@@ -136,7 +136,7 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                  PrefixPatSyn names      -> (map unLoc names, False)
                  InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
                  RecordPatSyn names
-                  -> (map (unLoc . recordPatSynArg) names, False)
+                  -> (map (unLoc . recordPatSynPatVar) names, False)
 
        ; let rec_fields = case details of
                              RecordPatSyn names -> names
@@ -228,7 +228,7 @@ tc_patsyn_finish lname dir is_infix lpat'
 
 
 
-       ; let field_labels = map (unLoc . recordPatSynId) rec_fields
+       ; let field_labels = map (unLoc . recordPatSynSelectorId) rec_fields
 
 
        ; let patSyn' = mkPatSyn (unLoc lname) is_infix
@@ -438,7 +438,7 @@ tcPatSynBuilderBind PSB{ psb_id = L loc name, psb_def = lpat
     args = case details of
               PrefixPatSyn args     -> args
               InfixPatSyn arg1 arg2 -> [arg1, arg2]
-              RecordPatSyn args     -> map recordPatSynArg args
+              RecordPatSyn args     -> map recordPatSynPatVar args
 
     add_dummy_arg :: MatchGroup Name (LHsExpr Name) -> MatchGroup Name (LHsExpr Name)
     add_dummy_arg mg@(MG { mg_alts = [L loc (Match Nothing [] ty grhss)] })
