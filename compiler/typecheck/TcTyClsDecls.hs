@@ -2034,22 +2034,20 @@ mkRecSelBinds tycons
                                 | ATyCon tc <- tycons
                                 , fld <- tyConFields tc ]
 
-
 mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, LHsBinds Name)
 mkRecSelBind (tycon, sel_name)
   = mkOneRecordSelector all_cons (Left tycon) sel_name
   where
     all_cons     = map RealDataCon (tyConDataCons tycon)
 
-
-
 mkOneRecordSelector :: [ConLike] -> Either TyCon PatSyn -> FieldLabel
               -> (LSig Name, LHsBinds Name)
-mkOneRecordSelector all_cons idDet sel_name = (L loc (IdSig sel_id), unitBag (L loc sel_bind))
+mkOneRecordSelector all_cons idDetails sel_name =
+    (L loc (IdSig sel_id), unitBag (L loc sel_bind))
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId rec_details sel_name sel_ty
-    rec_details = RecSelId { sel_tycon = idDet, sel_naughty = is_naughty }
+    rec_details = RecSelId { sel_tycon = idDetails, sel_naughty = is_naughty }
 
     -- Find a representative constructor, con1
     cons_w_field = [ con | con <- all_cons
@@ -2066,6 +2064,7 @@ mkOneRecordSelector all_cons idDet sel_name = (L loc (IdSig sel_id), unitBag (L 
                                        data_tvs `extendVarSetList` field_tvs) $
                           mkPhiTy (conLikeStupidTheta con1) $   -- Urgh!
                           mkPhiTy field_theta               $   -- Urgh!
+                          -- req_theta is empty for normal DataCon
                           mkPhiTy req_theta                 $
                           mkFunTy data_ty field_tau
 

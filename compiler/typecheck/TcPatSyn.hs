@@ -194,15 +194,16 @@ wrongNumberOfParmsErr ty_arity
 
 -------------------------
 -- Shared by both tcInferPatSyn and tcCheckPatSyn
-tc_patsyn_finish :: Located Name
-                 -> HsPatSynDir Name
-                 -> Bool
-                 -> LPat Id
+tc_patsyn_finish :: Located Name  -- ^ PatSyn Name
+                 -> HsPatSynDir Name  -- ^ PatSyn type (Uni/Bidir/ExplicitBidir)
+                 -> Bool              -- ^ Whether infix
+                 -> LPat Id           -- ^ Pattern of the PatSyn
                  -> ([TcTyVar], [PredType], TcEvBinds, [EvVar])
                  -> ([TcTyVar], [TcType], [PredType], TcEvBinds, [EvVar])
-                 -> [(Var, HsWrapper)]
-                 -> TcType
+                 -> [(Var, HsWrapper)]  -- ^ Pattern arguments
+                 -> TcType              -- ^ Pattern type
                  -> [RecordPatSynField (Located Name)]
+                 -- ^ Whether fields, empty if not record PatSyn
                  -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
 tc_patsyn_finish lname dir is_infix lpat'
                  (univ_tvs, req_theta, req_ev_binds, req_dicts)
@@ -251,6 +252,7 @@ tc_patsyn_finish lname dir is_infix lpat'
 
   where
     qtvs = univ_tvs ++ ex_tvs
+    -- See Note [Record PatSyn Desugaring]
     theta = prov_theta ++ req_theta
     arg_tys = map (varType . fst) wrapped_args
 
@@ -296,10 +298,8 @@ tcPatSynMatcher (L loc name) lpat
 
        ; let matcher_tau   = mkFunTys [pat_ty, cont_ty, fail_ty] res_ty
              matcher_sigma = mkSigmaTy (res_tv:univ_tvs) req_theta matcher_tau
-             matcher_id    =
-              -- See Note [Exported LocalIds] in Id
-              mkExportedLocalId VanillaId
-                                matcher_name matcher_sigma
+             matcher_id    = mkExportedLocalId VanillaId matcher_name matcher_sigma
+                             -- See Note [Exported LocalIds] in Id
 
              cont_dicts = map nlHsVar prov_dicts
              cont' = mkLHsWrap (mkWpLet prov_ev_binds) $
@@ -513,6 +513,15 @@ get a complaint that 'a' and 'b' are out of scope. (Actually the
 latter; Trac #9867.)  No, the job of the signature is done, so when
 converting the pattern to an expression (for the builder RHS) we
 simply discard the signature.
+
+Note [Record PatSyn Desugaring]
+-------------------------------
+
+It is important that prov_theta comes before req_theta as this ordering is used
+when desugaring record pattern synonym updates.
+
+Any change to this ordering should make sure to change deSugar/DsExpr.hs if you
+want to avoid difficult to decipher core lint errors!
  -}
 
 tcCheckPatSynPat :: LPat Name -> TcM ()

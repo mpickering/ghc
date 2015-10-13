@@ -711,8 +711,9 @@ zonkExpr env (RecordUpd expr rbinds cons in_tys out_tys req_wrap)
         ; new_in_tys  <- mapM (zonkTcTypeToType env) in_tys
         ; new_out_tys <- mapM (zonkTcTypeToType env) out_tys
         ; new_rbinds  <- zonkRecFields env rbinds
+        ; (_, new_recwrap) <- zonkCoFn env req_wrap
         ; return (RecordUpd new_expr new_rbinds cons new_in_tys new_out_tys
-                              req_wrap) }
+                              new_recwrap) }
 
 zonkExpr env (ExprWithTySigOut e ty)
   = do { e' <- zonkLExpr env e

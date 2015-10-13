@@ -1151,8 +1151,6 @@ pattern_synonym_lhs :: { (Located RdrName, HsPatSynDetails (Located RdrName), [A
         | varid conop varid { ($2, InfixPatSyn $1 $3, []) }
         | con '{' cvars1 '}' { ($1, RecordPatSyn $3, [moc $2, mcc $4] ) }
 
--- TODO: Retain annotation information
-
 vars0 :: { [Located RdrName] }
         : {- empty -}                 { [] }
         | varid vars0                 { $1 : $2 }

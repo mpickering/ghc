@@ -619,6 +619,7 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
                  wrap_id = expectJust "dsExpr:mk_alt" (conLikeWrapId_maybe con)
                  inst_con = noLoc $ HsWrap wrap (HsVar wrap_id)
                         -- Reconstruct with the WrapId so that unpacking happens
+                 -- The order here is because of the order in `TcPatSyn`.
                  wrap =
                         dict_req_wrap <.>
                         mkWpEvVarApps theta_vars          <.>
