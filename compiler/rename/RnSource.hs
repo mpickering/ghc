@@ -1602,15 +1602,12 @@ extendPatSynEnv val_decls local_fix_env thing = do {
         extendGlobalRdrEnvRn (map Avail pat_syn_bndrs) local_fix_env
 
 
-   ; field_env' <-
-        foldrM get_field (tcg_field_env gbl_env) pat_syn_sel_bndrs
-   ; let final_gbl_env = (gbl_env { tcg_field_env = field_env' })
+   ; let field_env' = foldr get_field (tcg_field_env gbl_env) pat_syn_sel_bndrs
+         final_gbl_env = gbl_env { tcg_field_env = field_env' }
    ; setEnvs (final_gbl_env, lcl_env) (thing pat_syn_bndrs) }
   where
-    get_field fname
-            (RecFields env fld_set)
-        = do { let fld_set' = extendNameSetList fld_set [fname]
-             ; return $ (RecFields env fld_set') }
+    get_field fname (RecFields env fld_set) =
+      RecFields env (extendNameSetList fld_set [fname])
 
 {-
 *********************************************************
