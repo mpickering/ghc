@@ -817,7 +817,7 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
         -- For normal data constructors req_theta is empty but we must do
         -- this check for pattern synonyms.
         ; let req_theta' = substTheta scrut_subst req_theta
-        ; req_wrap <- instCallConstraints PatOrigin req_theta'
+        ; req_wrap <- instCallConstraints RecordUpdOrigin req_theta'
 
         -- Phew!
         ; return $ mkHsWrapCo co_res $
