@@ -638,21 +638,21 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
   = do  { pattern_synonym_ok <- xoptM Opt_PatternSynonyms
         ; unless pattern_synonym_ok (addErr patternSynonymErr)
 
-        ; ((pat', details'), fvs1) <- rnPat PatSyn pat $ \pat' -> do
+        ; ((pat', details'),_) <- rnPat PatSyn pat $ \pat' -> do
          -- We check the 'RdrName's instead of the 'Name's
          -- so that the binding locations are reported
          -- from the left-hand side
-        { (details', fvs) <- case details of
+        { details' <- case details of
                PrefixPatSyn vars ->
                    do { checkDupRdrNames vars
                       ; names <- mapM lookupVar vars
-                      ; return (PrefixPatSyn names, mkFVs (map unLoc names)) }
+                      ; return (PrefixPatSyn names)  }
                InfixPatSyn var1 var2 ->
                    do { checkDupRdrNames [var1, var2]
                       ; name1 <- lookupVar var1
                       ; name2 <- lookupVar var2
                       -- ; checkPrecMatch -- TODO
-                      ; return (InfixPatSyn name1 name2, mkFVs (map unLoc [name1, name2])) }
+                      ; return (InfixPatSyn name1 name2) }
                RecordPatSyn vars ->
                    do { checkDupRdrNames (map recordPatSynSelectorId vars)
                       ; let rnRecordPatSynField
@@ -661,12 +661,11 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                               ; hidden'  <- lookupVar hidden
                               ; return $ RecordPatSynField visible' hidden' }
                       ; names <- mapM rnRecordPatSynField  vars
-                      ; return (RecordPatSyn names
-                               , mkFVs (map (unLoc . recordPatSynPatVar) names)) }
+                      ; return (RecordPatSyn names) }
 
 
-        ; return ((pat', details'), fvs) }
-        ; (dir', fvs2) <- case dir of
+        ; return ((pat', details'), emptyFVs) }
+        ; (dir', fvs) <- case dir of
             Unidirectional -> return (Unidirectional, emptyFVs)
             ImplicitBidirectional -> return (ImplicitBidirectional, emptyFVs)
             ExplicitBidirectional mg ->
@@ -674,8 +673,7 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                    ; return (ExplicitBidirectional mg', fvs) }
 
         ; mod <- getModule
-        ; let fvs = fvs1 `plusFV` fvs2
-              fvs' = filterNameSet (nameIsLocalOrFrom mod) fvs
+        ; let fvs' = filterNameSet (nameIsLocalOrFrom mod) fvs
                 -- Keep locally-defined Names
                 -- As well as dependency analysis, we need these for the
                 -- MonoLocalBinds test in TcBinds.decideGeneralisationPlan
@@ -690,7 +688,7 @@ rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                                  _ -> []
 
         ; fvs' `seq` -- See Note [Free-variable space leak]
-          return (bind', name : selector_names , fvs1)
+          return (bind', name : selector_names , emptyFVs)
           -- See Note [Pattern synonym builders don't yield dependencies]
       }
   where
