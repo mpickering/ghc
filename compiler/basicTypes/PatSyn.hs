@@ -66,6 +66,10 @@ data PatSyn
 
         psUnivTyVars  :: [TyVar],      -- Universially-quantified type variables
         psReqTheta    :: ThetaType,    -- Required dictionaries
+                                       -- these constraints are very much like
+                                       -- stupid thetas (which is a useful
+                                       -- guideline when implementing)
+                                       -- but are actually needed.
         psExTyVars    :: [TyVar],      -- Existentially-quantified type vars
         psProvTheta   :: ThetaType,    -- Provided dictionaries
         psOrigResTy   :: Type,         -- Mentions only psUnivTyVars
