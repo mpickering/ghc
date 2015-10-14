@@ -699,7 +699,6 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
         ; let bad_guys = [ setSrcSpan loc $ addErrTc (notSelector fld_name)
                          | (fld, sel_id) <- rec_flds rbinds `zip` sel_ids,
                            not (isRecordSelector sel_id),
-                           not (isPatSynRecordSelector sel_id),
                            -- Excludes class ops
                            let L loc fld_name = hsRecFieldId (unLoc fld) ]
         ; unless (null bad_guys) (sequence bad_guys >> failM)
@@ -707,8 +706,8 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
         ; let (data_sels, pat_syn_sels) =
                 partition isDataConRecordSelector sel_ids
         ; MASSERT( all isPatSynRecordSelector pat_syn_sels )
-        ; unless ( null data_sels || null pat_syn_sels )
-            (addErrTc (mixedSelectors data_sels pat_syn_sels) >> failM)
+        ; checkTc ( null data_sels || null pat_syn_sels )
+                  ( mixedSelectors data_sels pat_syn_sels )
 
         -- STEP 1
         -- Figure out the tycon and data cons from the first field name
@@ -720,7 +719,9 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
               con_likes  =
                 case idDetails sel_id of
                   RecSelId tc_or_patsyn _ ->
-                    either (map RealDataCon . tyConDataCons) (\p -> [PatSynCon p]) tc_or_patsyn
+                    either (map RealDataCon . tyConDataCons)
+                           (\p -> [PatSynCon p])
+                           tc_or_patsyn
                   _ -> panic "tcRecordUpd"
                 -- NB: for a data type family, the tycon is the instance tycon
 
