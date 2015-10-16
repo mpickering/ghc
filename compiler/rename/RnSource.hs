@@ -1591,6 +1591,8 @@ extendRecordFieldEnv tycl_decls inst_decls
              ; return $ (RecFields env' fld_set') }
     get_con _ env = return env
 
+-- | Brings pattern synonym names and also pattern synonym selectors
+-- from record pattern synonyms into scope.
 extendPatSynEnv :: HsValBinds RdrName -> MiniFixityEnv
                 -> ([Name] -> TcRnIf TcGblEnv TcLclEnv a) -> TcM a
 extendPatSynEnv val_decls local_fix_env thing = do {
