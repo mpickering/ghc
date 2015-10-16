@@ -68,22 +68,14 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
     do { traceTc "tcInferPatSynDecl {" $ ppr name
        ; tcCheckPatSynPat lpat
 
-       ; let (arg_names, is_infix) = case details of
-                 PrefixPatSyn names      -> (map unLoc names, False)
-                 InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
-                 RecordPatSyn names
-                  -> (map (unLoc . recordPatSynPatVar) names, False)
+       ; let (arg_names, rec_fields, is_infix) = collectPatSynArgInfo details
+
        ; ((lpat', (args, pat_ty)), tclvl, wanted)
             <- pushLevelAndCaptureConstraints  $
                do { pat_ty <- newFlexiTyVarTy openTypeKind
                   ; tcPat PatSyn lpat pat_ty $
                do { args <- mapM tcLookupId arg_names
                   ; return (args, pat_ty) } }
-
-        -- Only generate selectors for RecordPatSyn
-       ; let rec_fields = case details of
-                             RecordPatSyn names -> names
-                             _ -> []
 
        ; let named_taus = (name, pat_ty) : map (\arg -> (getName arg, varType arg)) args
 
@@ -111,6 +103,21 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                           (zip args $ repeat idHsWrapper)
                           pat_ty rec_fields }
 
+collectPatSynArgInfo :: HsPatSynDetails (Located Name) -> ([Name], [Name], Bool)
+collectPatSynArgInfo details =
+  case details of
+    PrefixPatSyn names      -> (map unLoc names, [], False)
+    InfixPatSyn name1 name2 -> (map unLoc [name1, name2], [], True)
+    RecordPatSyn names ->
+      let (vars, sels) = unzip (map splitRecordPatSyn names)
+      in (vars, sels, False)
+
+  where
+    splitRecordPatSyn :: RecordPatSynField (Located Name) -> (Name, Name)
+    splitRecordPatSyn (RecordPatSynField { recordPatSynPatVar = L _ patVar
+                                         , recordPatSynSelectorId = L _ selId })
+      = (patVar, selId)
+
 tcCheckPatSynDecl :: PatSynBind Name Name
                   -> TcPatSynInfo
                   -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
@@ -132,15 +139,7 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
        -- TODO: find a better SkolInfo
        ; let skol_info = SigSkol (PatSynCtxt name) (mkFunTys arg_tys pat_ty)
 
-       ; let (arg_names, is_infix) = case details of
-                 PrefixPatSyn names      -> (map unLoc names, False)
-                 InfixPatSyn name1 name2 -> (map unLoc [name1, name2], True)
-                 RecordPatSyn names
-                  -> (map (unLoc . recordPatSynPatVar) names, False)
-
-       ; let rec_fields = case details of
-                             RecordPatSyn names -> names
-                             _ -> []
+       ; let (arg_names, rec_fields, is_infix) = collectPatSynArgInfo details
 
        ; let ty_arity = length arg_tys
        ; checkTc (length arg_names == ty_arity)
@@ -202,14 +201,14 @@ tc_patsyn_finish :: Located Name  -- ^ PatSyn Name
                  -> ([TcTyVar], [TcType], [PredType], TcEvBinds, [EvVar])
                  -> [(Var, HsWrapper)]  -- ^ Pattern arguments
                  -> TcType              -- ^ Pattern type
-                 -> [RecordPatSynField (Located Name)]
+                 -> [Name]              -- ^ Selector names
                  -- ^ Whether fields, empty if not record PatSyn
                  -> TcM (PatSyn, LHsBinds Id, TcGblEnv)
 tc_patsyn_finish lname dir is_infix lpat'
                  (univ_tvs, req_theta, req_ev_binds, req_dicts)
                  (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
                  wrapped_args
-                 pat_ty rec_fields
+                 pat_ty field_labels
   = do { fixM $ \ ~(patSyn, _, _) -> do {
 
         traceTc "tc_patsyn_finish {" $
@@ -226,10 +225,6 @@ tc_patsyn_finish lname dir is_infix lpat'
 
        ; builder_id <- mkPatSynBuilderId dir lname qtvs theta
                                          arg_tys pat_ty patSyn
-
-
-
-       ; let field_labels = map (unLoc . recordPatSynSelectorId) rec_fields
 
 
        ; let patSyn' = mkPatSyn (unLoc lname) is_infix
