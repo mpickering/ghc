@@ -103,20 +103,6 @@ tcInferPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                           (zip args $ repeat idHsWrapper)
                           pat_ty rec_fields }
 
-collectPatSynArgInfo :: HsPatSynDetails (Located Name) -> ([Name], [Name], Bool)
-collectPatSynArgInfo details =
-  case details of
-    PrefixPatSyn names      -> (map unLoc names, [], False)
-    InfixPatSyn name1 name2 -> (map unLoc [name1, name2], [], True)
-    RecordPatSyn names ->
-      let (vars, sels) = unzip (map splitRecordPatSyn names)
-      in (vars, sels, False)
-
-  where
-    splitRecordPatSyn :: RecordPatSynField (Located Name) -> (Name, Name)
-    splitRecordPatSyn (RecordPatSynField { recordPatSynPatVar = L _ patVar
-                                         , recordPatSynSelectorId = L _ selId })
-      = (patVar, selId)
 
 tcCheckPatSynDecl :: PatSynBind Name Name
                   -> TcPatSynInfo
@@ -185,6 +171,21 @@ tcCheckPatSynDecl PSB{ psb_id = lname@(L loc name), psb_args = details,
                           pat_ty rec_fields  }
   where
     (arg_tys, pat_ty) = tcSplitFunTys tau
+
+collectPatSynArgInfo :: HsPatSynDetails (Located Name) -> ([Name], [Name], Bool)
+collectPatSynArgInfo details =
+  case details of
+    PrefixPatSyn names      -> (map unLoc names, [], False)
+    InfixPatSyn name1 name2 -> (map unLoc [name1, name2], [], True)
+    RecordPatSyn names ->
+      let (vars, sels) = unzip (map splitRecordPatSyn names)
+      in (vars, sels, False)
+
+  where
+    splitRecordPatSyn :: RecordPatSynField (Located Name) -> (Name, Name)
+    splitRecordPatSyn (RecordPatSynField { recordPatSynPatVar = L _ patVar
+                                         , recordPatSynSelectorId = L _ selId })
+      = (patVar, selId)
 
 wrongNumberOfParmsErr :: Arity -> SDoc
 wrongNumberOfParmsErr ty_arity
