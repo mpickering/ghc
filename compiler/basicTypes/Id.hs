@@ -116,7 +116,6 @@ import Var( Id, DictId,
             isId, isLocalId, isGlobalId, isExportedId )
 import qualified Var
 
-import TyCon
 import Type
 import TysPrim
 import DataCon
@@ -135,7 +134,6 @@ import FastString
 import Util
 import StaticFlags
 import {-# SOURCE #-} ConLike ( ConLike(..) )
-import {-# SOURCE #-} PatSyn ( PatSyn )
 
 -- infixl so you can say (id `set` a `set` b)
 infixl  1 `setIdUnfoldingLazily`,
@@ -358,7 +356,7 @@ That is what is happening in, say tidy_insts in TidyPgm.
 -}
 
 -- | If the 'Id' is that for a record selector, extract the 'sel_tycon' and label. Panic otherwise
-recordSelectorFieldLabel :: Id -> Either TyCon PatSyn
+recordSelectorFieldLabel :: Id -> RecSelParent
 recordSelectorFieldLabel id
   = case Var.idDetails id of
         RecSelId { sel_tycon = tycon } -> tycon
@@ -384,11 +382,11 @@ isRecordSelector id = case Var.idDetails id of
                         _               -> False
 
 isDataConRecordSelector id = case Var.idDetails id of
-                        RecSelId {sel_tycon = Left _} -> True
+                        RecSelId {sel_tycon = RecSelData _} -> True
                         _               -> False
 
 isPatSynRecordSelector id = case Var.idDetails id of
-                        RecSelId {sel_tycon = Right _} -> True
+                        RecSelId {sel_tycon = RecSelPatSyn _} -> True
                         _               -> False
 
 isNaughtyRecordSelector id = case Var.idDetails id of

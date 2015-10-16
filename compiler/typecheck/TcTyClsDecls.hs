@@ -45,7 +45,6 @@ import Class
 import CoAxiom
 import TyCon
 import DataCon
-import PatSyn
 import ConLike
 import Id
 import MkCore           ( rEC_SEL_ERROR_ID )
@@ -2036,11 +2035,11 @@ mkRecSelBinds tycons
 
 mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, LHsBinds Name)
 mkRecSelBind (tycon, sel_name)
-  = mkOneRecordSelector all_cons (Left tycon) sel_name
+  = mkOneRecordSelector all_cons (RecSelData tycon) sel_name
   where
     all_cons     = map RealDataCon (tyConDataCons tycon)
 
-mkOneRecordSelector :: [ConLike] -> Either TyCon PatSyn -> FieldLabel
+mkOneRecordSelector :: [ConLike] -> RecSelParent -> FieldLabel
               -> (LSig Name, LHsBinds Name)
 mkOneRecordSelector all_cons idDetails sel_name =
     (L loc (IdSig sel_id), unitBag (L loc sel_bind))

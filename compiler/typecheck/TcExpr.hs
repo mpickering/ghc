@@ -714,14 +714,14 @@ tcExpr (RecordUpd record_expr rbinds _ _ _ _ ) res_ty
         ; let   -- It's OK to use the non-tc splitters here (for a selector)
               sel_id : _  = sel_ids
               mtycon  = case idDetails sel_id of
-                          RecSelId (Left tycon) _ -> Just tycon
+                          RecSelId (RecSelData tycon) _ -> Just tycon
                           _ -> Nothing
               con_likes  =
                 case idDetails sel_id of
-                  RecSelId tc_or_patsyn _ ->
-                    either (map RealDataCon . tyConDataCons)
-                           (\p -> [PatSynCon p])
-                           tc_or_patsyn
+                  RecSelId (RecSelData tc) _ ->
+                    map RealDataCon (tyConDataCons tc)
+                  RecSelId (RecSelPatSyn ps) _ ->
+                    [PatSynCon ps]
                   _ -> panic "tcRecordUpd"
                 -- NB: for a data type family, the tycon is the instance tycon
 
@@ -1637,8 +1637,8 @@ mixedSelectors data_sels@(dc_rep_id:_) pat_syn_sels@(ps_rep_id:_)
       <> text ":"
       <+> pprWithCommas ppr pat_syn_sels
   where
-    Right rep_ps = recordSelectorFieldLabel ps_rep_id
-    Left rep_dc = recordSelectorFieldLabel dc_rep_id
+    RecSelPatSyn rep_ps = recordSelectorFieldLabel ps_rep_id
+    RecSelData rep_dc = recordSelectorFieldLabel dc_rep_id
 mixedSelectors _ _ = panic "TcExpr: mixedSelectors emptylists"
 
 

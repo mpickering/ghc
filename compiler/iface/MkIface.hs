@@ -1835,7 +1835,9 @@ toIfaceIdDetails VanillaId                      = IfVanillaId
 toIfaceIdDetails (DFunId {})                    = IfDFunId
 toIfaceIdDetails (RecSelId { sel_naughty = n
                            , sel_tycon = tc })  =
-  let iface = either (Left . toIfaceTyCon) (Right . patSynToIfaceDecl) tc
+  let iface = case tc of
+                RecSelData ty_con -> Left (toIfaceTyCon ty_con)
+                RecSelPatSyn pat_syn -> Right (patSynToIfaceDecl pat_syn)
   in IfRecSelId iface n
 
   -- Currently we don't persist these three "advisory" IdInfos

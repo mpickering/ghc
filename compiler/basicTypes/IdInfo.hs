@@ -11,6 +11,7 @@ Haskell. [WDP 94/11])
 module IdInfo (
         -- * The IdDetails type
         IdDetails(..), pprIdDetails, coVarDetails,
+        RecSelParent(..),
 
         -- * The IdInfo type
         IdInfo,         -- Abstract
@@ -109,11 +110,7 @@ data IdDetails
 
   -- | The 'Id' for a record selector
   | RecSelId
-    { sel_tycon   :: Either TyCon PatSyn
-                                -- ^ Either `TyCon` or `PatSyn` depending
-                                -- on the origin of the record selector.
-                                -- For a data type family, this is the
-                                -- /instance/ 'TyCon' not the family 'TyCon'
+    { sel_tycon   :: RecSelParent
     , sel_naughty :: Bool       -- True <=> a "naughty" selector which can't actually exist, for example @x@ in:
                                 --    data T = forall a. MkT { x :: a }
     }                           -- See Note [Naughty record selectors] in TcTyClsDecls
@@ -152,6 +149,14 @@ data IdDetails
 
   | PatSynId                    -- ^ A top-level Id to support pattern synonyms;
                                 -- the builder or matcher for the patern synonym
+
+
+data RecSelParent = RecSelData TyCon | RecSelPatSyn PatSyn
+  -- Either `TyCon` or `PatSyn` depending
+  -- on the origin of the record selector.
+  -- For a data type family, this is the
+  -- /instance/ 'TyCon' not the family 'TyCon'
+
 
 coVarDetails :: IdDetails
 coVarDetails = VanillaId

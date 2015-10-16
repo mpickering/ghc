@@ -27,7 +27,7 @@ import Outputable
 import FastString
 import Var
 import Id
-import IdInfo( IdDetails(..) )
+import IdInfo( IdDetails(..), RecSelParent(..))
 import TcBinds
 import BasicTypes
 import TcSimplify
@@ -351,7 +351,7 @@ mkPatSynRecSelBinds :: PatSyn
                     -- ^ Visible field labels
                     -> [(LSig Name, LHsBinds Name)]
 mkPatSynRecSelBinds ps fields =
-    map (mkOneRecordSelector [PatSynCon ps] (Right ps)) fields
+    map (mkOneRecordSelector [PatSynCon ps] (RecSelPatSyn ps)) fields
 
 isUnidirectional :: HsPatSynDir a -> Bool
 isUnidirectional Unidirectional          = True

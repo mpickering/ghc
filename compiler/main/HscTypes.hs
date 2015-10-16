@@ -148,7 +148,7 @@ import VarEnv
 import VarSet
 import Var
 import Id
-import IdInfo           ( IdDetails(..) )
+import IdInfo           ( IdDetails(..), RecSelParent(..))
 import Type
 
 import ApiAnnotation    ( ApiAnns )
@@ -1774,10 +1774,11 @@ tyThingParent_maybe (ATyCon tc)   = case tyConAssoc_maybe tc of
                                       Just cls -> Just (ATyCon (classTyCon cls))
                                       Nothing  -> Nothing
 tyThingParent_maybe (AnId id)     = case idDetails id of
-                                         RecSelId { sel_tycon = Left tc } ->
-                                            Just (ATyCon tc)
-                                         ClassOpId cls               -> Just (ATyCon (classTyCon cls))
-                                         _other                      -> Nothing
+                                      RecSelId { sel_tycon = RecSelData tc } ->
+                                          Just (ATyCon tc)
+                                      ClassOpId cls               ->
+                                          Just (ATyCon (classTyCon cls))
+                                      _other                      -> Nothing
 tyThingParent_maybe _other = Nothing
 
 tyThingsTyVars :: [TyThing] -> TyVarSet

@@ -1173,8 +1173,8 @@ tcIdDetails ty IfDFunId
     (_, _, cls, _) = tcSplitDFunTy ty
 
 tcIdDetails _ (IfRecSelId tc naughty)
-  = do { tc' <- either (fmap Left . tcIfaceTyCon)
-                       (fmap (Right . tyThingPatSyn) . tcIfaceDecl False)
+  = do { tc' <- either (fmap RecSelData . tcIfaceTyCon)
+                       (fmap (RecSelPatSyn . tyThingPatSyn) . tcIfaceDecl False)
                        tc
        ; return (RecSelId { sel_tycon = tc', sel_naughty = naughty }) }
   where
