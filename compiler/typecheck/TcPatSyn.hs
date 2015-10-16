@@ -210,7 +210,7 @@ tc_patsyn_finish lname dir is_infix lpat'
                  (ex_tvs, subst, prov_theta, prov_ev_binds, prov_dicts)
                  wrapped_args
                  pat_ty field_labels
-  = do { fixM $ \ ~(patSyn, _, _) -> do {
+  = do { (patSyn, matcher_bind) <- fixM $ \ ~(patSyn,_) -> do {
 
         traceTc "tc_patsyn_finish {" $
            ppr (unLoc lname) $$ ppr (unLoc lpat') $$
@@ -235,16 +235,18 @@ tc_patsyn_finish lname dir is_infix lpat'
                         pat_ty
                         matcher_id builder_id
                         field_labels
+       ; return (patSyn', matcher_bind) }
+
        -- Selectors
        ; let (sigs, selector_binds) =
-                unzip (mkPatSynRecSelBinds patSyn' field_labels)
-       ; let tything = AConLike (PatSynCon patSyn')
+                unzip (mkPatSynRecSelBinds patSyn field_labels)
+       ; let tything = AConLike (PatSynCon patSyn)
        ; tcg_env <-
           tcExtendGlobalEnv [tything] $
             tcRecSelBinds
               (ValBindsOut (zip (repeat NonRecursive) selector_binds) sigs)
 
-       ; return (patSyn', matcher_bind, tcg_env) } }
+       ; return (patSyn, matcher_bind, tcg_env) }
 
   where
     qtvs = univ_tvs ++ ex_tvs
