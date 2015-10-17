@@ -1,5 +1,8 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 module Main where
+
+import Prelude (Maybe(..), Show(..), String, Bool(..), print)
 
 pattern ReqNoProv :: () => Show a => a -> Maybe a
 pattern ReqNoProv{j} = Just j

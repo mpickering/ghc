@@ -68,6 +68,7 @@ import Util
 import FastString
 import Fingerprint
 import Hooks
+import FieldLabel
 
 import Control.Monad
 import Data.IORef
@@ -515,13 +516,13 @@ wantHiBootFile dflags eps mod from
                      -- The boot-ness of the requested interface,
                      -- based on the dependencies in directly-imported modules
   where
-    this_package = thisPackage dflags == modulePackageKey mod
+    this_package = thisPackage dflags == moduleUnitId mod
 
 badSourceImport :: Module -> SDoc
 badSourceImport mod
   = hang (ptext (sLit "You cannot {-# SOURCE #-} import a module from another package"))
        2 (ptext (sLit "but") <+> quotes (ppr mod) <+> ptext (sLit "is from package")
-          <+> quotes (ppr (modulePackageKey mod)))
+          <+> quotes (ppr (moduleUnitId mod)))
 
 -----------------------------------------------------
 --      Loading type/class/value decls
@@ -710,7 +711,7 @@ findAndReadIface doc_str mod hi_boot_file
                                                            (ml_hi_file loc)
 
                        -- See Note [Home module load error]
-                       if thisPackage dflags == modulePackageKey mod &&
+                       if thisPackage dflags == moduleUnitId mod &&
                           not (isOneShot (ghcMode dflags))
                            then return (Failed (homeModError mod loc))
                            else do r <- read_file file_path
@@ -907,14 +908,14 @@ When printing export lists, we print like this:
 -}
 
 pprExport :: IfaceExport -> SDoc
-pprExport (Avail n)      = ppr n
-pprExport (AvailTC _ []) = Outputable.empty
-pprExport (AvailTC n (n':ns))
-  | n==n'     = ppr n <> pp_export ns
-  | otherwise = ppr n <> char '|' <> pp_export (n':ns)
+pprExport (Avail n)         = ppr n
+pprExport (AvailTC _ [] []) = Outputable.empty
+pprExport (AvailTC n ns0 fs) = case ns0 of
+                                 (n':ns) | n==n' -> ppr n <> pp_export ns fs
+                                 _               -> ppr n <> char '|' <> pp_export ns0 fs
   where
-    pp_export []    = Outputable.empty
-    pp_export names = braces (hsep (map ppr names))
+    pp_export []    [] = Outputable.empty
+    pp_export names fs = braces (hsep (map ppr names ++ map (ppr . flLabel) fs))
 
 pprUsage :: Usage -> SDoc
 pprUsage usage@UsagePackageModule{}

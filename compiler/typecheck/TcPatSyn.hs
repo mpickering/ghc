@@ -41,7 +41,7 @@ import VarEnv
 import Inst
 import TcTyClsDecls
 import ConLike
-import TyCon (FieldLabel)
+import FieldLabel
 #if __GLASGOW_HASKELL__ < 709
 import Data.Monoid
 #endif
@@ -227,6 +227,10 @@ tc_patsyn_finish lname dir is_infix lpat'
        ; builder_id <- mkPatSynBuilderId dir lname qtvs theta
                                          arg_tys pat_ty patSyn
 
+         -- TODO: Make this have the proper information
+       ; let mkFieldLabel name = FieldLabel (occNameFS (nameOccName name)) False name
+             field_labels' = (map mkFieldLabel field_labels)
+
 
        ; let patSyn' = mkPatSyn (unLoc lname) is_infix
                         (univ_tvs, req_theta)
@@ -234,12 +238,12 @@ tc_patsyn_finish lname dir is_infix lpat'
                         arg_tys
                         pat_ty
                         matcher_id builder_id
-                        field_labels
+                        field_labels'
        ; return (patSyn', matcher_bind) }
 
        -- Selectors
        ; let (sigs, selector_binds) =
-                unzip (mkPatSynRecSelBinds patSyn field_labels)
+                unzip (mkPatSynRecSelBinds patSyn (patSynFieldLabels patSyn))
        ; let tything = AConLike (PatSynCon patSyn)
        ; tcg_env <-
           tcExtendGlobalEnv [tything] $

@@ -151,11 +151,17 @@ data IdDetails
                                 -- the builder or matcher for the patern synonym
 
 
-data RecSelParent = RecSelData TyCon | RecSelPatSyn PatSyn
+data RecSelParent = RecSelData TyCon | RecSelPatSyn PatSyn deriving Eq
   -- Either `TyCon` or `PatSyn` depending
   -- on the origin of the record selector.
   -- For a data type family, this is the
   -- /instance/ 'TyCon' not the family 'TyCon'
+
+instance Outputable RecSelParent where
+  ppr p = case p of
+            RecSelData ty_con -> ppr ty_con
+            RecSelPatSyn ps   -> ppr ps
+
 
 
 coVarDetails :: IdDetails

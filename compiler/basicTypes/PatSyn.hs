@@ -13,7 +13,7 @@ module PatSyn (
 
         -- ** Type deconstruction
         patSynName, patSynArity, patSynIsInfix,
-        patSynArgs, patSynTyDetails, patSynType,
+        patSynArgs, patSynType,
         patSynMatcher, patSynBuilder,
         patSynExTyVars, patSynSig,
         patSynInstArgTys, patSynInstResTy, patSynFieldLabels,
@@ -33,12 +33,12 @@ import Util
 import BasicTypes
 import FastString
 import Var
-import HsBinds( HsPatSynDetails(..) )
-import TyCon
+import FieldLabel
 
 import qualified Data.Data as Data
 import qualified Data.Typeable
 import Data.Function
+import Data.List
 
 {-
 ************************************************************************
@@ -305,19 +305,12 @@ patSynArgs = psArgs
 patSynFieldLabels :: PatSyn -> [FieldLabel]
 patSynFieldLabels = psFieldLabels
 
--- | Extract the type for any given labelled field of the 'PatSyn'
-patSynFieldType :: PatSyn -> FieldLabel -> Type
+-- | Extract the type for any given labelled field of the 'DataCon'
+patSynFieldType :: PatSyn -> FieldLabelString -> Type
 patSynFieldType ps label
-  = case lookup label (psFieldLabels ps `zip` psArgs ps) of
-      Just ty -> ty
-      Nothing -> pprPanic "patSynFieldType" (ppr ps <+> ppr label)
-
-patSynTyDetails :: PatSyn -> HsPatSynDetails Type
-patSynTyDetails (MkPatSyn { psInfix = is_infix, psArgs = arg_tys })
-  | is_infix, [left,right] <- arg_tys
-  = InfixPatSyn left right
-  | otherwise
-  = PrefixPatSyn arg_tys
+  = case find ((== label) . flLabel . fst) (psFieldLabels ps `zip` psArgs ps) of
+      Just (_, ty) -> ty
+      Nothing -> pprPanic "dataConFieldType" (ppr ps <+> ppr label)
 
 patSynExTyVars :: PatSyn -> [TyVar]
 patSynExTyVars = psExTyVars

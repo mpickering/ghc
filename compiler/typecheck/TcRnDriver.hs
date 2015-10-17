@@ -1017,7 +1017,7 @@ checkBootTyCon tc1 tc2
          check (eqListBy eqHsBang (dataConImplBangs c1) (dataConImplBangs c2))
                (text "The strictness annotations for" <+> pname1 <+>
                 text "differ") `andThenCheck`
-         check (dataConFieldLabels c1 == dataConFieldLabels c2)
+         check (map flSelector (dataConFieldLabels c1) == map flSelector (dataConFieldLabels c2))
                (text "The record label lists for" <+> pname1 <+>
                 text "differ") `andThenCheck`
          check (eqType (dataConUserType c1) (dataConUserType c2))
@@ -1127,7 +1127,6 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
         (tcg_env, inst_infos, deriv_binds)
             <- tcTyClsInstDecls tycl_decls inst_decls deriv_decls ;
         setGblEnv tcg_env       $ do {
-
 
                 -- Generate Applicative/Monad proposal (AMP) warnings
         traceTc "Tc3b" empty ;
@@ -1420,8 +1419,7 @@ runTcInteractive hsc_env thing_inside
                                                (extendFamInstEnvList (tcg_fam_inst_env gbl_env)
                                                                      ic_finsts)
                                                home_fam_insts
-                         , tcg_field_env    = RecFields (mkNameEnv con_fields)
-                                                        (mkNameSet (concatMap snd con_fields))
+                         , tcg_field_env    = mkNameEnv con_fields
                               -- setting tcg_field_env is necessary
                               -- to make RecordWildCards work (test: ghci049)
                          , tcg_fix_env      = ic_fix_env icxt
@@ -2074,7 +2072,7 @@ pprTcGblEnv (TcGblEnv { tcg_type_env  = type_env,
          , ptext (sLit "Dependent modules:") <+>
                 ppr (sortBy cmp_mp $ eltsUFM (imp_dep_mods imports))
          , ptext (sLit "Dependent packages:") <+>
-                ppr (sortBy stablePackageKeyCmp $ imp_dep_pkgs imports)]
+                ppr (sortBy stableUnitIdCmp $ imp_dep_pkgs imports)]
   where         -- The two uses of sortBy are just to reduce unnecessary
                 -- wobbling in testsuite output
     cmp_mp (mod_name1, is_boot1) (mod_name2, is_boot2)

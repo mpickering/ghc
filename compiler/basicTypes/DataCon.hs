@@ -15,6 +15,9 @@ module DataCon (
         StrictnessMark(..),
         ConTag,
 
+        -- ** Field labels
+        FieldLbl(..), FieldLabel, FieldLabelString,
+
         -- ** Type construction
         mkDataCon, fIRST_TAG,
         buildAlgTyCon,
@@ -57,6 +60,7 @@ import Coercion
 import Kind
 import Unify
 import TyCon
+import FieldLabel
 import Class
 import Name
 import Var
@@ -75,7 +79,7 @@ import qualified Data.Typeable
 import Data.Maybe
 import Data.Char
 import Data.Word
-import Data.List( mapAccumL )
+import Data.List( mapAccumL, find )
 
 {-
 Data constructor representation
@@ -831,10 +835,10 @@ dataConFieldLabels :: DataCon -> [FieldLabel]
 dataConFieldLabels = dcFields
 
 -- | Extract the type for any given labelled field of the 'DataCon'
-dataConFieldType :: DataCon -> FieldLabel -> Type
+dataConFieldType :: DataCon -> FieldLabelString -> Type
 dataConFieldType con label
-  = case lookup label (dcFields con `zip` dcOrigArgTys con) of
-      Just ty -> ty
+  = case find ((== label) . flLabel . fst) (dcFields con `zip` dcOrigArgTys con) of
+      Just (_, ty) -> ty
       Nothing -> pprPanic "dataConFieldType" (ppr con <+> ppr label)
 
 -- | Strictness/unpack annotations, from user; or, for imported
@@ -1027,7 +1031,7 @@ dataConRepArgTys (MkData { dcRep = rep
 -- to its info table and used by the GHCi debugger and the heap profiler
 dataConIdentity :: DataCon -> [Word8]
 -- We want this string to be UTF-8, so we get the bytes directly from the FastStrings.
-dataConIdentity dc = bytesFS (packageKeyFS (modulePackageKey mod)) ++
+dataConIdentity dc = bytesFS (unitIdFS (moduleUnitId mod)) ++
                   fromIntegral (ord ':') : bytesFS (moduleNameFS (moduleName mod)) ++
                   fromIntegral (ord '.') : bytesFS (occNameFS (nameOccName name))
   where name = dataConName dc

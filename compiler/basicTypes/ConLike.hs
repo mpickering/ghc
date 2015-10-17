@@ -20,6 +20,7 @@ module ConLike (
         , conLikeFullSig
         , conLikeResTy
         , conLikeFieldType
+        , conLikesWithFields
     ) where
 
 #include "HsVersions.h"
@@ -30,7 +31,6 @@ import Outputable
 import Unique
 import Util
 import Name
-import TyCon
 import BasicTypes
 import {-# SOURCE #-} TypeRep (Type, ThetaType)
 import Var
@@ -182,6 +182,13 @@ conLikeFullSig (PatSynCon pat_syn) =
  in (univ_tvs, ex_tvs, [], prov, req, arg_tys, res_ty)
 
 -- | Extract the type for any given labelled field of the 'ConLike'
-conLikeFieldType :: ConLike -> FieldLabel -> Type
+conLikeFieldType :: ConLike -> FieldLabelString -> Type
 conLikeFieldType (PatSynCon ps) label = patSynFieldType ps label
 conLikeFieldType (RealDataCon dc) label = dataConFieldType dc label
+
+
+-- | The ConLikes that have *all* the given fields
+conLikesWithFields :: [ConLike] -> [FieldLabelString] -> [ConLike]
+conLikesWithFields con_likes lbls = filter has_flds con_likes
+  where has_flds dc = all (has_fld dc) lbls
+        has_fld dc lbl = any (\ fl -> flLabel fl == lbl) (conLikeFieldLabels dc)

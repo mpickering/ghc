@@ -98,16 +98,19 @@ rnUnboundVar v
     in_untyped_bracket _ = False
 
 rnExpr (HsVar v)
-  = do { mb_name <- lookupOccRn_maybe v
+  = do { mb_name <- lookupOccRn_overloaded False v
        ; case mb_name of {
            Nothing -> rnUnboundVar v ;
-           Just name
+           Just (Left name)
               | name == nilDataConName -- Treat [] as an ExplicitList, so that
                                        -- OverloadedLists works correctly
               -> rnExpr (ExplicitList placeHolderType Nothing [])
 
               | otherwise
-              -> finishHsVar name }}
+              -> finishHsVar name ;
+           Just (Right (f:fs)) -> ASSERT( null fs )
+                                  return (HsSingleRecFld f, unitFV (selectorFieldOcc f)) ;
+           Just (Right [])                 -> error "runExpr/HsVar" } }
 
 rnExpr (HsIPVar v)
   = return (HsIPVar v, emptyFVs)
@@ -255,12 +258,12 @@ rnExpr (RecordCon con_id _ rbinds)
         ; return (RecordCon conname noPostTcExpr rbinds',
                   fvRbinds `addOneFV` unLoc conname) }
 
-rnExpr (RecordUpd expr rbinds _ _ _ req_wrap)
+rnExpr (RecordUpd expr rbinds _ _ _ _)
   = do  { (expr', fvExpr) <- rnLExpr expr
-        ; (rbinds', fvRbinds) <- rnHsRecBinds HsRecFieldUpd rbinds
+        ; (rbinds', fvRbinds) <- rnHsRecUpdFields rbinds
         ; return (RecordUpd expr' rbinds'
                             PlaceHolder PlaceHolder
-                            PlaceHolder req_wrap
+                            PlaceHolder PlaceHolder
                  , fvExpr `plusFV` fvRbinds) }
 
 rnExpr (ExprWithTySig expr pty PlaceHolder)

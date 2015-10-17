@@ -437,7 +437,7 @@ dsExpr (HsStatic expr@(L loc _)) = do
     info <- mkConApp staticPtrInfoDataCon <$>
             (++[srcLoc]) <$>
             mapM mkStringExprFS
-                 [ packageKeyFS $ modulePackageKey $ nameModule n'
+                 [ unitIdFS $ moduleUnitId $ nameModule n'
                  , moduleNameFS $ moduleName $ nameModule n'
                  , occNameFS    $ nameOccName n'
                  ]
@@ -463,7 +463,7 @@ dsExpr (HsStatic expr@(L loc _)) = do
 
     fingerprintName :: Name -> Fingerprint
     fingerprintName n = fingerprintString $ unpackFS $ concatFS
-        [ packageKeyFS $ modulePackageKey $ nameModule n
+        [ unitIdFS $ moduleUnitId $ nameModule n
         , fsLit ":"
         , moduleNameFS (moduleName $ nameModule n)
         , fsLit "."
@@ -500,11 +500,11 @@ dsExpr (RecordCon (L _ con_like_id) con_expr rbinds) = do
         -- A newtype in the corner should be opaque;
         -- hence TcType.tcSplitFunTys
 
-        mk_arg (arg_ty, lbl)    -- Selector id has the field label as its name
-          = case findField (rec_flds rbinds) lbl of
+        mk_arg (arg_ty, fl)
+          = case findField (rec_flds rbinds) (flSelector fl) of
               (rhs:rhss) -> ASSERT( null rhss )
                             dsLExpr rhs
-              []         -> mkErrorAppDs rEC_CON_ERROR_ID arg_ty (ppr lbl)
+              []         -> mkErrorAppDs rEC_CON_ERROR_ID arg_ty (ppr (flLabel fl))
         unlabelled_bottom arg_ty = mkErrorAppDs rEC_CON_ERROR_ID arg_ty Outputable.empty
 
         labels = conLikeFieldLabels (idConLike con_like_id)
@@ -551,7 +551,7 @@ But if x::T a b, then
 So we need to cast (T a Int) to (T a b).  Sigh.
 -}
 
-dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
+dsExpr expr@(RecordUpd record_expr fields
                         cons_to_upd in_inst_tys out_inst_tys dict_req_wrap )
   | null fields
   = dsLExpr record_expr
@@ -577,13 +577,13 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
         ; return (add_field_binds field_binds' $
                   bindNonRec discrim_var record_expr' matching_code) }
   where
-    ds_field :: LHsRecField Id (LHsExpr Id) -> DsM (Name, Id, CoreExpr)
+    ds_field :: LHsRecUpdField Id -> DsM (Name, Id, CoreExpr)
       -- Clone the Id in the HsRecField, because its Name is that
-      -- of the record selector, and we must not make that a lcoal binder
+      -- of the record selector, and we must not make that a local binder
       -- else we shadow other uses of the record selector
       -- Hence 'lcl_id'.  Cf Trac #2735
     ds_field (L _ rec_field) = do { rhs <- dsLExpr (hsRecFieldArg rec_field)
-                                  ; let fld_id = unLoc (hsRecFieldId rec_field)
+                                  ; let fld_id = unLoc (hsRecUpdFieldId rec_field)
                                   ; lcl_id <- newSysLocalDs (idType fld_id)
                                   ; return (idName fld_id, lcl_id, rhs) }
 
@@ -612,8 +612,8 @@ dsExpr expr@(RecordUpd record_expr (HsRecFields { rec_flds = fields })
            ; let field_labels = conLikeFieldLabels con
                  val_args = zipWithEqual "dsExpr:RecordUpd" mk_val_arg
                                          field_labels arg_ids
-                 mk_val_arg field_name pat_arg_id
-                     = nlHsVar (lookupNameEnv upd_fld_env field_name `orElse` pat_arg_id)
+                 mk_val_arg fl pat_arg_id
+                     = nlHsVar (lookupNameEnv upd_fld_env (flSelector fl) `orElse` pat_arg_id)
                  -- SAFE: the typechecker will complain if the synonym is
                  -- not bidirectional
                  wrap_id = expectJust "dsExpr:mk_alt" (conLikeWrapId_maybe con)
@@ -711,13 +711,13 @@ dsExpr (EViewPat      {})  = panic "dsExpr:EViewPat"
 dsExpr (ELazyPat      {})  = panic "dsExpr:ELazyPat"
 dsExpr (HsType        {})  = panic "dsExpr:HsType"
 dsExpr (HsDo          {})  = panic "dsExpr:HsDo"
-
+dsExpr (HsSingleRecFld{})  = panic "dsExpr: HsSingleRecFld"
 
 
 findField :: [LHsRecField Id arg] -> Name -> [arg]
-findField rbinds lbl
-  = [rhs | L _ (HsRecField { hsRecFieldId = id, hsRecFieldArg = rhs }) <- rbinds
-         , lbl == idName (unLoc id) ]
+findField rbinds sel
+  = [hsRecFieldArg fld | L _ fld <- rbinds
+                       , sel == idName (unLoc $ hsRecFieldId fld) ]
 
 {-
 %--------------------------------------------------------------------

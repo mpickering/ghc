@@ -16,6 +16,7 @@ import {-# SOURCE #-} RnExpr( rnLExpr )
 import {-# SOURCE #-} RnSplice ( rnSpliceDecl, rnTopSpliceDecls )
 
 import HsSyn
+import FieldLabel
 import RdrName
 import RnTypes
 import RnBinds
@@ -104,15 +105,11 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    --          Again, they have no value declarations
    --
    (tc_envs, tc_bndrs) <- getLocalNonValBinders local_fix_env group ;
+
+
    setEnvs tc_envs $ do {
 
    failIfErrsM ; -- No point in continuing if (say) we have duplicate declarations
-
-   -- (C) Extract the mapping from data constructors to field names and
-   --     extend the record field env.
-   --     This depends on the data constructors and field names being in
-   --     scope from (B) above
-   inNewEnv (extendRecordFieldEnv tycl_decls inst_decls) $ \ _ -> do {
 
    -- (D1) Bring pattern synonyms into scope.
    --      Need to do this before (D2) because rnTopBindsLHS
@@ -131,6 +128,7 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
                                                     -- They are already in scope
    traceRn (text "rnSrcDecls" <+> ppr id_bndrs) ;
    tc_envs <- extendGlobalRdrEnvRn (map Avail id_bndrs) local_fix_env ;
+   traceRn (text "D2" <+> ppr (tcg_rdr_env (fst tc_envs)));
    setEnvs tc_envs $ do {
 
    --  Now everything is in scope, as the remaining renaming assumes.
@@ -181,7 +179,8 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
       -- Haddock docs; no free vars
    rn_docs <- mapM (wrapLocM rnDocDecl) docs ;
 
-    last_tcg_env <- getGblEnv ;
+   last_tcg_env <- getGblEnv ;
+   traceRn (text "last" <+> ppr (tcg_rdr_env last_tcg_env)) ;
    -- (I) Compute the results and return
    let {rn_group = HsGroup { hs_valds   = rn_val_decls,
                              hs_splcds  = rn_splice_decls,
@@ -213,17 +212,11 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
                         in -- we return the deprecs in the env, not in the HsGroup above
                         tcg_env' { tcg_warns = tcg_warns tcg_env' `plusWarns` rn_warns };
        } ;
-
+   traceRn (text "last" <+> ppr (tcg_rdr_env final_tcg_env)) ;
    traceRn (text "finish rnSrc" <+> ppr rn_group) ;
    traceRn (text "finish Dus" <+> ppr src_dus ) ;
    return (final_tcg_env, rn_group)
-                    }}}}}
-
--- some utils because we do this a bunch above
--- compute and install the new env
-inNewEnv :: TcM TcGblEnv -> (TcGblEnv -> TcM a) -> TcM a
-inNewEnv env cont = do e <- env
-                       setGblEnv e $ cont e
+                    }}}}
 
 addTcgDUs :: TcGblEnv -> DefUses -> TcGblEnv
 -- This function could be defined lower down in the module hierarchy,
@@ -401,8 +394,8 @@ rnHsForeignDecl (ForeignImport name ty _ spec)
        ; (ty', fvs) <- rnLHsType (ForeignDeclCtx name) ty
 
         -- Mark any PackageTarget style imports as coming from the current package
-       ; let packageKey = thisPackage $ hsc_dflags topEnv
-             spec'      = patchForeignImport packageKey spec
+       ; let unitId = thisPackage $ hsc_dflags topEnv
+             spec'      = patchForeignImport unitId spec
 
        ; return (ForeignImport name' ty' noForeignImportCoercionYet spec', fvs) }
 
@@ -419,21 +412,21 @@ rnHsForeignDecl (ForeignExport name ty _ spec)
 --      package, so if they get inlined across a package boundry we'll still
 --      know where they're from.
 --
-patchForeignImport :: PackageKey -> ForeignImport -> ForeignImport
-patchForeignImport packageKey (CImport cconv safety fs spec src)
-        = CImport cconv safety fs (patchCImportSpec packageKey spec) src
+patchForeignImport :: UnitId -> ForeignImport -> ForeignImport
+patchForeignImport unitId (CImport cconv safety fs spec src)
+        = CImport cconv safety fs (patchCImportSpec unitId spec) src
 
-patchCImportSpec :: PackageKey -> CImportSpec -> CImportSpec
-patchCImportSpec packageKey spec
+patchCImportSpec :: UnitId -> CImportSpec -> CImportSpec
+patchCImportSpec unitId spec
  = case spec of
-        CFunction callTarget    -> CFunction $ patchCCallTarget packageKey callTarget
+        CFunction callTarget    -> CFunction $ patchCCallTarget unitId callTarget
         _                       -> spec
 
-patchCCallTarget :: PackageKey -> CCallTarget -> CCallTarget
-patchCCallTarget packageKey callTarget =
+patchCCallTarget :: UnitId -> CCallTarget -> CCallTarget
+patchCCallTarget unitId callTarget =
   case callTarget of
   StaticTarget src label Nothing isFun
-                              -> StaticTarget src label (Just packageKey) isFun
+                              -> StaticTarget src label (Just unitId) isFun
   _                           -> callTarget
 
 {-
@@ -1482,7 +1475,7 @@ rnConDecl decl@(ConDecl { con_names = names, con_qvars = tvs
 
         ; bindHsTyVars doc Nothing free_kvs new_tvs $ \new_tyvars -> do
         { (new_context, fvs1) <- rnContext doc lcxt
-        ; (new_details, fvs2) <- rnConDeclDetails doc details
+        ; (new_details, fvs2) <- rnConDeclDetails (unLoc $ head new_names) doc details
         ; (new_details', new_res_ty, fvs3)
                      <- rnConResult doc (map unLoc new_names) new_details res_ty
         ; return (decl { con_names = new_names, con_qvars = new_tyvars
@@ -1517,20 +1510,22 @@ rnConResult doc _con details (ResTyGADT ls ty)
            PrefixCon {} -> return (PrefixCon arg_tys, ResTyGADT ls res_ty, fvs)}
 
 rnConDeclDetails
-   :: HsDocContext
+   :: Name
+   -> HsDocContext
    -> HsConDetails (LHsType RdrName) (Located [LConDeclField RdrName])
    -> RnM (HsConDetails (LHsType Name) (Located [LConDeclField Name]), FreeVars)
-rnConDeclDetails doc (PrefixCon tys)
+rnConDeclDetails _ doc (PrefixCon tys)
   = do { (new_tys, fvs) <- rnLHsTypes doc tys
        ; return (PrefixCon new_tys, fvs) }
 
-rnConDeclDetails doc (InfixCon ty1 ty2)
+rnConDeclDetails _ doc (InfixCon ty1 ty2)
   = do { (new_ty1, fvs1) <- rnLHsType doc ty1
        ; (new_ty2, fvs2) <- rnLHsType doc ty2
        ; return (InfixCon new_ty1 new_ty2, fvs1 `plusFV` fvs2) }
 
-rnConDeclDetails doc (RecCon (L l fields))
-  = do  { (new_fields, fvs) <- rnConDeclFields doc fields
+rnConDeclDetails con doc (RecCon (L l fields))
+  = do  { fls <- lookupConstructorFields con
+        ; (new_fields, fvs) <- rnConDeclFields fls doc fields
                 -- No need to check for duplicate fields
                 -- since that is done by RnNames.extendGlobalRdrEnvRn
         ; return (RecCon (L l new_fields), fvs) }
@@ -1546,70 +1541,47 @@ deprecRecSyntax decl
 badRecResTy :: SDoc -> SDoc
 badRecResTy doc = ptext (sLit "Malformed constructor signature") $$ doc
 
-{-
-*********************************************************
-*                                                      *
-\subsection{Support code for type/data declarations}
-*                                                      *
-*********************************************************
-
-Get the mapping from constructors to fields for this module.
-It's convenient to do this after the data type decls have been renamed
--}
-
-extendRecordFieldEnv :: [TyClGroup RdrName] -> [LInstDecl RdrName] -> TcM TcGblEnv
-extendRecordFieldEnv tycl_decls inst_decls
-  = do  { tcg_env <- getGblEnv
-        ; field_env' <- foldrM get_con (tcg_field_env tcg_env) all_data_cons
-        ; return (tcg_env { tcg_field_env = field_env' }) }
-  where
-    -- we want to lookup:
-    --  (a) a datatype constructor
-    --  (b) a record field
-    -- knowing that they're from this module.
-    -- lookupLocatedTopBndrRn does this, because it does a lookupGreLocalRn_maybe,
-    -- which keeps only the local ones.
-    lookup x = do { x' <- lookupLocatedTopBndrRn x
-                    ; return $ unLoc x'}
-
-    all_data_cons :: [ConDecl RdrName]
-    all_data_cons = [con | HsDataDefn { dd_cons = cons } <- all_ty_defs
-                         , L _ con <- cons ]
-    all_ty_defs = [ defn | L _ (DataDecl { tcdDataDefn = defn })
-                                                 <- tyClGroupConcat tycl_decls ]
-               ++ map dfid_defn (instDeclDataFamInsts inst_decls)
-                                              -- Do not forget associated types!
-
-    get_con (ConDecl { con_names = cons, con_details = RecCon flds })
-            (RecFields env fld_set)
-        = do { cons' <- mapM lookup cons
-             ; flds' <- mapM lookup (concatMap (cd_fld_names . unLoc)
-                                               (unLoc flds))
-             ; let env'    = foldl (\e c -> extendNameEnv e c flds') env cons'
-
-                   fld_set' = extendNameSetList fld_set flds'
-             ; return $ (RecFields env' fld_set') }
-    get_con _ env = return env
-
 -- | Brings pattern synonym names and also pattern synonym selectors
 -- from record pattern synonyms into scope.
 extendPatSynEnv :: HsValBinds RdrName -> MiniFixityEnv
                 -> ([Name] -> TcRnIf TcGblEnv TcLclEnv a) -> TcM a
 extendPatSynEnv val_decls local_fix_env thing = do {
-     let (rec_sels, pss) = hsPatSynBinders val_decls
-   ; pat_syn_sel_bndrs <- mapM newTopSrcBinder rec_sels
-   ; pat_syn_other_bndrs <- mapM newTopSrcBinder pss
-   ; let pat_syn_bndrs = pat_syn_sel_bndrs ++ pat_syn_other_bndrs
+     names_with_fls <- new_ps val_decls
+   ; let pat_syn_bndrs =
+          concat [name: map flSelector fields | (name, fields) <- names_with_fls]
+   ; let avails = map Avail pat_syn_bndrs
    ; (gbl_env, lcl_env) <-
-        extendGlobalRdrEnvRn (map Avail pat_syn_bndrs) local_fix_env
+        extendGlobalRdrEnvRn avails local_fix_env
 
 
-   ; let field_env' = foldr get_field (tcg_field_env gbl_env) pat_syn_sel_bndrs
+   ; let field_env' = extendNameEnvList (tcg_field_env gbl_env) names_with_fls
          final_gbl_env = gbl_env { tcg_field_env = field_env' }
    ; setEnvs (final_gbl_env, lcl_env) (thing pat_syn_bndrs) }
   where
-    get_field fname (RecFields env fld_set) =
-      RecFields env (extendNameSetList fld_set [fname])
+    new_ps :: HsValBinds RdrName -> TcM [(Name, [FieldLabel])]
+    new_ps (ValBindsIn binds _) = foldrBagM new_ps' [] binds
+    new_ps _ = panic "new_ps"
+
+    new_ps' :: LHsBindLR RdrName RdrName
+            -> [(Name, [FieldLabel])]
+            -> TcM [(Name, [FieldLabel])]
+    new_ps' bind names
+      | L bind_loc (PatSynBind (PSB { psb_id = L _ n
+                                    , psb_args = RecordPatSyn as })) <- bind
+      = do
+          bnd_name <- newTopSrcBinder (L bind_loc n)
+          let rnames = map recordPatSynSelectorId as
+              mkFieldOcc :: Located RdrName -> LFieldOcc RdrName
+              mkFieldOcc (L l name) = L l (FieldOcc name PlaceHolder)
+              field_occs =  map mkFieldOcc rnames
+          flds     <- mapM (newRecordSelector False [bnd_name]) field_occs
+          return ((bnd_name, flds): names)
+      | L bind_loc (PatSynBind (PSB { psb_id = L _ n})) <- bind
+      = do
+        bnd_name <- newTopSrcBinder (L bind_loc n)
+        return ((bnd_name, []): names)
+      | otherwise
+      = return names
 
 {-
 *********************************************************

@@ -257,7 +257,7 @@ data PatSynBind idL idR
           psb_def  :: LPat idR,                      -- ^ Right-hand side
           psb_dir  :: HsPatSynDir idR                -- ^ Directionality
   } deriving (Typeable)
-deriving instance (DataId idL, DataId idR )
+deriving instance (DataId idL, DataId idR)
   => Data (PatSynBind idL idR)
 
 {-
@@ -901,8 +901,7 @@ data HsPatSynDetails a
   = InfixPatSyn a a
   | PrefixPatSyn [a]
   | RecordPatSyn [RecordPatSynField a]
-  deriving (Data, Typeable)
-
+  deriving (Typeable, Data)
 
 
 -- See Note [Record PatSyn Fields]
@@ -912,7 +911,9 @@ data RecordPatSynField a
       , recordPatSynPatVar :: a
       -- Filled in by renamer, the name used internally
       -- by the pattern
-      } deriving (Data, Typeable)
+      } deriving (Typeable, Data)
+
+
 
 {-
 Note [Record PatSyn Fields]
@@ -935,8 +936,6 @@ when we have a different name for the local and top-level binder
 the distinction between the two names clear
 
 -}
-
-
 instance Functor RecordPatSynField where
     fmap f (RecordPatSynField visible hidden) =
       RecordPatSynField (f visible) (f hidden)

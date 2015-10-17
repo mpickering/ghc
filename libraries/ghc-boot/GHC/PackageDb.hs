@@ -68,12 +68,13 @@ import System.Directory
 --
 data InstalledPackageInfo instpkgid srcpkgid srcpkgname pkgkey modulename
    = InstalledPackageInfo {
-       installedPackageId :: instpkgid,
+       componentId :: instpkgid,
        sourcePackageId    :: srcpkgid,
        packageName        :: srcpkgname,
        packageVersion     :: Version,
-       packageKey         :: pkgkey,
-       depends            :: [instpkgid],
+       unitId         :: pkgkey,
+       abiHash            :: String,
+       depends            :: [pkgkey],
        importDirs         :: [FilePath],
        hsLibraries        :: [String],
        extraLibraries     :: [String],
@@ -87,9 +88,9 @@ data InstalledPackageInfo instpkgid srcpkgid srcpkgname pkgkey modulename
        includeDirs        :: [FilePath],
        haddockInterfaces  :: [FilePath],
        haddockHTMLs       :: [FilePath],
-       exposedModules     :: [ExposedModule instpkgid modulename],
+       exposedModules     :: [ExposedModule pkgkey modulename],
        hiddenModules      :: [modulename],
-       instantiatedWith   :: [(modulename,OriginalModule instpkgid modulename)],
+       instantiatedWith   :: [(modulename,OriginalModule pkgkey modulename)],
        exposed            :: Bool,
        trusted            :: Bool
      }
@@ -99,9 +100,9 @@ data InstalledPackageInfo instpkgid srcpkgid srcpkgname pkgkey modulename
 -- plus module name) representing where a module was *originally* defined
 -- (i.e., the 'exposedReexport' field of the original ExposedModule entry should
 -- be 'Nothing').  Invariant: an OriginalModule never points to a reexport.
-data OriginalModule instpkgid modulename
+data OriginalModule pkgkey modulename
    = OriginalModule {
-       originalPackageId :: instpkgid,
+       originalPackageId :: pkgkey,
        originalModuleName :: modulename
      }
   deriving (Eq, Show)
@@ -128,11 +129,11 @@ data OriginalModule instpkgid modulename
 -- We use two 'Maybe' data types instead of an ADT with four branches or
 -- four fields because this representation allows us to treat
 -- reexports/signatures uniformly.
-data ExposedModule instpkgid modulename
+data ExposedModule pkgkey modulename
    = ExposedModule {
        exposedName      :: modulename,
-       exposedReexport  :: Maybe (OriginalModule instpkgid modulename),
-       exposedSignature :: Maybe (OriginalModule instpkgid modulename)
+       exposedReexport  :: Maybe (OriginalModule pkgkey modulename),
+       exposedSignature :: Maybe (OriginalModule pkgkey modulename)
      }
   deriving (Eq, Show)
 
@@ -145,11 +146,12 @@ emptyInstalledPackageInfo :: (BinaryStringRep a, BinaryStringRep b,
                           => InstalledPackageInfo a b c d e
 emptyInstalledPackageInfo =
   InstalledPackageInfo {
-       installedPackageId = fromStringRep BS.empty,
+       componentId = fromStringRep BS.empty,
        sourcePackageId    = fromStringRep BS.empty,
        packageName        = fromStringRep BS.empty,
        packageVersion     = Version [] [],
-       packageKey         = fromStringRep BS.empty,
+       unitId         = fromStringRep BS.empty,
+       abiHash            = "",
        depends            = [],
        importDirs         = [],
        hsLibraries        = [],
@@ -299,9 +301,9 @@ instance (BinaryStringRep a, BinaryStringRep b, BinaryStringRep c,
           BinaryStringRep d, BinaryStringRep e) =>
          Binary (InstalledPackageInfo a b c d e) where
   put (InstalledPackageInfo
-         installedPackageId sourcePackageId
-         packageName packageVersion packageKey
-         depends importDirs
+         componentId sourcePackageId
+         packageName packageVersion unitId
+         abiHash depends importDirs
          hsLibraries extraLibraries extraGHCiLibraries libraryDirs
          frameworks frameworkDirs
          ldOptions ccOptions
@@ -309,11 +311,12 @@ instance (BinaryStringRep a, BinaryStringRep b, BinaryStringRep c,
          haddockInterfaces haddockHTMLs
          exposedModules hiddenModules instantiatedWith
          exposed trusted) = do
-    put (toStringRep installedPackageId)
+    put (toStringRep componentId)
     put (toStringRep sourcePackageId)
     put (toStringRep packageName)
     put packageVersion
-    put (toStringRep packageKey)
+    put (toStringRep unitId)
+    put abiHash
     put (map toStringRep depends)
     put importDirs
     put hsLibraries
@@ -335,11 +338,12 @@ instance (BinaryStringRep a, BinaryStringRep b, BinaryStringRep c,
     put trusted
 
   get = do
-    installedPackageId <- get
+    componentId <- get
     sourcePackageId    <- get
     packageName        <- get
     packageVersion     <- get
-    packageKey         <- get
+    unitId         <- get
+    abiHash            <- get
     depends            <- get
     importDirs         <- get
     hsLibraries        <- get
@@ -360,10 +364,11 @@ instance (BinaryStringRep a, BinaryStringRep b, BinaryStringRep c,
     exposed            <- get
     trusted            <- get
     return (InstalledPackageInfo
-              (fromStringRep installedPackageId)
+              (fromStringRep componentId)
               (fromStringRep sourcePackageId)
               (fromStringRep packageName) packageVersion
-              (fromStringRep packageKey)
+              (fromStringRep unitId)
+              abiHash
               (map fromStringRep depends)
               importDirs
               hsLibraries extraLibraries extraGHCiLibraries libraryDirs

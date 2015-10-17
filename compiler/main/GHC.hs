@@ -69,6 +69,7 @@ module GHC (
         modInfoTyThings,
         modInfoTopLevelScope,
         modInfoExports,
+        modInfoExportsWithSelectors,
         modInfoInstances,
         modInfoIsExportedName,
         modInfoLookupName,
@@ -155,10 +156,10 @@ module GHC (
         -- * Abstract syntax elements
 
         -- ** Packages
-        PackageKey,
+        UnitId,
 
         -- ** Modules
-        Module, mkModule, pprModule, moduleName, modulePackageKey,
+        Module, mkModule, pprModule, moduleName, moduleUnitId,
         ModuleName, mkModuleName, moduleNameString,
 
         -- ** Names
@@ -175,7 +176,7 @@ module GHC (
         isPrimOpId, isFCallId, isClassOpId_maybe,
         isDataConWorkId, idDataCon,
         isBottomingId, isDictonaryId,
-        recordSelectorFieldLabel,
+        recordSelectorTyCon,
 
         -- ** Type constructors
         TyCon,
@@ -568,7 +569,7 @@ checkBrokenTablesNextToCode' dflags
 -- flags.  If you are not doing linking or doing static linking, you
 -- can ignore the list of packages returned.
 --
-setSessionDynFlags :: GhcMonad m => DynFlags -> m [PackageKey]
+setSessionDynFlags :: GhcMonad m => DynFlags -> m [UnitId]
 setSessionDynFlags dflags = do
   dflags' <- checkNewDynFlags dflags
   (dflags'', preload) <- liftIO $ initPackages dflags'
@@ -578,7 +579,7 @@ setSessionDynFlags dflags = do
   return preload
 
 -- | Sets the program 'DynFlags'.
-setProgramDynFlags :: GhcMonad m => DynFlags -> m [PackageKey]
+setProgramDynFlags :: GhcMonad m => DynFlags -> m [UnitId]
 setProgramDynFlags dflags = do
   dflags' <- checkNewDynFlags dflags
   (dflags'', preload) <- liftIO $ initPackages dflags'
@@ -880,7 +881,7 @@ typecheckModule pmod = do
        tm_checked_module_info =
          ModuleInfo {
            minf_type_env  = md_types details,
-           minf_exports   = availsToNameSet $ md_exports details,
+           minf_exports   = md_exports details,
            minf_rdr_env   = Just (tcg_rdr_env tc_gbl_env),
            minf_instances = fixSafeInstances safe $ md_insts details,
            minf_iface     = Nothing,
@@ -1071,7 +1072,7 @@ getPrintUnqual = withSession $ \hsc_env ->
 -- | Container for information about a 'Module'.
 data ModuleInfo = ModuleInfo {
         minf_type_env  :: TypeEnv,
-        minf_exports   :: NameSet, -- ToDo, [AvailInfo] like ModDetails?
+        minf_exports   :: [AvailInfo],
         minf_rdr_env   :: Maybe GlobalRdrEnv,   -- Nothing for a compiled/package mod
         minf_instances :: [ClsInst],
         minf_iface     :: Maybe ModIface,
@@ -1107,14 +1108,13 @@ getPackageModuleInfo hsc_env mdl
         iface <- hscGetModuleInterface hsc_env mdl
         let 
             avails = mi_exports iface
-            names  = availsToNameSet avails
             pte    = eps_PTE eps
             tys    = [ ty | name <- concatMap availNames avails,
                             Just ty <- [lookupTypeEnv pte name] ]
         --
         return (Just (ModuleInfo {
                         minf_type_env  = mkTypeEnv tys,
-                        minf_exports   = names,
+                        minf_exports   = avails,
                         minf_rdr_env   = Just $! availsToGlobalRdrEnv (moduleName mdl) avails,
                         minf_instances = error "getModuleInfo: instances for package module unimplemented",
                         minf_iface     = Just iface,
@@ -1136,7 +1136,7 @@ getHomeModuleInfo hsc_env mdl =
           iface   = hm_iface hmi
       return (Just (ModuleInfo {
                         minf_type_env  = md_types details,
-                        minf_exports   = availsToNameSet (md_exports details),
+                        minf_exports   = md_exports details,
                         minf_rdr_env   = mi_globals $! hm_iface hmi,
                         minf_instances = md_insts details,
                         minf_iface     = Just iface,
@@ -1155,7 +1155,10 @@ modInfoTopLevelScope minf
   = fmap (map gre_name . globalRdrEnvElts) (minf_rdr_env minf)
 
 modInfoExports :: ModuleInfo -> [Name]
-modInfoExports minf = nameSetElems $! minf_exports minf
+modInfoExports minf = concatMap availNames $! minf_exports minf
+
+modInfoExportsWithSelectors :: ModuleInfo -> [Name]
+modInfoExportsWithSelectors minf = concatMap availNamesWithSelectors $! minf_exports minf
 
 -- | Returns the instances defined by the specified module.
 -- Warning: currently unimplemented for package modules.
@@ -1163,7 +1166,7 @@ modInfoInstances :: ModuleInfo -> [ClsInst]
 modInfoInstances = minf_instances
 
 modInfoIsExportedName :: ModuleInfo -> Name -> Bool
-modInfoIsExportedName minf name = elemNameSet name (minf_exports minf)
+modInfoIsExportedName minf name = elemNameSet name (availsToNameSet (minf_exports minf))
 
 mkPrintUnqualifiedForModule :: GhcMonad m =>
                                ModuleInfo
@@ -1357,7 +1360,7 @@ showRichTokenStream ts = go startLoc ts ""
 -- -----------------------------------------------------------------------------
 -- Interactive evaluation
 
--- | Takes a 'ModuleName' and possibly a 'PackageKey', and consults the
+-- | Takes a 'ModuleName' and possibly a 'UnitId', and consults the
 -- filesystem and package database to find the corresponding 'Module', 
 -- using the algorithm that is used for an @import@ declaration.
 findModule :: GhcMonad m => ModuleName -> Maybe FastString -> m Module
@@ -1367,7 +1370,7 @@ findModule mod_name maybe_pkg = withSession $ \hsc_env -> do
     this_pkg = thisPackage dflags
   --
   case maybe_pkg of
-    Just pkg | fsToPackageKey pkg /= this_pkg && pkg /= fsLit "this" -> liftIO $ do
+    Just pkg | fsToUnitId pkg /= this_pkg && pkg /= fsLit "this" -> liftIO $ do
       res <- findImportedModule hsc_env mod_name maybe_pkg
       case res of
         Found _ m -> return m
@@ -1379,7 +1382,7 @@ findModule mod_name maybe_pkg = withSession $ \hsc_env -> do
         Nothing -> liftIO $ do
            res <- findImportedModule hsc_env mod_name maybe_pkg
            case res of
-             Found loc m | modulePackageKey m /= this_pkg -> return m
+             Found loc m | moduleUnitId m /= this_pkg -> return m
                          | otherwise -> modNotLoadedError dflags m loc
              err -> throwOneError $ noModError dflags noSrcSpan mod_name err
 
@@ -1424,7 +1427,7 @@ isModuleTrusted m = withSession $ \hsc_env ->
     liftIO $ hscCheckSafe hsc_env m noSrcSpan
 
 -- | Return if a module is trusted and the pkgs it depends on to be trusted.
-moduleTrustReqs :: GhcMonad m => Module -> m (Bool, [PackageKey])
+moduleTrustReqs :: GhcMonad m => Module -> m (Bool, [UnitId])
 moduleTrustReqs m = withSession $ \hsc_env ->
     liftIO $ hscGetSafe hsc_env m noSrcSpan
 
