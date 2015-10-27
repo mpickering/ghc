@@ -27,7 +27,7 @@ module TcTyDecls(
 import TcRnMonad
 import TcEnv
 import TcTypeable( mkTypeableBinds )
-import TcBinds( tcRecSelBinds, addTypecheckedBinds )
+import TcBinds( tcValBinds, addTypecheckedBinds )
 import TypeRep( Type(..) )
 import TcType
 import TysWiredIn( unitTy )
@@ -816,11 +816,10 @@ tcAddImplicits tyclss
   = discardWarnings $
     tcExtendGlobalEnvImplicit implicit_things  $
     tcExtendGlobalValEnv def_meth_ids          $
-    do { (typeable_ids, typeable_binds) <- mkTypeableBinds tycons
-       ; gbl_env <- tcExtendGlobalValEnv typeable_ids
-                    $ tcRecSelBinds $ mkRecSelBinds tyclss
-       ; traceTc "tcAddImplicits" (ppr $ mkRecSelBinds tyclss)
-       ; return (gbl_env `addTypecheckedBinds` typeable_binds) }
+    do { (rec_sel_ids, rec_sel_binds)   <- mkRecSelBinds tycons
+       ; (typeable_ids, typeable_binds) <- mkTypeableBinds tycons
+       ; gbl_env <- tcExtendGlobalValEnv (rec_sel_ids ++ typeable_ids) getGblEnv
+       ; return (gbl_env `addTypecheckedBinds` (rec_sel_binds ++ typeable_binds)) }
  where
    implicit_things = concatMap implicitTyThings tyclss
    tycons          = [tc | ATyCon tc <- tyclss]
@@ -860,22 +859,26 @@ must bring the default method Ids into scope first (so they can be seen
 when typechecking the [d| .. |] quote, and typecheck them later.
 -}
 
-mkRecSelBinds :: [TyThing] -> HsValBinds Name
--- NB We produce *un-typechecked* bindings, rather like 'deriving'
---    This makes life easier, because the later type checking will add
---    all necessary type abstractions and applications
+mkRecSelBinds :: [TyCon] -> TcM ([Id], [LHsBinds Id])
 mkRecSelBinds tycons
-  = ValBindsOut [(NonRecursive, b) | b <- binds] sigs
-  where
-    (sigs, binds) = unzip rec_sels
-    rec_sels = map mkRecSelBind [ (tc,fld)
-                                | ATyCon tc <- tycons
-                                , fld <- tyConFieldLabels tc ]
+  = do { -- We generate *un-typechecked* bindings in mkRecSelBind, and
+         -- then typecheck them, rather like 'deriving'. This makes life
+         -- easier, because the later type checking will add all necessary
+         -- type abstractions and applications
 
+         let sel_binds :: [(RecFlag, LHsBinds Name)]
+             sel_sigs  :: [LSig Name]
+             (sel_sigs, sel_binds)
+                = mapAndUnzip mkRecSelBind [ (tc,fld)
+                                           | tc <- tycons
+                                           , fld <- tyConFieldLabels tc ]
+             sel_ids = [sel_id | L _ (IdSig sel_id) <- sel_sigs]
+       ; (sel_binds, _) <- tcValBinds TopLevel sel_binds sel_sigs (return ())
+       ; return (sel_ids, map snd sel_binds) }
 
-mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, LHsBinds Name)
+mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, (RecFlag, LHsBinds Name))
 mkRecSelBind (tycon, fl)
-  = (L loc (IdSig sel_id), unitBag (L loc sel_bind))
+  = (L loc (IdSig sel_id), (NonRecursive, unitBag (L loc sel_bind)))
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId rec_details sel_name sel_ty
