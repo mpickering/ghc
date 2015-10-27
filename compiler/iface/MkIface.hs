@@ -1610,7 +1610,7 @@ tyConToIfaceDecl env tycon
                   ifCons    = ifaceConDecls (algTyConRhs tycon) (algTcFields tycon),
                   ifRec     = boolToRecFlag (isRecursiveTyCon tycon),
                   ifGadtSyntax = isGadtSyntaxTyCon tycon,
-                  ifPromotable = isPromotedTyCon tycon,
+                  ifPromotable = isPromotableTyCon tycon,
                   ifParent  = parent })
 
   | otherwise  -- FunTyCon, PrimTyCon, promoted TyCon/DataCon
