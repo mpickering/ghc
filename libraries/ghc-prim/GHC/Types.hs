@@ -1,5 +1,5 @@
 {-# LANGUAGE MagicHash, NoImplicitPrelude, TypeFamilies, UnboxedTuples,
-             MultiParamTypeClasses, RoleAnnotations #-}
+             MultiParamTypeClasses, RoleAnnotations, CPP #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  GHC.Types
@@ -29,7 +29,9 @@ module GHC.Types (
         isTrue#,
         SPEC(..),
         Nat, Symbol,
-        Coercible
+        Coercible,
+        -- * Runtime type representation
+        Module(..), TrName(..), TyCon(..)
     ) where
 
 import GHC.Prim

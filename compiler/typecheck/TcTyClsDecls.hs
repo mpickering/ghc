@@ -33,7 +33,6 @@ import TcClassDcl
 import TcHsType
 import TcMType
 import TcType
-import TysWiredIn( unitTy )
 import FamInst
 import FamInstEnv( mkCoAxBranch, mkBranchedCoAxiom )
 import Coercion( ltRole )
@@ -45,7 +44,6 @@ import CoAxiom
 import TyCon
 import DataCon
 import Id
-import MkCore           ( rEC_SEL_ERROR_ID )
 import IdInfo
 import Var
 import VarEnv
@@ -54,7 +52,6 @@ import Module
 import Name
 import NameSet
 import NameEnv
-import RdrName
 import RnEnv
 import Outputable
 import Maybes

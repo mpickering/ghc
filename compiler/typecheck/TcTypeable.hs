@@ -117,7 +117,7 @@ mkModIdBindings
                                           (mkTyConApp (dataConTyCon tr_mod_dc) [])
              mod_bind = mkVarBind mod_id mod_rhs
              mod_rhs  = nlHsApps (dataConWrapId tr_mod_dc)
-                           [ trNameLit tr_name_dc (packageKeyFS (modulePackageKey mod))
+                           [ trNameLit tr_name_dc (unitIdFS (moduleUnitId mod))
                            , trNameLit tr_name_dc (moduleNameFS (moduleName mod)) ]
 
        ; tcg_env <- tcExtendGlobalValEnv [mod_id] getGblEnv
@@ -141,7 +141,7 @@ mkTypeableBinds tycons
          else
     do { tr_datacon  <- tcLookupDataCon trTyConDataConName
        ; trn_datacon <- tcLookupDataCon trNameSDataConName
-       ; let pkg_str  = packageKeyString (modulePackageKey mod)
+       ; let pkg_str  = unitIdString (moduleUnitId mod)
              mod_str  = moduleNameString (moduleName mod)
              mod_expr = case tcg_tr_module gbl_env of  -- Should be set by now
                            Just mod_id -> nlHsVar mod_id

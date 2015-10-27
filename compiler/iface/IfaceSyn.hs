@@ -348,7 +348,6 @@ visibleIfConDecls (IfNewTyCon c   _ _) = [c]
 ifaceConDeclFields :: IfaceConDecls -> [FieldLbl OccName]
 ifaceConDeclFields x = case x of
     IfAbstractTyCon {}              -> []
-    IfDataFamTyCon  {}              -> []
     IfDataTyCon cons is_over labels -> map (help cons  is_over) labels
     IfNewTyCon  con  is_over labels -> map (help [con] is_over) labels
   where

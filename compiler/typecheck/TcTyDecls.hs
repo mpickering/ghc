@@ -27,7 +27,7 @@ module TcTyDecls(
 import TcRnMonad
 import TcEnv
 import TcTypeable( mkTypeableBinds )
-import TcBinds( tcValBinds, addTypecheckedBinds )
+import TcBinds( tcRecSelBinds, addTypecheckedBinds )
 import TypeRep( Type(..) )
 import TcType
 import TysWiredIn( unitTy )
@@ -40,6 +40,7 @@ import TyCon
 import DataCon
 import Name
 import NameEnv
+import RdrName ( mkVarUnqual )
 import Id
 import IdInfo
 import VarEnv
@@ -56,7 +57,7 @@ import UniqSet
 import Util
 import Maybes
 import Data.List
-import FastString ( unsafeMkByteString )
+import FastString ( fastStringToByteString )
 
 #if __GLASGOW_HASKELL__ < 709
 -- import Control.Applicative (Applicative(..))
@@ -815,27 +816,34 @@ tcAddImplicits tyclss
   = discardWarnings $
     tcExtendGlobalEnvImplicit implicit_things  $
     tcExtendGlobalValEnv def_meth_ids          $
-    do { (rec_sel_ids, rec_sel_binds)   <- mkRecSelBinds tycons
-       ; (typeable_ids, typeable_binds) <- mkTypeableBinds tycons
-       ; gbl_env <- tcExtendGlobalValEnv (rec_sel_ids ++ typeable_ids) getGblEnv
-       ; return (gbl_env `addTypecheckedBinds` (rec_sel_binds ++ typeable_binds)) }
-
+    do { (typeable_ids, typeable_binds) <- mkTypeableBinds tycons
+       ; gbl_env <- tcExtendGlobalValEnv typeable_ids
+                    $ tcRecSelBinds $ mkRecSelBinds tyclss
+       ; return (gbl_env `addTypecheckedBinds` typeable_binds) }
  where
    implicit_things = concatMap implicitTyThings tyclss
    tycons          = [tc | ATyCon tc <- tyclss]
-   def_meth_ids    = mkDefaultMethodIds tycons
+   def_meth_ids    = mkDefaultMethodIds tyclss
 
-----------------------------
-mkDefaultMethodIds :: [TyCon] -> [Id]
+{-
+************************************************************************
+*                                                                      *
+                Building record selectors
+*                                                                      *
+************************************************************************
+-}
+
+mkDefaultMethodIds :: [TyThing] -> [Id]
 -- See Note [Default method Ids and Template Haskell]
-mkDefaultMethodIds tycons
-  = [ mkExportedLocalId DefMethId dm_name (idType sel_id)
-    | tc <- tycons
+mkDefaultMethodIds things
+  = [ mkExportedLocalId VanillaId dm_name (idType sel_id)
+    | ATyCon tc <- things
     , Just cls <- [tyConClass_maybe tc]
     , (sel_id, DefMeth dm_name) <- classOpItems cls ]
 
-{- Note [Default method Ids and Template Haskell]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+{-
+Note [Default method Ids and Template Haskell]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Consider this (Trac #4169):
    class Numeric a where
      fromIntegerNum :: a
@@ -851,45 +859,36 @@ must bring the default method Ids into scope first (so they can be seen
 when typechecking the [d| .. |] quote, and typecheck them later.
 -}
 
-{- *********************************************************************
-*                                                                      *
-                Building record selectors
-*                                                                      *
-********************************************************************* -}
-
-mkRecSelBinds :: [TyCon] -> TcM ([Id], [LHsBinds Id])
+mkRecSelBinds :: [TyThing] -> HsValBinds Name
+-- NB We produce *un-typechecked* bindings, rather like 'deriving'
+--    This makes life easier, because the later type checking will add
+--    all necessary type abstractions and applications
 mkRecSelBinds tycons
-  = do { -- We generate *un-typechecked* bindings in mkRecSelBind, and
-         -- then typecheck them, rather like 'deriving'. This makes life
-         -- easier, because the later type checking will add all necessary
-         -- type abstractions and applications
+  = ValBindsOut [(NonRecursive, b) | b <- binds] sigs
+  where
+    (sigs, binds) = unzip rec_sels
+    rec_sels = map mkRecSelBind [ (tc,fld)
+                                | ATyCon tc <- tycons
+                                , fld <- tyConFieldLabels tc ]
 
-         let sel_binds :: [(RecFlag, LHsBinds Name)]
-             sel_sigs  :: [LSig Name]
-             (sel_sigs, sel_binds)
-                = mapAndUnzip mkRecSelBind [ (tc,fld)
-                                           | tc <- tycons
-                                           , fld <- tyConFields tc ]
-             sel_ids = [sel_id | L _ (IdSig sel_id) <- sel_sigs]
-       ; (sel_binds, _) <- tcValBinds TopLevel sel_binds sel_sigs (return ())
-       ; return (sel_ids, map snd sel_binds) }
 
-mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, (RecFlag, LHsBinds Name))
-mkRecSelBind (tycon, sel_name)
-  = (L loc (IdSig sel_id), (NonRecursive, unitBag (L loc sel_bind)))
+mkRecSelBind :: (TyCon, FieldLabel) -> (LSig Name, LHsBinds Name)
+mkRecSelBind (tycon, fl)
+  = (L loc (IdSig sel_id), unitBag (L loc sel_bind))
   where
     loc    = getSrcSpan sel_name
     sel_id = mkExportedLocalId rec_details sel_name sel_ty
+    lbl      = flLabel fl
+    sel_name = flSelector fl
     rec_details = RecSelId { sel_tycon = tycon, sel_naughty = is_naughty }
 
     -- Find a representative constructor, con1
     all_cons     = tyConDataCons tycon
-    cons_w_field = [ con | con <- all_cons
-                   , sel_name `elem` dataConFieldLabels con ]
+    cons_w_field = tyConDataConsWithFields tycon [lbl]
     con1 = ASSERT( not (null cons_w_field) ) head cons_w_field
 
     -- Selector type; Note [Polymorphic selectors]
-    field_ty   = dataConFieldType con1 sel_name
+    field_ty   = dataConFieldType con1 lbl
     data_ty    = dataConOrigResTy con1
     data_tvs   = tyVarsOfType data_ty
     is_naughty = not (tyVarsOfType field_ty `subVarSet` data_tvs)
@@ -912,7 +911,7 @@ mkRecSelBind (tycon, sel_name)
                                  (L loc (HsVar field_var))
     mk_sel_pat con = ConPatIn (L loc (getName con)) (RecCon rec_fields)
     rec_fields = HsRecFields { rec_flds = [rec_field], rec_dotdot = Nothing }
-    rec_field  = noLoc (HsRecField { hsRecFieldId = sel_lname
+    rec_field  = noLoc (HsRecField { hsRecFieldLbl = L loc (FieldOcc (mkVarUnqual lbl) sel_name)
                                    , hsRecFieldArg = L loc (VarPat field_var)
                                    , hsRecPun = False })
     sel_lname = L loc sel_name
@@ -939,14 +938,7 @@ mkRecSelBind (tycon, sel_name)
     inst_tys = substTyVars (mkTopTvSubst (dataConEqSpec con1)) (dataConUnivTyVars con1)
 
     unit_rhs = mkLHsTupleExpr []
-    msg_lit = HsStringPrim "" $ unsafeMkByteString $
-              occNameString (getOccName sel_name)
-
----------------
-tyConFields :: TyCon -> [FieldLabel]
-tyConFields tc
-  | isAlgTyCon tc = nub (concatMap dataConFieldLabels (tyConDataCons tc))
-  | otherwise     = []
+    msg_lit = HsStringPrim "" (fastStringToByteString lbl)
 
 {-
 Note [Polymorphic selectors]
@@ -1038,4 +1030,5 @@ The selector we want for fld looks like this:
 The scrutinee of the case has type :R7T (Maybe b), which can be
 gotten by appying the eq_spec to the univ_tvs of the data con.
 
+************************************************************************
 -}

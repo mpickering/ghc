@@ -1017,7 +1017,7 @@ dsEvCallStack cs = do
   let srcLocTy     = mkTyConTy srcLocTyCon
   let mkSrcLoc l =
         liftM (mkCoreConApps srcLocDataCon)
-              (sequence [ mkStringExpr (unitIdFS $ moduleUnitId m)
+              (sequence [ mkStringExprFS (unitIdFS $ moduleUnitId m)
                         , mkStringExprFS (moduleNameFS $ moduleName m)
                         , mkStringExprFS (srcSpanFile l)
                         , return $ mkIntExprInt df (srcSpanStartLine l)

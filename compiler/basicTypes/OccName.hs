@@ -616,6 +616,19 @@ mkCon2TagOcc        = mk_simple_deriv varName  "$con2tag_"
 mkTag2ConOcc        = mk_simple_deriv varName  "$tag2con_"
 mkMaxTagOcc         = mk_simple_deriv varName  "$maxtag_"
 
+-- TyConRepName stuff; see Note [Grand plan for Typeable] in TcTypeable
+-- incluing the wrinkle about mkSpecialTyConRepName
+mkTyConRepSysOcc occ = mk_simple_deriv varName prefix occ
+  where
+    prefix | isDataOcc occ = "$tc'"
+           | otherwise     = "$tc"
+
+mkTyConRepUserOcc occ = mk_simple_deriv varName prefix occ
+  where
+    -- *User-writable* prefix, for types in gHC_TYPES
+    prefix | isDataOcc occ = "tc'"
+           | otherwise     = "tc"
+
 -- Generic deriving mechanism
 
 -- | Generate a module-unique name, to be used e.g. while generating new names

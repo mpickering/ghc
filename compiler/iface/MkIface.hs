@@ -111,7 +111,6 @@ import Maybes
 import ListSetOps
 import Binary
 import Fingerprint
-import Bag
 import Exception
 
 import Control.Monad
@@ -1611,7 +1610,7 @@ tyConToIfaceDecl env tycon
                   ifCons    = ifaceConDecls (algTyConRhs tycon) (algTcFields tycon),
                   ifRec     = boolToRecFlag (isRecursiveTyCon tycon),
                   ifGadtSyntax = isGadtSyntaxTyCon tycon,
-                  ifPromotable = isJust (promotableTyCon_maybe tycon),
+                  ifPromotable = isPromotedTyCon tycon,
                   ifParent  = parent })
 
   | otherwise  -- FunTyCon, PrimTyCon, promoted TyCon/DataCon

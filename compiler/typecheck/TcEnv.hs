@@ -636,7 +636,7 @@ tcGetDefaultTys
         ; let deflt_tys = opt_deflt extended_defaults [unitTy, list_ty]
                           -- Note [Extended unitTy]
                           ++ [integer_ty, doubleTy]
-                          ++ opt_deflt ovl_strings [string_ty]
+                          ++ opt_deflt ovl_strings [stringTy]
         ; return (deflt_tys, flags) } } }
   where
     opt_deflt True  xs = xs
