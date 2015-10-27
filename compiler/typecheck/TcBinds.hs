@@ -194,7 +194,7 @@ tcTopBinds (ValBindsIn {}) = panic "tcTopBinds"
 
 tcRecSelBinds :: HsValBinds Name -> TcM TcGblEnv
 tcRecSelBinds (ValBindsOut binds sigs)
-  = -- tcExtendGlobalValEnv [sel_id | L _ (IdSig sel_id) <- sigs] $
+  = tcExtendGlobalValEnv [sel_id | L _ (IdSig sel_id) <- sigs] $
     -- this envt extension happens in tcValBinds
     do { (rec_sel_binds, tcg_env) <- discardWarnings $
                                      tcValBinds TopLevel binds sigs getGblEnv

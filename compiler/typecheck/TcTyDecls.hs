@@ -819,6 +819,7 @@ tcAddImplicits tyclss
     do { (typeable_ids, typeable_binds) <- mkTypeableBinds tycons
        ; gbl_env <- tcExtendGlobalValEnv typeable_ids
                     $ tcRecSelBinds $ mkRecSelBinds tyclss
+       ; traceTc "tcAddImplicits" (ppr $ mkRecSelBinds tyclss)
        ; return (gbl_env `addTypecheckedBinds` typeable_binds) }
  where
    implicit_things = concatMap implicitTyThings tyclss
