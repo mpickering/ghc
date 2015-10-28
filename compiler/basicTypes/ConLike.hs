@@ -177,7 +177,7 @@ conLikeFullSig (RealDataCon con) =
   -- constraints for a match
   in (univ_tvs, ex_tvs, eq_spec, theta, [], arg_tys, res_ty)
 conLikeFullSig (PatSynCon pat_syn) =
- let (univ_tvs, ex_tvs, prov, req, arg_tys, res_ty) = patSynSig pat_syn
+ let (univ_tvs, req, ex_tvs, prov, arg_tys, res_ty) = patSynSig pat_syn
  -- eqSpec is empty
  in (univ_tvs, ex_tvs, [], prov, req, arg_tys, res_ty)
 
