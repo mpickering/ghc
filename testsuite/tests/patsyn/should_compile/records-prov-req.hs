@@ -11,7 +11,7 @@ deriving instance Show (T Int A)
 
 data G a b = MkG { care :: a,  y :: (Show b => b) }
 
-pattern ExNumPat :: (Show b) => (Eq b) => b -> T Int b
+pattern ExNumPat :: (Eq b) => (Show b) => b -> T Int b
 pattern ExNumPat{x} = MkT 42 x
 
 data A = A | B deriving (Show, Eq)
