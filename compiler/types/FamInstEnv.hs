@@ -674,13 +674,11 @@ lookupFamInstEnvConflicts
 -- Precondition: the tycon is saturated (or over-saturated)
 
 lookupFamInstEnvConflicts envs fam_inst@(FamInst { fi_axiom = new_axiom })
-  = let ret = lookup_fam_inst_env my_unify envs fam tys
-    in pprTrace "lookupFamInstEnvConflicts(return)" (vcat [pprBranch new_branch, ppr $ null ret]) ret
+  = lookup_fam_inst_env my_unify envs fam tys
   where
     (fam, tys) = famInstSplitLHS fam_inst
         -- In example above,   fam tys' = F [b]
 
-    pprBranch br = ppr (coAxBranchLHS br) <+> char '~' <+> ppr (coAxBranchRHS br)
     my_unify (FamInst { fi_axiom = old_axiom }) tpl_tvs tpl_tys _
        = ASSERT2( tyVarsOfTypes tys `disjointVarSet` tpl_tvs,
                   (ppr fam <+> ppr tys) $$
@@ -689,14 +687,7 @@ lookupFamInstEnvConflicts envs fam_inst@(FamInst { fi_axiom = new_axiom })
                 -- They shouldn't because we allocate separate uniques for them
          if compatibleBranches (coAxiomSingleBranch old_axiom) new_branch
            then Nothing
-           else pprTrace "lookupFamInstEnvConflicts"
-                (vcat [pprBranch (coAxiomSingleBranch old_axiom), pprBranch new_branch
-                      , ppr lhs1, ppr lhs2
-                      , ppr $ compatibleBranches (coAxiomSingleBranch old_axiom) new_branch
-                      , ppr $ tcUnifyTysFG instanceBindFun lhs1 lhs2]) $
-                Just noSubst
-      where lhs1 = cab_lhs $  coAxiomSingleBranch old_axiom
-            lhs2 = cab_lhs $  new_branch
+           else Just noSubst
       -- Note [Family instance overlap conflicts]
 
     noSubst = panic "lookupFamInstEnvConflicts noSubst"

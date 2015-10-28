@@ -577,9 +577,7 @@ unify ty1 ty2
   = if tc1 == tc2
     then if isInjectiveTyCon tc1 Nominal
          then unify_tys tys1 tys2
-         else do tmp <- runUM (unify_tys tys1 tys2)
-                 don'tBeSoSure $ pprTrace "NotSoFast" (hsep [ppr tc1, ppr tys1, ppr tc2, ppr tys2, ppr tmp]) 
-                               $ unify_tys tys1 tys2
+         else don'tBeSoSure $ unify_tys tys1 tys2
     else -- tc1 /= tc2
          if isGenerativeTyCon tc1 Nominal && isGenerativeTyCon tc2 Nominal
          then surelyApart
@@ -612,7 +610,7 @@ unify_tys orig_xs orig_ys
     go []     []     = return ()
     go (x:xs) (y:ys) = do { unify x y
                           ; go xs ys }
-    go _ _ = pprTrace "unify_tys" (hsep [ppr orig_xs, ppr orig_ys])maybeApart  -- See Note [Lists of different lengths are MaybeApart]
+    go _ _ = maybeApart  -- See Note [Lists of different lengths are MaybeApart]
 
 ---------------------------------
 uVar :: TyVar           -- Type variable to be unified
@@ -663,7 +661,7 @@ uUnrefined subst tv1 ty2 (TyVarTy tv2)
        ; b2 <- tvBindFlag tv2
        ; let ty1 = TyVarTy tv1
        ; case (b1, b2) of
-           (Skolem, Skolem) -> pprTrace "uUnrefined" (hsep [ppr tv1, ppr ty2, ppr tv2]) maybeApart -- See Note [Unification with skolems]
+           (Skolem, Skolem) -> maybeApart -- See Note [Unification with skolems]
            (BindMe, _)      -> extendSubst tv1 ty2
            (_, BindMe)      -> extendSubst tv2 ty1 }
 
@@ -683,7 +681,7 @@ bindTv :: TyVar -> Type -> UM ()
 bindTv tv ty      -- ty is not a type variable
   = do  { b <- tvBindFlag tv
         ; case b of
-            Skolem -> pprTrace "bindTv" (hsep [ppr tv, ppr ty]) maybeApart  -- See Note [Unification with skolems]
+            Skolem -> maybeApart  -- See Note [Unification with skolems]
             BindMe -> extendSubst tv ty
         }
 
