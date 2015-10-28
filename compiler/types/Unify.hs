@@ -733,6 +733,13 @@ instance Monad UM where
 initUM :: (TyVar -> BindFlag) -> UM () -> UnifyResult
 initUM badtvs um = fmap (niFixTvSubst . snd) $ unUM um badtvs emptyTvSubstEnv
 
+-- | Run a 'UM' action without affecting the substition environment, returning the
+-- 'UnifyResultM' that the action concludes with.
+--
+-- For debugging purposes to peer into the decisions that the typechecker makes
+runUM :: UM a -> UM (UnifyResultM (a, TvSubstEnv))
+runUM um = UM $ \tv_fn subst -> Unifiable $ (unUM um tv_fn subst, subst)
+
 tvBindFlag :: TyVar -> UM BindFlag
 tvBindFlag tv = UM (\tv_fn subst -> Unifiable (tv_fn tv, subst))
 
