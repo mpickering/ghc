@@ -1367,7 +1367,8 @@ isInjectiveTyCon (AlgTyCon {})                 Nominal          = True
 isInjectiveTyCon (AlgTyCon {algTcRhs = rhs})   Representational
   = isGenInjAlgRhs rhs
 isInjectiveTyCon (SynonymTyCon {})             _                = False
-isInjectiveTyCon (FamilyTyCon {})              _                = False
+isInjectiveTyCon (FamilyTyCon {famTcFlav = flav}) Nominal       = isDataFamFlav flav
+isInjectiveTyCon (FamilyTyCon {})              Representational = False
 isInjectiveTyCon (PrimTyCon {})                _                = True
 isInjectiveTyCon (PromotedDataCon {})          _                = True
 isInjectiveTyCon (PromotedTyCon {ty_con = tc}) r
