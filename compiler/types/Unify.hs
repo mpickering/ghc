@@ -577,7 +577,9 @@ unify ty1 ty2
   = if tc1 == tc2
     then if isInjectiveTyCon tc1 Nominal
          then unify_tys tys1 tys2
-         else pprTrace "NotSoFast" (hsep [ppr tc1, ppr tys1, ppr tc2, ppr tys2]) $ don'tBeSoSure $ unify_tys tys1 tys2
+         else do tmp <- runUM (unify_tys tys1 tys2)
+                 don'tBeSoSure $ pprTrace "NotSoFast" (hsep [ppr tc1, ppr tys1, ppr tc2, ppr tys2, ppr tmp]) 
+                               $ unify_tys tys1 tys2
     else -- tc1 /= tc2
          if isGenerativeTyCon tc1 Nominal && isGenerativeTyCon tc2 Nominal
          then surelyApart
