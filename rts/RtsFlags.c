@@ -105,6 +105,7 @@ static bool read_heap_profiling_flag(const char *arg);
 #endif
 
 #ifdef TRACING
+static bool read_stat_profiler_flag(const char *arg);
 static void read_trace_flags(const char *arg);
 #endif
 
@@ -200,6 +201,11 @@ void initRtsFlagsDefaults(void)
     RtsFlags.ProfFlags.ccsSelector        = NULL;
     RtsFlags.ProfFlags.retainerSelector   = NULL;
     RtsFlags.ProfFlags.bioSelector        = NULL;
+#endif
+
+#ifdef STAT_PROFILE
+    RtsFlags.StatProfileFlags.blackholeSampling = false;
+    RtsFlags.StatProfileFlags.heapCheckSampling = false;
 #endif
 
 #ifdef TRACING
@@ -299,9 +305,19 @@ usage_text[] = {
 "  -B       Sound the bell at the start of each garbage collection",
 #if defined(PROFILING)
 "",
-"  -p       Time/allocation profile        (output file <program>.prof)",
+"  -p       Cost-center time/allocation profile    (output file <program>.prof)",
 "  -P       More detailed Time/Allocation profile",
 "  -Pa      Give information about *all* cost centres",
+#endif
+#ifdef STAT_PROFILE
+"",
+"  -pS<sampler>   Enable recording of statistical profiler samples from",
+"                 the given sample source. May be given multiple times.",
+"                 The valid samplers are,",
+"        sampler: h = heap check (indicative of heap allocations)",
+"                 b = black hole blocking (indicative of poor parallelism)",
+#endif
+#if defined(PROFILING)
 "",
 "  -h<break-down> Heap residency profile (hp2ps) (output file <program>.hp)",
 "     break-down: c = cost centre stack (default)",
@@ -1042,13 +1058,26 @@ error = true;
                 unchecked_arg_start++;
                 goto check_rest;
 
-              /* =========== PROFILING ========================== */
+              /* =========== PROFILING =============================== */
 
               case 'P': /* detailed cost centre profiling (time/alloc) */
               case 'p': /* cost centre profiling (time/alloc) */
                 OPTION_SAFE;
-                PROFILING_BUILD_ONLY(
                 switch (rts_argv[arg][2]) {
+                  case 's':
+#ifdef TRACING
+                    error = read_stat_profiler_flag(rts_argv[arg]);
+#else
+                    errorBelch(
+                        "statistical profiling flag %s given but program was"
+                        " not built with tracing. Build with -eventlog to use"
+                        " statistical profiling.",
+                        rts_argv[arg]);
+                    error = true;
+#endif
+                    break;
+
+                  PROFILING_BUILD_ONLY(
                   case 'a':
                     RtsFlags.CcFlags.doCostCentres = COST_CENTRES_ALL;
                     if (rts_argv[arg][3] != '\0') {
@@ -1070,8 +1099,9 @@ error = true;
                   default:
                     unchecked_arg_start++;
                     goto check_rest;
+                  )
                 }
-                ) break;
+                break;
 
               case 'R':
                   OPTION_SAFE;
@@ -1807,6 +1837,23 @@ static bool read_heap_profiling_flag(const char *arg)
 #endif
 
 #if defined(TRACING)
+// Returns whether the parse resulted in an error.
+static bool read_stat_profiler_flag(const char *arg)
+{
+    switch (arg[2]) {
+    case 'h':
+        RtsFlags.StatProfileFlags.heapCheckSampling = true;
+        break;
+    case 'b':
+        RtsFlags.StatProfileFlags.blackholeSampling = true;
+        break;
+    default:
+        errorBelch("Unknown statistical profiler sampler flag %s", arg);
+        return true;
+    }
+    return false;
+}
+
 static void read_trace_flags(const char *arg)
 {
     const char *c;

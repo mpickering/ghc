@@ -20,6 +20,7 @@ INLINE_HEADER void
 statProfileDumpHeapSamples(Capability *cap)
 {
     // See Note [Statistical profiling of heap allocations]
+    if (!RtsFlags.StatProfileFlags.heapCheckSampling) return;
     if (cap->heap_sample_count) {
         traceStatProfileSamples(cap, rtsTrue, SAMPLE_BY_HEAP_ALLOC,
                                 SAMPLE_TYPE_INSTR_PTR,
@@ -33,6 +34,7 @@ INLINE_HEADER void
 statProfileDumpBlackholeSamples(Capability *cap)
 {
     // See Note [Statistical profiling of black-hole allocations]
+    if (!RtsFlags.StatProfileFlags.blackholeSampling) return;
     if (cap->blackhole_sample_count) {
         traceStatProfileSamples(cap, rtsTrue, SAMPLE_BY_BLACKHOLE,
                                 SAMPLE_TYPE_INSTR_PTR,
