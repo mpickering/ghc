@@ -294,7 +294,7 @@ rnValBindsRHS :: HsSigCtxt
 
 rnValBindsRHS ctxt (ValBindsIn mbinds sigs)
   = do { (sigs', sig_fvs) <- renameSigs ctxt sigs
-       ; binds_w_dus <- mapBagM (rnLBind (mkSigTvFn sigs')) mbinds
+       ; binds_w_dus <- concatBag . listToBag <$> mapBagM (rnLBind (mkSigTvFn sigs')) mbinds
        ; case depAnalBinds binds_w_dus of
            (anal_binds, anal_dus) -> return (valbind', valbind'_dus)
               where
@@ -428,16 +428,16 @@ rnBindLHS _ _ b = pprPanic "rnBindHS" (ppr b)
 
 rnLBind :: (Name -> [Name])             -- Signature tyvar function
         -> LHsBindLR Name RdrName
-        -> RnM (LHsBind Name, [Name], Uses)
+        -> RnM [([LHsBind Name], [Name], Uses)]
 rnLBind sig_fn (L loc bind)
   = setSrcSpan loc $
-    do { (bind', bndrs, dus) <- rnBind sig_fn bind
-       ; return (L loc bind', bndrs, dus) }
+    do { bs <- rnBind sig_fn bind
+       ; return $ map (\(bind', bndrs, dus) -> (L loc bind', bndrs, dus)) bs }
 
 -- assumes the left-hands-side vars are in scope
 rnBind :: (Name -> [Name])              -- Signature tyvar function
        -> HsBindLR Name RdrName
-       -> RnM (HsBind Name, [Name], Uses)
+       -> RnM [([HsBind Name], [Name], Uses)]
 rnBind _ bind@(PatBind { pat_lhs = pat
                        , pat_rhs = grhss
                                    -- pat fvs were stored in bind_fvs
@@ -470,7 +470,7 @@ rnBind _ bind@(PatBind { pat_lhs = pat
           addWarn $ unusedPatBindWarn bind'
 
         ; fvs' `seq` -- See Note [Free-variable space leak]
-          return (bind', bndrs, all_fvs) }
+          return [(bind', bndrs, all_fvs)] }
 
 rnBind sig_fn bind@(FunBind { fun_id = name
                             , fun_matches = matches })
@@ -491,14 +491,14 @@ rnBind sig_fn bind@(FunBind { fun_id = name
                 -- MonoLocalBinds test in TcBinds.decideGeneralisationPlan
 
         ; fvs' `seq` -- See Note [Free-variable space leak]
-          return (bind { fun_matches = matches'
+          return [(bind { fun_matches = matches'
                        , bind_fvs   = fvs' },
-                  [plain_name], rhs_fvs)
+                  [plain_name], rhs_fvs)]
       }
 
 rnBind sig_fn (PatSynBind bind)
-  = do  { (bind', name, fvs) <- rnPatSynBind sig_fn bind
-        ; return (PatSynBind bind', name, fvs) }
+  = do  { bs <- rnPatSynBind sig_fn bind
+        ; return (Pa bind', name, fvs) }
 
 rnBind _ b = pprPanic "rnBind" (ppr b)
 
@@ -619,7 +619,8 @@ dupFixityDecl loc rdr_name
 
 rnPatSynBind :: (Name -> [Name])                -- Signature tyvar function
              -> PatSynBind Name RdrName
-             -> RnM (PatSynBind Name Name, [Name], Uses)
+             -> RnM ( PatSynMatcherBind Name Name, [Name], Uses
+                    ,Maybe (PatSynBuilderBind Name Name), [Name], Uses)
 rnPatSynBind _sig_fn bind@(PSB { psb_id = L _ name
                                , psb_args = details
                                , psb_def = pat

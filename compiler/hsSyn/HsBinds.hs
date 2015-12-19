@@ -219,6 +219,9 @@ data HsBindLR idL idR
         --          'ApiAnnotation.AnnOpen' @'{'@,'ApiAnnotation.AnnClose' @'}'@
 
         -- For details on above see note [Api annotations] in ApiAnnotation
+  -- Inserted during renaming
+  | PatSynMatcher (PatSynMatcherBind idL idR)
+  | PatSynBuilder (PatSynBuilderBind idL idR)
 
   deriving (Typeable)
 deriving instance (DataId idL, DataId idR)
@@ -259,6 +262,13 @@ data PatSynBind idL idR
   } deriving (Typeable)
 deriving instance (DataId idL, DataId idR)
   => Data (PatSynBind idL idR)
+
+newtype PatSynBuilderBind idL idR = PatSynBuilderBind (PatSynBind idL idR)
+newtype PatSynMatcherBind idL idR = PatSynMatcherBind (PatSynBind idL idR)
+deriving instance (DataId idL, DataId idR)
+  => Data (PatSynBuilderBind idL idR)
+deriving instance (DataId idL, DataId idR)
+  => Data (PatSynMatcherBind idL idR)
 
 {-
 Note [AbsBinds]
@@ -561,6 +571,7 @@ ppr_monobind (AbsBinds { abs_tvs = tyvars, abs_ev_vars = dictvars
       , ptext (sLit "Evidence:") <+> ppr ev_binds ]
     else
       pprLHsBinds val_binds
+ppr_monobind _ = panic "todo"
 
 instance (OutputableBndr id) => Outputable (ABExport id) where
   ppr (ABE { abe_wrap = wrap, abe_poly = gbl, abe_mono = lcl, abe_prags = prags })
