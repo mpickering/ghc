@@ -844,7 +844,8 @@ sameGroup :: PatGroup -> PatGroup -> Bool
 sameGroup PgAny      PgAny      = True
 sameGroup PgBang     PgBang     = True
 sameGroup (PgCon _)  (PgCon _)  = True          -- One case expression
-sameGroup (PgSyn p1) (PgSyn p2) = p1==p2
+sameGroup (PgSyn _)  (PgSyn _)  = False         -- TODO:  We can do better here
+                                                -- much like view patterns
 sameGroup (PgLit _)  (PgLit _)  = True          -- One case expression
 sameGroup (PgN l1)   (PgN l2)   = l1==l2        -- Order is significant
 sameGroup (PgNpK l1) (PgNpK l2) = l1==l2        -- See Note [Grouping overloaded literal patterns]
