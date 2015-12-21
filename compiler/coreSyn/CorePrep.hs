@@ -752,7 +752,7 @@ cpeArg env dmd arg arg_ty
                 -- Else case: arg1 might have lambdas, and we can't
                 --            put them inside a wrapBinds
 
-       ; if cpe_ExprIsTrivial arg2    -- Do not eta expand a trivial argument
+       ; if exprIsTrivial arg2    -- Do not eta expand a trivial argument
          then return (floats2, arg2)
          else do
        { v <- newVar arg_ty
@@ -844,23 +844,8 @@ of the scope of a `seq`, or dropped the `seq` altogether.
                 Simple CoreSyn operations
 *                                                                      *
 ************************************************************************
--}
 
-cpe_ExprIsTrivial :: CoreExpr -> Bool
--- Version that doesn't consider an scc annotation to be trivial.
-cpe_ExprIsTrivial (Var _)         = True
-cpe_ExprIsTrivial (Type _)        = True
-cpe_ExprIsTrivial (Coercion _)    = True
-cpe_ExprIsTrivial (Lit _)         = True
-cpe_ExprIsTrivial (App e arg)     = not (isRuntimeArg arg) && cpe_ExprIsTrivial e
-cpe_ExprIsTrivial (Lam b e)       = not (isRuntimeVar b) && cpe_ExprIsTrivial e
-cpe_ExprIsTrivial (Tick t e)      = not (tickishIsCode t) && cpe_ExprIsTrivial e
-cpe_ExprIsTrivial (Cast e _)      = cpe_ExprIsTrivial e
-cpe_ExprIsTrivial (Case e _ _ []) = cpe_ExprIsTrivial e
-                                    -- See Note [Empty case is trivial] in CoreUtils
-cpe_ExprIsTrivial _               = False
 
-{-
 -- -----------------------------------------------------------------------------
 --      Eta reduction
 -- -----------------------------------------------------------------------------
