@@ -214,10 +214,16 @@ basicKnownKeyNames
         typeableClassName,
         typeRepTyConName,
         typeRepIdName,
-        mkPolyTyConAppName,
-        mkAppTyName,
+        mkTrConName,
+        mkTrAppName,
         typeSymbolTypeRepName, typeNatTypeRepName,
         trGhcPrimModuleName,
+        -- Representations
+        trTYPEName,
+        trTYPE'LiftedName,
+        trLevityName,
+        tr'LiftedName,
+        trArrowName,
 
         -- Dynamic
         toDynName,
@@ -1164,8 +1170,8 @@ trTyConDataConName    = dcQual gHC_TYPES          (fsLit "TyCon")          trTyC
 -- Class Typeable, and functions for constructing `Typeable` dictionaries
 typeableClassName
   , typeRepTyConName
-  , mkPolyTyConAppName
-  , mkAppTyName
+  , mkTrConName
+  , mkTrAppName
   , typeRepIdName
   , typeNatTypeRepName
   , typeSymbolTypeRepName
@@ -1174,13 +1180,26 @@ typeableClassName
 typeableClassName     = clsQual tYPEABLE_INTERNAL (fsLit "Typeable")       typeableClassKey
 typeRepTyConName      = tcQual  tYPEABLE_INTERNAL (fsLit "TypeRep")        typeRepTyConKey
 typeRepIdName         = varQual tYPEABLE_INTERNAL (fsLit "typeRep#")       typeRepIdKey
-mkPolyTyConAppName    = varQual tYPEABLE_INTERNAL (fsLit "mkPolyTyConApp") mkPolyTyConAppKey
-mkAppTyName           = varQual tYPEABLE_INTERNAL (fsLit "mkAppTy")        mkAppTyKey
+mkTrConName           = varQual tYPEABLE_INTERNAL (fsLit "mkTrCon")        mkTrConKey
+mkTrAppName           = varQual tYPEABLE_INTERNAL (fsLit "mkTrApp")        mkTrAppKey
 typeNatTypeRepName    = varQual tYPEABLE_INTERNAL (fsLit "typeNatTypeRep") typeNatTypeRepKey
 typeSymbolTypeRepName = varQual tYPEABLE_INTERNAL (fsLit "typeSymbolTypeRep") typeSymbolTypeRepKey
 -- this is the Typeable 'Module' for GHC.Prim (which has no code, so we place in GHC.Types)
 -- See Note [Grand plan for Typeable] in TcTypeable.
 trGhcPrimModuleName   = varQual gHC_TYPES         (fsLit "tr$ModuleGHCPrim")  trGhcPrimModuleKey
+-- Representations for primitive types
+-- These are of type `TypeRep a`
+trTYPEName
+  , trTYPE'LiftedName
+  , trLevityName
+  , tr'LiftedName
+  , trArrowName
+  :: Name
+trTYPEName            = varQual tYPEABLE_INTERNAL (fsLit "trTYPE")         trTYPEKey
+trTYPE'LiftedName     = varQual tYPEABLE_INTERNAL (fsLit "trTYPE'Lifted")  trTYPE'LiftedKey
+trLevityName          = varQual tYPEABLE_INTERNAL (fsLit "trLevity")       trLevityKey
+tr'LiftedName         = varQual tYPEABLE_INTERNAL (fsLit "tr'Lifted")      tr'LiftedKey
+trArrowName           = varQual tYPEABLE_INTERNAL (fsLit "trArrow")        trArrowKey
 
 -- Custom type errors
 errorMessageTypeErrorFamName
@@ -2170,41 +2189,54 @@ proxyHashKey = mkPreludeMiscIdUnique 502
 
 -- Used to make `Typeable` dictionaries
 mkTyConKey
-  , mkPolyTyConAppKey
-  , mkAppTyKey
+  , mkTrConKey
+  , mkTrAppKey
   , typeNatTypeRepKey
   , typeSymbolTypeRepKey
   , typeRepIdKey
   :: Unique
 mkTyConKey            = mkPreludeMiscIdUnique 503
-mkPolyTyConAppKey     = mkPreludeMiscIdUnique 504
-mkAppTyKey            = mkPreludeMiscIdUnique 505
+mkTrConKey            = mkPreludeMiscIdUnique 504
+mkTrAppKey            = mkPreludeMiscIdUnique 505
 typeNatTypeRepKey     = mkPreludeMiscIdUnique 506
 typeSymbolTypeRepKey  = mkPreludeMiscIdUnique 507
 typeRepIdKey          = mkPreludeMiscIdUnique 508
 
+-- Representations for primitive types
+trTYPEKey
+  ,trTYPE'LiftedKey
+  , trLevityKey
+  , tr'LiftedKey
+  , trArrowKey
+  :: Unique
+trTYPEKey             = mkPreludeMiscIdUnique 510
+trTYPE'LiftedKey      = mkPreludeMiscIdUnique 511
+trLevityKey           = mkPreludeMiscIdUnique 512
+tr'LiftedKey          = mkPreludeMiscIdUnique 513
+trArrowKey            = mkPreludeMiscIdUnique 514
+
 -- Dynamic
 toDynIdKey :: Unique
-toDynIdKey            = mkPreludeMiscIdUnique 509
+toDynIdKey            = mkPreludeMiscIdUnique 550
 
 bitIntegerIdKey :: Unique
-bitIntegerIdKey       = mkPreludeMiscIdUnique 510
+bitIntegerIdKey       = mkPreludeMiscIdUnique 551
 
 heqSCSelIdKey, coercibleSCSelIdKey :: Unique
-heqSCSelIdKey       = mkPreludeMiscIdUnique 511
-coercibleSCSelIdKey = mkPreludeMiscIdUnique 512
+heqSCSelIdKey       = mkPreludeMiscIdUnique 552
+coercibleSCSelIdKey = mkPreludeMiscIdUnique 553
 
 sappendClassOpKey :: Unique
-sappendClassOpKey = mkPreludeMiscIdUnique 513
+sappendClassOpKey = mkPreludeMiscIdUnique 554
 
 memptyClassOpKey, mappendClassOpKey, mconcatClassOpKey :: Unique
-memptyClassOpKey  = mkPreludeMiscIdUnique 514
-mappendClassOpKey = mkPreludeMiscIdUnique 515
-mconcatClassOpKey = mkPreludeMiscIdUnique 516
+memptyClassOpKey  = mkPreludeMiscIdUnique 555
+mappendClassOpKey = mkPreludeMiscIdUnique 556
+mconcatClassOpKey = mkPreludeMiscIdUnique 557
 
 emptyCallStackKey, pushCallStackKey :: Unique
-emptyCallStackKey = mkPreludeMiscIdUnique 517
-pushCallStackKey  = mkPreludeMiscIdUnique 518
+emptyCallStackKey = mkPreludeMiscIdUnique 558
+pushCallStackKey  = mkPreludeMiscIdUnique 559
 
 fromStaticPtrClassOpKey :: Unique
 fromStaticPtrClassOpKey = mkPreludeMiscIdUnique 519

@@ -1421,9 +1421,9 @@ zonkEvTerm env (EvDelayedError ty msg)
        ; return (EvDelayedError ty' msg) }
 
 zonkEvTypeable :: ZonkEnv -> EvTypeable -> TcM EvTypeable
-zonkEvTypeable env (EvTypeableTyCon ts)
-  = do { ts' <- mapM (zonkEvTerm env) ts
-       ; return $ EvTypeableTyCon ts' }
+zonkEvTypeable env (EvTypeableTyCon tycon e)
+  = do { e'  <- zonkEvTerm env e
+       ; return $ EvTypeableTyCon tycon e' }
 zonkEvTypeable env (EvTypeableTyApp t1 t2)
   = do { t1' <- zonkEvTerm env t1
        ; t2' <- zonkEvTerm env t2
@@ -1431,6 +1431,8 @@ zonkEvTypeable env (EvTypeableTyApp t1 t2)
 zonkEvTypeable env (EvTypeableTyLit t1)
   = do { t1' <- zonkEvTerm env t1
        ; return (EvTypeableTyLit t1') }
+zonkEvTypeable env (EvTypeablePrimitive v)
+  = return $ EvTypeablePrimitive $ zonkIdOcc env v
 
 zonkTcEvBinds_s :: ZonkEnv -> [TcEvBinds] -> TcM (ZonkEnv, [TcEvBinds])
 zonkTcEvBinds_s env bs = do { (env, bs') <- mapAccumLM zonk_tc_ev_binds env bs

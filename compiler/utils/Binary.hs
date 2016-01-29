@@ -1,5 +1,8 @@
 {-# LANGUAGE CPP, MagicHash, UnboxedTuples #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
 
 {-# OPTIONS_GHC -O -funbox-strict-fields #-}
 -- We always optimise this, otherwise performance of a non-optimised
@@ -75,7 +78,13 @@ import qualified Data.ByteString.Unsafe   as BS
 import Data.IORef
 import Data.Char                ( ord, chr )
 import Data.Time
+#if MIN_VERSION_base(4,9,0)
+import Type.Reflection
+import Type.Reflection.Unsafe
+import GHC.Exts                 ( TYPE, Levity(..) )
+#else
 import Data.Typeable
+#endif
 import Control.Monad            ( when )
 import System.IO as IO
 import System.IO.Unsafe         ( unsafeInterleaveIO )
@@ -573,8 +582,51 @@ instance Binary TyCon where
         p <- get bh
         m <- get bh
         n <- get bh
+#if MIN_VERSION_base(4,9,0)
+        return (mkTyCon p m n)
+#else
         return (mkTyCon3 p m n)
+#endif
 
+#if MIN_VERSION_base(4,9,0)
+putTypeRep :: BinHandle -> TypeRep a -> IO ()
+putTypeRep bh rep@(TRCon con) = do
+    put_ bh (0 :: Word8)
+    put_ bh con
+    putTypeRep bh (typeRepKind rep)
+putTypeRep bh (TRApp f x) = do
+    put_ bh (1 :: Word8)
+    putTypeRep bh f
+    putTypeRep bh x
+
+getTypeRepX :: BinHandle -> IO TypeRepX
+getTypeRepX bh = do
+    tag <- get bh :: IO Word8
+    case tag of
+        0 -> do con <- get bh
+                TypeRepX rep_k <- getTypeRepX bh
+                Just HRefl <- pure $ eqTypeRep rep_k (typeRep :: TypeRep (TYPE 'Lifted))
+                pure $ TypeRepX $ mkTrCon con rep_k
+        1 -> do TypeRepX f <- getTypeRepX bh
+                TypeRepX x <- getTypeRepX bh
+                case typeRepKind f of
+                  TRFun arg _ -> do
+                    Just HRefl <- pure $ eqTypeRep arg x
+                    pure $ TypeRepX $ mkTrApp f x
+        _ -> fail "Binary: Invalid TypeRepX"
+
+instance Typeable a => Binary (TypeRep (a :: k)) where
+    put_ = putTypeRep
+    get bh = do
+        TypeRepX rep <- getTypeRepX bh
+        case rep `eqTypeRep` typeRep of
+            Just HRefl -> pure rep
+            Nothing    -> fail "Binary: Type mismatch"
+
+instance Binary TypeRepX where
+    put_ bh (TypeRepX rep) = putTypeRep bh rep
+    get = getTypeRepX
+#else
 instance Binary TypeRep where
     put_ bh type_rep = do
         let (ty_con, child_type_reps) = splitTyConApp type_rep
@@ -584,6 +636,7 @@ instance Binary TypeRep where
         ty_con <- get bh
         child_type_reps <- get bh
         return (mkTyConApp ty_con child_type_reps)
+#endif
 
 -- -----------------------------------------------------------------------------
 -- Lazy reading/writing

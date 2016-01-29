@@ -442,14 +442,13 @@ data TrName
   = TrNameS Addr#  -- Static
   | TrNameD [Char] -- Dynamic
 
+-- Show instance for TyCon found in GHC.Show
 #if WORD_SIZE_IN_BITS < 64
-data TyCon = TyCon
-                Word64#  Word64#   -- Fingerprint
-                Module             -- Module in which this is defined
-                TrName              -- Type constructor name
+data TyCon = TyCon Word64#  Word64#   -- Fingerprint
+                   Module             -- Module in which this is defined
+                   TrName             -- Type constructor name
 #else
-data TyCon = TyCon
-                Word#    Word#
-                Module
-                TrName
+data TyCon = TyCon Word#    Word#
+                   Module
+                   TrName
 #endif

@@ -385,18 +385,26 @@ data EvTerm
 -- | Instructions on how to make a 'Typeable' dictionary.
 -- See Note [Typeable evidence terms]
 data EvTypeable
-  = EvTypeableTyCon [EvTerm]  -- ^ Dictionary for @Typeable (T k1..kn)@.
-                              -- The EvTerms are for the arguments
+  = EvTypeableTyCon TyCon EvTerm
+    -- ^ Dictionary for @Typeable (T :: k)@.
+    -- The 'EvTerm' is a @Typeable k@ dictionary.
 
   | EvTypeableTyApp EvTerm EvTerm
     -- ^ Dictionary for @Typeable (s t)@,
-    -- given a dictionaries for @s@ and @t@
+    -- given a dictionaries for @s@ and @t@.
 
   | EvTypeableTyLit EvTerm
     -- ^ Dictionary for a type literal,
     -- e.g. @Typeable "foo"@ or @Typeable 3@
     -- The 'EvTerm' is evidence of, e.g., @KnownNat 3@
     -- (see Trac #10348)
+
+  | EvTypeablePrimitive EvId
+    -- ^ Dictionary for @Typeable T@ where @T@ is one of
+    -- the primitive tycons needing manually-defined representations.
+    -- The 'EvId' is the identifier of the manually-defined @TypeRep a@.
+    -- See Note [Typeable representations for primitive types]
+    -- for details.
 
   deriving Data.Data
 
@@ -708,9 +716,10 @@ evVarsOfCallStack cs = case cs of
 evVarsOfTypeable :: EvTypeable -> VarSet
 evVarsOfTypeable ev =
   case ev of
-    EvTypeableTyCon es    -> evVarsOfTerms es
+    EvTypeableTyCon _ e   -> evVarsOfTerm e
     EvTypeableTyApp e1 e2 -> evVarsOfTerms [e1,e2]
     EvTypeableTyLit e     -> evVarsOfTerm e
+    EvTypeablePrimitive v -> unitVarSet v
 
 {-
 ************************************************************************
@@ -797,9 +806,10 @@ instance Outputable EvCallStack where
     = ppr (name,loc) <+> text ":" <+> ppr tm
 
 instance Outputable EvTypeable where
-  ppr (EvTypeableTyCon ts)    = text "TC" <+> ppr ts
+  ppr (EvTypeableTyCon ts _)  = text "TyCon" <+> ppr ts
   ppr (EvTypeableTyApp t1 t2) = parens (ppr t1 <+> ppr t2)
   ppr (EvTypeableTyLit t1)    = text "TyLit" <> ppr t1
+  ppr (EvTypeablePrimitive v) = text "TyLit" <> ppr v
 
 
 ----------------------------------------------------------------------

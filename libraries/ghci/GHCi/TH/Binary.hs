@@ -1,10 +1,23 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
+
 -- This module is full of orphans, unfortunately
 module GHCi.TH.Binary () where
 
 import Data.Binary
 import qualified Data.ByteString as B
+#if MIN_VERSION_base(4,9,0)
+import Control.Monad (when)
+import Type.Reflection
+import Type.Reflection.Unsafe
+#else
 import Data.Typeable
+#endif
+import GHC.Exts (TYPE, Levity(..))
 import GHC.Serialized
 import qualified Language.Haskell.TH        as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -66,6 +79,49 @@ instance Binary TH.PatSynArgs
 
 -- We need Binary TypeRep for serializing annotations
 
+#if MIN_VERSION_base(4,9,0)
+instance Binary TyCon where
+    put tc = put (tyConPackage tc) >> put (tyConModule tc) >> put (tyConName tc)
+    get = mkTyCon <$> get <*> get <*> get
+
+putTypeRep :: TypeRep a -> Put
+putTypeRep rep@(TRCon con) = do
+    put (0 :: Word8)
+    put con
+    putTypeRep (typeRepKind rep)
+putTypeRep (TRApp f x) = do
+    put (1 :: Word8)
+    putTypeRep f
+    putTypeRep x
+
+getTypeRepX :: Get TypeRepX
+getTypeRepX = do
+    tag <- get :: Get Word8
+    case tag of
+        0 -> do con <- get :: Get TyCon
+                TypeRep rep_k <- getTypeRepX
+                Just HRefl <- pure $ eqTypeRep rep_k (typeRep :: TypeRep (TYPE 'Lifted))
+                pure $ TypeRepX $ mkTrCon con rep_k
+        1 -> do TypeRep f <- getTypeRepX
+                TypeRep x <- getTypeRepX
+                case typeRepKind f of
+                  TRFun arg _ -> do
+                    Just HRefl <- pure $ eqTypeRep arg x
+                    pure $ TypeRepX $ mkTrApp f x
+        _ -> fail "Binary: Invalid TTypeRep"
+
+instance Typeable a => Binary (TypeRep (a :: k)) where
+    put = putTypeRep
+    get = do
+        TypeRepX rep <- getTypeRepX
+        case rep `eqTypeRep` typeRef of
+            Just HRefl -> pure rep
+            Nothing    -> fail "Binary: Type mismatch"
+
+instance Binary TypeRepX where
+    put (TypeRepX rep) = putTypeRep rep
+    get = getTypeRep
+#else
 instance Binary TyCon where
     put tc = put (tyConPackage tc) >> put (tyConModule tc) >> put (tyConName tc)
     get = mkTyCon3 <$> get <*> get <*> get
@@ -75,6 +131,7 @@ instance Binary TypeRep where
     get = do
         (ty_con, child_type_reps) <- get
         return (mkTyConApp ty_con child_type_reps)
+#endif
 
 instance Binary Serialized where
     put (Serialized tyrep wds) = put tyrep >> put (B.pack wds)
