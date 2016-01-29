@@ -25,9 +25,10 @@ import TcType
 import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
                    typeableClassName, coercibleTyConKey,
-                   heqTyConKey, ipClassKey )
+                   heqTyConKey, ipClassKey,
+                   trTYPE'LiftedName, trLevityName, trArrowName )
 import TysWiredIn ( typeNatKind, typeSymbolKind, heqDataCon,
-                    coercibleDataCon )
+                    coercibleDataCon, levityTy )
 import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon )
 import Id( idType )
 import CoAxiom ( TypeEqn, CoAxiom(..), CoAxBranch(..), fromBranches )
@@ -2162,26 +2163,57 @@ matchTypeable clas [k,t]  -- clas = Typeable
   -- Now cases that do work
   | k `eqType` typeNatKind                 = doTyLit knownNatClassName    t
   | k `eqType` typeSymbolKind              = doTyLit knownSymbolClassName t
+  | t `eqType` liftedTypeKind              = doPrimRep trTYPE'LiftedName  t
+  | t `eqType` levityTy                    = doPrimRep trLevityName       t
   | Just (tc, ks) <- splitTyConApp_maybe t -- See Note [Typeable (T a b c)]
-  , onlyNamedBndrsApplied tc ks            = doTyConApp clas t ks
+  , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc ks
+  | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
   | Just (f,kt)   <- splitAppTy_maybe t    = doTyApp    clas t f kt
 
 matchTypeable _ _ = return NoInstance
 
-doTyConApp :: Class -> Type -> [Kind] -> TcS LookupInstResult
--- Representation for type constructor applied to some kinds
-doTyConApp clas ty args
-  = return $ GenInst (map (mk_typeable_pred clas) args)
-                     (\tms -> EvTypeable ty $ EvTypeableTyCon tms)
+-- | Representation for a type @ty@ of the form @arg -> ret@.
+doFunTy :: Class -> Type -> Type -> Type -> TcS LookupInstResult
+doFunTy clas ty arg_ty ret_ty
+  = do { arr_var <- tcLookupId trArrowName
+       ; let arrow_ty     = mkTyConTy funTyCon        -- (->)
+             arrow_arg_ty = mkAppTy arrow_ty arg_ty   -- (->) arg
+
+             preds = map (mk_typeable_pred clas) [arg_ty, ret_ty]
+             build_ev [arg_ev, ret_ev] =
+                 let -- Typeable (->)
+                     arr_ev       = EvTypeable arrow_ty $ EvTypeablePrimitive arr_var
+                 in EvTypeable ty $ EvTypeableTyApp
+                        (EvTypeable arrow_arg_ty $ EvTypeableTyApp arr_ev arg_ev)
+                        ret_ev
+             build_ev _ = panic "TcInteract.doFunTy"
+       ; return $ GenInst preds build_ev True
+       }
+
+-- | Representation for TYPE or Levity
+doPrimRep :: Name -> Type -> TcS LookupInstResult
+doPrimRep rep_name ty
+  = do { rep_var <- tcLookupId rep_name
+       ; return $ GenInst [] (\[] -> EvTypeable ty $ EvTypeablePrimitive rep_var) True }
+
+-- | Representation for type constructor applied to some kinds. 'onlyNamedBndrsApplied'
+-- has ensured that this application results in a type of monomorphic kind (e.g. all
+-- kind variables have been instantiated).
+--
+-- TODO: Do we want to encode the applied kinds in the representation?
+doTyConApp :: Class -> Type -> TyCon -> [Kind] -> TcS LookupInstResult
+doTyConApp clas ty tc ks
+  = return $ GenInst [mk_typeable_pred clas $ typeKind ty]
+                     (\[ev] -> EvTypeable ty $ EvTypeableTyCon tc ev)
                      True
 
--- Representation for concrete kinds.  We just use the kind itself,
--- but first we must make sure that we've instantiated all kind-
+-- | Representation for TyCon applications of a concrete kind. We just use the 
+-- kind itself, but first we must make sure that we've instantiated all kind-
 -- polymorphism, but no more.
 onlyNamedBndrsApplied :: TyCon -> [KindOrType] -> Bool
 onlyNamedBndrsApplied tc ks
- = all isNamedTyConBinder         used_bndrs &&
-   all (not . isNamedTyConBinder) leftover_bndrs
+ = all isNamedBinder used_bndrs &&
+   not (any isNamedBinder leftover_bndrs)
  where
    bndrs                        = tyConBinders tc
    (used_bndrs, leftover_bndrs) = splitAtList ks bndrs
@@ -2198,10 +2230,9 @@ doTyApp clas ty f tk
   | isForAllTy (typeKind f)
   = return NoInstance -- We can't solve until we know the ctr.
   | otherwise
-  = do { traceTcS "doTyApp" (ppr clas $$ ppr ty $$ ppr f $$ ppr tk)
-       ; return $ GenInst [mk_typeable_pred clas f, mk_typeable_pred clas tk]
+  = return $ GenInst (map (mk_typeable_pred clas) [f, tk])
                      (\[t1,t2] -> EvTypeable ty $ EvTypeableTyApp t1 t2)
-                     True }
+                     True
 
 -- Emit a `Typeable` constraint for the given type.
 mk_typeable_pred :: Class -> Type -> PredType
@@ -2229,7 +2260,9 @@ To solve Typeable (Proxy (* -> *) Maybe) we
   - Then solve (Typeable (Proxy (* -> *))) with doTyConApp
 
 If we attempt to short-cut by solving it all at once, via
-doTyCOnAPp
+doTyConApp
+
+(this note is sadly truncated FIXME)
 
 
 Note [No Typeable for polytypes or qualified types]
