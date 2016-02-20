@@ -1,2 +1,7 @@
 
-prog011.hx:14:22: Empty 'do' block
+<no location info>: error:
+    Could not find module ‘Control.Monad.State’
+    Perhaps you meant
+      Control.Monad.Fail (from base-4.9.0.0)
+      Control.Monad.ST (from base-4.9.0.0)
+      Control.Monad.ST.Safe (from base-4.9.0.0)

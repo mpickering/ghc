@@ -210,9 +210,9 @@ tcDefMeth clas tyvars this_dict binds_in hs_sig_fn prag_fn
 
        ; spec_prags <- discardConstraints $
                        tcSpecPrags global_dm_id prags
-       ; warnTc (not (null spec_prags))
-                (text "Ignoring SPECIALISE pragmas on default method"
-                 <+> quotes (ppr sel_name))
+       ; warnTc' (not (null spec_prags))
+                 (text "Ignoring SPECIALISE pragmas on default method"
+                  <+> quotes (ppr sel_name))
 
        ; let hs_ty = lookupHsSig hs_sig_fn sel_name
                      `orElse` pprPanic "tc_dm" (ppr sel_name)
@@ -280,7 +280,7 @@ tcClassMinimalDef _clas sigs op_info
         -- class ops without default methods are required, since we
         -- have no way to fill them in otherwise
         whenIsJust (isUnsatisfied (mindef `impliesAtom`) defMindef) $
-                   (\bf -> addWarnTc (warningMinimalDefIncomplete bf))
+                   (\bf -> addWarnTc' (warningMinimalDefIncomplete bf))
         return mindef
   where
     -- By default require all methods without a default
@@ -487,7 +487,7 @@ warnMissingAT :: Name -> TcM ()
 warnMissingAT name
   = do { warn <- woptM Opt_WarnMissingMethods
        ; traceTc "warn" (ppr name <+> ppr warn)
-       ; warnTc warn  -- Warn only if -Wmissing-methods
+       ; warnTc Opt_WarnMissingMethods warn  -- Warn only if -Wmissing-methods
                 (text "No explicit" <+> text "associated type"
                     <+> text "or default declaration for     "
                     <+> quotes (ppr name)) }

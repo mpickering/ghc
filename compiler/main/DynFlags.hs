@@ -173,7 +173,7 @@ import FastString
 import Outputable
 import Foreign.C        ( CInt(..) )
 import System.IO.Unsafe ( unsafeDupablePerformIO )
-import {-# SOURCE #-} ErrUtils ( Severity(..), MsgDoc, mkLocMessage )
+import {-# SOURCE #-} ErrUtils ( Severity(..), MsgDoc, mkLocMessageAnn )
 
 import System.IO.Unsafe ( unsafePerformIO )
 import Data.IORef
@@ -1616,13 +1616,13 @@ interpreterDynamic dflags
 --------------------------------------------------------------------------
 
 type FatalMessager = String -> IO ()
-type LogAction = DynFlags -> Severity -> SrcSpan -> PprStyle -> MsgDoc -> IO ()
+type LogAction = DynFlags -> Maybe WarningFlag -> Severity -> SrcSpan -> PprStyle -> MsgDoc -> IO ()
 
 defaultFatalMessager :: FatalMessager
 defaultFatalMessager = hPutStrLn stderr
 
 defaultLogAction :: LogAction
-defaultLogAction dflags severity srcSpan style msg
+defaultLogAction dflags flag severity srcSpan style msg
     = case severity of
       SevOutput      -> printSDoc msg style
       SevDump        -> printSDoc (msg $$ blankLine) style
@@ -1630,7 +1630,7 @@ defaultLogAction dflags severity srcSpan style msg
       SevInfo        -> printErrs msg style
       SevFatal       -> printErrs msg style
       _              -> do hPutChar stderr '\n'
-                           printErrs (mkLocMessage severity srcSpan msg) style
+                           printErrs (mkLocMessageAnn flagMsg severity srcSpan msg) style
                            -- careful (#2302): printErrs prints in UTF-8,
                            -- whereas converting to string first and using
                            -- hPutStr would just emit the low 8 bits of
@@ -1638,6 +1638,9 @@ defaultLogAction dflags severity srcSpan style msg
     where printSDoc  = defaultLogActionHPrintDoc  dflags stdout
           printErrs  = defaultLogActionHPrintDoc  dflags stderr
           putStrSDoc = defaultLogActionHPutStrDoc dflags stdout
+          -- Pretty print the warning flag, if any (#10752)
+          flagMsg = (\wf -> '-':'W':flagSpecName wf) <$> (flag >>= \f ->
+            listToMaybe $ filter (\fs -> flagSpecFlag fs == f) wWarningFlags)
 
 defaultLogActionHPrintDoc :: DynFlags -> Handle -> SDoc -> PprStyle -> IO ()
 defaultLogActionHPrintDoc dflags h d sty
