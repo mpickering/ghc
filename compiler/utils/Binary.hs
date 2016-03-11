@@ -81,7 +81,7 @@ import Data.Time
 #if MIN_VERSION_base(4,9,0)
 import Type.Reflection
 import Type.Reflection.Unsafe
-import GHC.Exts                 ( TYPE, Levity(..) )
+import Data.Kind (Type)
 #else
 import Data.Typeable
 #endif
@@ -605,7 +605,7 @@ getTypeRepX bh = do
     case tag of
         0 -> do con <- get bh
                 TypeRepX rep_k <- getTypeRepX bh
-                Just HRefl <- pure $ eqTypeRep rep_k (typeRep :: TypeRep (TYPE 'Lifted))
+                Just HRefl <- pure $ eqTypeRep rep_k (typeRep :: TypeRep Type)
                 pure $ TypeRepX $ mkTrCon con rep_k
         1 -> do TypeRepX f <- getTypeRepX bh
                 TypeRepX x <- getTypeRepX bh
@@ -619,7 +619,7 @@ instance Typeable a => Binary (TypeRep (a :: k)) where
     put_ = putTypeRep
     get bh = do
         TypeRepX rep <- getTypeRepX bh
-        case rep `eqTypeRep` typeRep of
+        case rep `eqTypeRep` (typeRep :: TypeRep a) of
             Just HRefl -> pure rep
             Nothing    -> fail "Binary: Type mismatch"
 
