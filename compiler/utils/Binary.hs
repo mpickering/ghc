@@ -605,14 +605,16 @@ getTypeRepX bh = do
     case tag of
         0 -> do con <- get bh
                 TypeRepX rep_k <- getTypeRepX bh
-                Just HRefl <- pure $ eqTypeRep rep_k (typeRep :: TypeRep Type)
-                pure $ TypeRepX $ mkTrCon con rep_k
+                case rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
+                    Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
+                    Nothing    -> fail "getTypeRepX: Kind mismatch"
+
         1 -> do TypeRepX f <- getTypeRepX bh
                 TypeRepX x <- getTypeRepX bh
                 case typeRepKind f of
-                  TRFun arg _ -> do
-                    Just HRefl <- pure $ eqTypeRep arg x
-                    pure $ TypeRepX $ mkTrApp f x
+                    TRFun arg _ | Just HRefl <- arg `eqTypeRep` x ->
+                      pure $ TypeRepX $ mkTrApp f x
+                    _ -> fail "getTypeRepX: Kind mismatch"
         _ -> fail "Binary: Invalid TypeRepX"
 
 instance Typeable a => Binary (TypeRep (a :: k)) where
