@@ -73,9 +73,9 @@ module Data.Typeable.Internal (
 
     -- * Representations for primitive types
     trTYPE,
-    trTYPE'Lifted,
-    trLevity,
-    tr'Lifted,
+    trTYPE'PtrRepLifted,
+    trRuntimeRep,
+    tr'PtrRepLifted,
     trArrow,
   ) where
 
@@ -407,7 +407,7 @@ typeLitTypeRep nm = mkTrCon (mkTypeLitTyCon nm) typeRep
 {- *********************************************************
 *                                                          *
 *       TyCon/TypeRep definitions for primitive types      *
-*       (TYPE, Levity, (->) and promoted constructors)     *
+*       (TYPE, RuntimeRep, (->) and promoted constructors) *
 *                                                          *
 ********************************************************* -}
 
@@ -417,11 +417,11 @@ Note [Mutually recursive representations of primitive types]
 
 These primitive types exhibit mutual recursion through their kinds.
 
-    TYPE          :: Levity -> TYPE 'Lifted
-    Levity        :: TYPE 'Lifted
-    'Lifted       :: Levity
-    (->)          :: TYPE 'Lifted -> TYPE 'Lifted -> Type 'Lifted
-    TYPE 'Lifted  :: TYPE 'Lifted
+    TYPE          :: RuntimeRep -> TYPE 'PtrRepLifted
+    RuntimeRep    :: TYPE 'PtrRepLifted
+    'PtrRepLifted :: RuntimeRep
+    (->)          :: TYPE 'PtrRepLifted -> TYPE 'PtrRepLifted -> Type 'PtrRepLifted
+    TYPE 'PtrRepLifted :: TYPE 'PtrRepLifted
 
 For this reason we are forced to define their representations
 manually.
@@ -431,22 +431,22 @@ mkPrimTyCon :: String -> TyCon
 mkPrimTyCon = mkTyCon "ghc-prim" "GHC.Prim"
 
 trTYPE :: TypeRep TYPE
-trTYPE = mkTrCon (mkPrimTyCon "TYPE") levity_arr_type
+trTYPE = mkTrCon (mkPrimTyCon "TYPE") runtimeRep_arr_type
   where
-    levity_arr :: TypeRep ((->) Levity)
-    levity_arr = mkTrApp trArrow trLevity
+    runtimeRep_arr :: TypeRep ((->) RuntimeRep)
+    runtimeRep_arr = mkTrApp trArrow trRuntimeRep
 
-    levity_arr_type :: TypeRep ((->) Levity (TYPE 'Lifted))
-    levity_arr_type = mkTrApp levity_arr star
+    runtimeRep_arr_type :: TypeRep ((->) RuntimeRep (TYPE 'PtrRepLifted))
+    runtimeRep_arr_type = mkTrApp runtimeRep_arr star
 
-trLevity :: TypeRep Levity
-trLevity = mkTrCon (mkPrimTyCon "Levity") star
+trRuntimeRep :: TypeRep RuntimeRep
+trRuntimeRep = mkTrCon (mkPrimTyCon "RuntimeRep") star
 
-tr'Lifted :: TypeRep 'Lifted
-tr'Lifted = mkTrCon (mkPrimTyCon "'Lifted") trLevity
+tr'PtrRepLifted :: TypeRep 'PtrRepLifted
+tr'PtrRepLifted = mkTrCon (mkPrimTyCon "'PtrRepLifted") trRuntimeRep
 
-trTYPE'Lifted :: TypeRep (TYPE 'Lifted)
-trTYPE'Lifted = mkTrApp trTYPE tr'Lifted
+trTYPE'PtrRepLifted :: TypeRep (TYPE 'PtrRepLifted)
+trTYPE'PtrRepLifted = mkTrApp trTYPE tr'PtrRepLifted
 
 trArrowTyCon :: TyCon
 trArrowTyCon = mkPrimTyCon "->"
@@ -455,8 +455,8 @@ trArrow :: TypeRep (->)
 trArrow = mkTrCon trArrowTyCon star_arr_star_arr_star
 
 -- Some useful aliases
-star :: TypeRep (TYPE 'Lifted)
-star = trTYPE'Lifted
+star :: TypeRep (TYPE 'PtrRepLifted)
+star = trTYPE'PtrRepLifted
 
 star_arr :: TypeRep ((->) * :: * -> *)
 star_arr = mkTrApp trArrow star

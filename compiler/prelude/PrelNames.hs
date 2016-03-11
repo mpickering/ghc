@@ -220,9 +220,9 @@ basicKnownKeyNames
         trGhcPrimModuleName,
         -- Representations
         trTYPEName,
-        trTYPE'LiftedName,
-        trLevityName,
-        tr'LiftedName,
+        trTYPE'PtrRepLiftedName,
+        trRuntimeRepName,
+        tr'PtrRepLiftedName,
         trArrowName,
 
         -- Dynamic
@@ -1190,16 +1190,16 @@ trGhcPrimModuleName   = varQual gHC_TYPES         (fsLit "tr$ModuleGHCPrim")  tr
 -- Representations for primitive types
 -- These are of type `TypeRep a`
 trTYPEName
-  , trTYPE'LiftedName
-  , trLevityName
-  , tr'LiftedName
+  , trTYPE'PtrRepLiftedName
+  , trRuntimeRepName
+  , tr'PtrRepLiftedName
   , trArrowName
   :: Name
-trTYPEName            = varQual tYPEABLE_INTERNAL (fsLit "trTYPE")         trTYPEKey
-trTYPE'LiftedName     = varQual tYPEABLE_INTERNAL (fsLit "trTYPE'Lifted")  trTYPE'LiftedKey
-trLevityName          = varQual tYPEABLE_INTERNAL (fsLit "trLevity")       trLevityKey
-tr'LiftedName         = varQual tYPEABLE_INTERNAL (fsLit "tr'Lifted")      tr'LiftedKey
-trArrowName           = varQual tYPEABLE_INTERNAL (fsLit "trArrow")        trArrowKey
+trTYPEName              = varQual tYPEABLE_INTERNAL (fsLit "trTYPE")              trTYPEKey
+trTYPE'PtrRepLiftedName = varQual tYPEABLE_INTERNAL (fsLit "trTYPE'PtrRepLifted") trTYPE'PtrRepLiftedKey
+trRuntimeRepName        = varQual tYPEABLE_INTERNAL (fsLit "trRuntimeRep")        trRuntimeRepKey
+tr'PtrRepLiftedName     = varQual tYPEABLE_INTERNAL (fsLit "tr'PtrRepLifted")     tr'PtrRepLiftedKey
+trArrowName             = varQual tYPEABLE_INTERNAL (fsLit "trArrow")             trArrowKey
 
 -- Custom type errors
 errorMessageTypeErrorFamName
@@ -2204,16 +2204,16 @@ typeRepIdKey          = mkPreludeMiscIdUnique 508
 
 -- Representations for primitive types
 trTYPEKey
-  ,trTYPE'LiftedKey
-  , trLevityKey
-  , tr'LiftedKey
+  ,trTYPE'PtrRepLiftedKey
+  , trRuntimeRepKey
+  , tr'PtrRepLiftedKey
   , trArrowKey
   :: Unique
-trTYPEKey             = mkPreludeMiscIdUnique 510
-trTYPE'LiftedKey      = mkPreludeMiscIdUnique 511
-trLevityKey           = mkPreludeMiscIdUnique 512
-tr'LiftedKey          = mkPreludeMiscIdUnique 513
-trArrowKey            = mkPreludeMiscIdUnique 514
+trTYPEKey              = mkPreludeMiscIdUnique 510
+trTYPE'PtrRepLiftedKey = mkPreludeMiscIdUnique 511
+trRuntimeRepKey        = mkPreludeMiscIdUnique 512
+tr'PtrRepLiftedKey     = mkPreludeMiscIdUnique 513
+trArrowKey             = mkPreludeMiscIdUnique 514
 
 -- Dynamic
 toDynIdKey :: Unique
