@@ -14,10 +14,10 @@ import qualified Data.ByteString as B
 import Control.Monad (when)
 import Type.Reflection
 import Type.Reflection.Unsafe
+import Data.Kind (Type)
 #else
 import Data.Typeable
 #endif
-import GHC.Exts (TYPE, Levity(..))
 import GHC.Serialized
 import qualified Language.Haskell.TH        as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -99,11 +99,11 @@ getTypeRepX = do
     tag <- get :: Get Word8
     case tag of
         0 -> do con <- get :: Get TyCon
-                TypeRep rep_k <- getTypeRepX
-                Just HRefl <- pure $ eqTypeRep rep_k (typeRep :: TypeRep (TYPE 'Lifted))
+                TypeRepX rep_k <- getTypeRepX
+                Just HRefl <- pure $ eqTypeRep rep_k (typeRep :: TypeRep Type)
                 pure $ TypeRepX $ mkTrCon con rep_k
-        1 -> do TypeRep f <- getTypeRepX
-                TypeRep x <- getTypeRepX
+        1 -> do TypeRepX f <- getTypeRepX
+                TypeRepX x <- getTypeRepX
                 case typeRepKind f of
                   TRFun arg _ -> do
                     Just HRefl <- pure $ eqTypeRep arg x
@@ -114,13 +114,13 @@ instance Typeable a => Binary (TypeRep (a :: k)) where
     put = putTypeRep
     get = do
         TypeRepX rep <- getTypeRepX
-        case rep `eqTypeRep` typeRef of
+        case rep `eqTypeRep` (typeRep :: TypeRep a) of
             Just HRefl -> pure rep
             Nothing    -> fail "Binary: Type mismatch"
 
 instance Binary TypeRepX where
     put (TypeRepX rep) = putTypeRep rep
-    get = getTypeRep
+    get = getTypeRepX
 #else
 instance Binary TyCon where
     put tc = put (tyConPackage tc) >> put (tyConModule tc) >> put (tyConName tc)
