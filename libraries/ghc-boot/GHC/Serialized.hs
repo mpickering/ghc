@@ -22,7 +22,6 @@ module GHC.Serialized (
 import Data.Bits
 import Data.Word        ( Word8 )
 import Data.Data
-import Data.Typeable
 
 
 -- | Represents a serialized value of a particular type. Attempts can be made to deserialize it at certain types
