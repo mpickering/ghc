@@ -68,7 +68,7 @@ module Data.Typeable.Internal (
 
     -- * Construction
     -- | These are for internal use only
-    mkTrCon, mkTrApp, mkTyCon,
+    mkTrCon, mkTrApp, mkTyCon, mkTyCon#,
     typeSymbolTypeRep, typeNatTypeRep,
 
     -- * Representations for primitive types
@@ -223,6 +223,7 @@ mkTrCon tc kind = TrTyCon fpr tc kind
     fpr    = fingerprintFingerprints [fpr_tc, fpr_k]
 
 -- | Construct a representation for a type application.
+-- TODO: Is this necessary?
 mkTrApp :: forall k1 k2 (a :: k1 -> k2) (b :: k1).
            TypeRep (a :: k1 -> k2)
         -> TypeRep (b :: k1)
@@ -253,7 +254,7 @@ pattern TRCon con <- TrTyCon _ con _
 
 -- | Splits a type application.
 splitApp :: TypeRep a -> Maybe (AppResult a)
-splitApp (TrTyCon _ a _) = Nothing
+splitApp (TrTyCon _ _ _) = Nothing
 splitApp (TrApp _ f x)   = Just $ App f x
 
 ----------------- Observation ---------------------
@@ -262,7 +263,9 @@ typeRepKind :: forall k (a :: k). TypeRep a -> TypeRep k
 typeRepKind (TrTyCon _ _ k) = k
 typeRepKind (TrApp _ f _) =
     case typeRepKind f of
-        TRFun arg res -> res
+        TRFun _arg res -> res
+        -- TODO: why is this case needed?
+        _  -> error "typeRepKind: impossible"
 
 -- | Observe the type constructor of a quantified type representation.
 typeRepXTyCon :: TypeRepX -> TyCon
@@ -320,14 +323,17 @@ typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
 
 -- | @since 2.01
 instance Show (TypeRep a) where
-  showsPrec p (TrTyCon _ tycon _) = shows tycon
-  showsPrec p (TrApp _ f x)       = shows f . showString " " . shows x
+  showsPrec p (TrTyCon _ tycon _) = showsPrec p tycon
+  showsPrec p (TrApp _ f x)       = showsPrec p f . showString " " . showsPrec p x
+  -- TODO: Reconsider precedence
 
 -- | @since 4.10.0.0
 instance Show TypeRepX where
   showsPrec p (TypeRepX ty) = showsPrec p ty
 
 -- Some (Show.TypeRepX) helpers:
+{-
+-- FIXME: Handle tuples, etc.
 showArgs :: Show a => ShowS -> [a] -> ShowS
 showArgs _   []     = id
 showArgs _   [a]    = showsPrec 10 a
@@ -337,6 +343,7 @@ showTuple :: [TypeRepX] -> ShowS
 showTuple args = showChar '('
                . showArgs (showChar ',') args
                . showChar ')'
+-}
 
 -- | Helper to fully evaluate 'TypeRep' for use as @NFData(rnf)@ implementation
 --
