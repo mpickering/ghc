@@ -26,9 +26,9 @@ import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
                    typeableClassName, coercibleTyConKey,
                    heqTyConKey, ipClassKey,
-                   trTYPE'LiftedName, trLevityName, trArrowName )
+                   trTYPE'PtrRepLiftedName, trRuntimeRepName, trArrowName )
 import TysWiredIn ( typeNatKind, typeSymbolKind, heqDataCon,
-                    coercibleDataCon, levityTy )
+                    coercibleDataCon, runtimeRepTy )
 import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon )
 import Id( idType )
 import CoAxiom ( TypeEqn, CoAxiom(..), CoAxBranch(..), fromBranches )
@@ -2161,10 +2161,10 @@ matchTypeable clas [k,t]  -- clas = Typeable
   | isJust (tcSplitPredFunTy_maybe t) = return NoInstance   -- Qualified type
 
   -- Now cases that do work
-  | k `eqType` typeNatKind                 = doTyLit knownNatClassName    t
-  | k `eqType` typeSymbolKind              = doTyLit knownSymbolClassName t
-  | t `eqType` liftedTypeKind              = doPrimRep trTYPE'LiftedName  t
-  | t `eqType` levityTy                    = doPrimRep trLevityName       t
+  | k `eqType` typeNatKind                 = doTyLit knownNatClassName         t
+  | k `eqType` typeSymbolKind              = doTyLit knownSymbolClassName      t
+  | t `eqType` liftedTypeKind              = doPrimRep trTYPE'PtrRepLiftedName t
+  | t `eqType` runtimeRepTy                = doPrimRep trRuntimeRepName        t
   | Just (tc, ks) <- splitTyConApp_maybe t -- See Note [Typeable (T a b c)]
   , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc ks
   | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
@@ -2190,7 +2190,7 @@ doFunTy clas ty arg_ty ret_ty
        ; return $ GenInst preds build_ev True
        }
 
--- | Representation for TYPE or Levity
+-- | Representation for TYPE or RuntimeRep
 doPrimRep :: Name -> Type -> TcS LookupInstResult
 doPrimRep rep_name ty
   = do { rep_var <- tcLookupId rep_name
