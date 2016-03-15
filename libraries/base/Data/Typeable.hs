@@ -69,6 +69,9 @@ module Data.Typeable
     , rnfTypeRep
     , showsTypeRep
 
+      -- * Observing type representations
+    , funResultTy
+
       -- * Type constructors
     , I.TyCon          -- abstract, instance of: Eq, Show, Typeable
                        -- For now don't export Module to avoid name clashes
@@ -146,6 +149,18 @@ gcast2 x = fmap (\Refl -> x) (eqT :: Maybe (t :~: t'))
 -- | Observe the type constructor of a quantified type representation.
 typeRepTyCon :: TypeRep -> TyCon
 typeRepTyCon = I.typeRepXTyCon
+
+-- | Applies a type to a function type. Returns: @Just u@ if the first argument
+-- represents a function of type @t -> u@ and the second argument represents a
+-- function of type @t@. Otherwise, returns @Nothing@.
+funResultTy :: TypeRep -> TypeRep -> Maybe TypeRep
+funResultTy (I.TypeRepX f) (I.TypeRepX x)
+  | Just HRefl <- (I.typeRep :: I.TypeRep Type) `I.eqTypeRep` I.typeRepKind f
+  , I.TRFun arg res <- f
+  , Just HRefl <- arg `I.eqTypeRep` x
+  = Just (I.TypeRepX res)
+  | otherwise
+  = Nothing
 
 -- | Force a 'TypeRep' to normal form.
 rnfTypeRep :: TypeRep -> ()
