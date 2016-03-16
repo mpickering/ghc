@@ -154,13 +154,19 @@ typeRepTyCon = I.typeRepXTyCon
 -- represents a function of type @t -> u@ and the second argument represents a
 -- function of type @t@. Otherwise, returns @Nothing@.
 funResultTy :: TypeRep -> TypeRep -> Maybe TypeRep
-funResultTy (I.TypeRepX f) (I.TypeRepX x)
-  | Just HRefl <- (I.typeRep :: I.TypeRep Type) `I.eqTypeRep` I.typeRepKind f
-  , I.TRFun arg res <- f
-  , Just HRefl <- arg `I.eqTypeRep` x
-  = Just (I.TypeRepX res)
-  | otherwise
-  = Nothing
+{-
+funResultTy (I.TypeRepX f) (I.TypeRepX x) =
+    case (I.typeRep :: I.TypeRep Type) `I.eqTypeRep` I.typeRepKind f of
+        Just HRefl ->
+            case f of
+                I.TRFun arg res ->
+                    case arg `I.eqTypeRep` x of
+                        Just HRefl -> Just (I.TypeRepX res)
+                        Nothing    -> Nothing
+                _ -> Nothing
+        Nothing -> Nothing
+-}
+funResultTy _ _ = Nothing
 
 -- | Force a 'TypeRep' to normal form.
 rnfTypeRep :: TypeRep -> ()

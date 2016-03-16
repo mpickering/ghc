@@ -11,7 +11,6 @@ module GHCi.TH.Binary () where
 import Data.Binary
 import qualified Data.ByteString as B
 #if MIN_VERSION_base(4,9,0)
-import Control.Monad (when)
 import Type.Reflection
 import Type.Reflection.Unsafe
 import Data.Kind (Type)
@@ -93,6 +92,7 @@ putTypeRep (TRApp f x) = do
     put (1 :: Word8)
     putTypeRep f
     putTypeRep x
+putTypeRep _ = fail "putTypeRep: Impossible"
 
 getTypeRepX :: Get TypeRepX
 getTypeRepX = do
@@ -108,10 +108,13 @@ getTypeRepX = do
                 TypeRepX x <- getTypeRepX
                 case typeRepKind f of
                     TRFun arg _ ->
-                        case arg `eqTypeRep` x of
-                            Just HRefl ->
-                                pure $ TypeRepX $ mkTrApp f x
-                            _ -> fail "getTypeRepX: Kind mismatch"
+                        case (typeRep :: TypeRep Type) `eqTypeRep` arg of
+                            Just HRefl -> -- FIXME: Generalize (->)
+                                case arg `eqTypeRep` x of
+                                    Just HRefl ->
+                                        pure $ TypeRepX $ mkTrApp f x
+                                    _ -> fail "getTypeRepX: Kind mismatch"
+                            _ -> fail "getTypeRepX: Arrow of non-Type argument"
                     _ -> fail "getTypeRepX: Applied non-arrow type"
         _ -> fail "getTypeRepX: Invalid TypeRepX"
 
