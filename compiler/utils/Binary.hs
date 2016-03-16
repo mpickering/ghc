@@ -591,19 +591,22 @@ instance Binary TyCon where
 
 #if MIN_VERSION_base(4,9,0)
 putTypeRep :: BinHandle -> TypeRep a -> IO ()
--- Special handling for Type and RuntimeRep due to recursive kind relations.
+-- Special handling for Type, (->), and RuntimeRep due to recursive kind
+-- relations.
 -- See Note [Mutually recursive representations of primitive types]
 putTypeRep bh rep
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type)
   = put_ bh (0 :: Word8)
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep)
   = put_ bh (1 :: Word8)
+  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep (->))
+  = put_ bh (2 :: Word8)
 putTypeRep bh rep@(TRCon con) = do
-    put_ bh (2 :: Word8)
+    put_ bh (3 :: Word8)
     put_ bh con
     putTypeRep bh (typeRepKind rep)
 putTypeRep bh (TRApp f x) = do
-    put_ bh (3 :: Word8)
+    put_ bh (4 :: Word8)
     putTypeRep bh f
     putTypeRep bh x
 putTypeRep _ _ = fail "putTypeRep: Impossible"
@@ -614,13 +617,14 @@ getTypeRepX bh = do
     case tag of
         0 -> return $ TypeRepX (typeRep :: TypeRep Type)
         1 -> return $ TypeRepX (typeRep :: TypeRep RuntimeRep)
-        2 -> do con <- get bh :: IO TyCon
+        2 -> return $ TypeRepX (typeRep :: TypeRep (->))
+        3 -> do con <- get bh :: IO TyCon
                 TypeRepX rep_k <- getTypeRepX bh
                 case rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
                     Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
                     Nothing    -> fail "getTypeRepX: Kind mismatch"
 
-        3 -> do TypeRepX f <- getTypeRepX bh
+        4 -> do TypeRepX f <- getTypeRepX bh
                 TypeRepX x <- getTypeRepX bh
                 case typeRepKind f of
                     TRFun arg _ ->
