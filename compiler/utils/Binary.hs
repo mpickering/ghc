@@ -598,12 +598,13 @@ putTypeRep bh (TRApp f x) = do
     put_ bh (1 :: Word8)
     putTypeRep bh f
     putTypeRep bh x
+putTypeRep _ _ = fail "putTypeRep: Impossible"
 
 getTypeRepX :: BinHandle -> IO TypeRepX
 getTypeRepX bh = do
     tag <- get bh :: IO Word8
     case tag of
-        0 -> do con <- get bh
+        0 -> do con <- get bh :: IO TyCon
                 TypeRepX rep_k <- getTypeRepX bh
                 case rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
                     Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
@@ -613,10 +614,13 @@ getTypeRepX bh = do
                 TypeRepX x <- getTypeRepX bh
                 case typeRepKind f of
                     TRFun arg _ ->
-                        case arg `eqTypeRep` x of
-                            Just HRefl ->
-                                pure $ TypeRepX $ mkTrApp f x
-                            _ -> fail "getTypeRepX: Kind mismatch"
+                        case (typeRep :: TypeRep Type) `eqTypeRep` arg of
+                            Just HRefl ->  -- FIXME: Generalize (->)
+                                case x `eqTypeRep` arg of
+                                    Just HRefl ->
+                                        pure $ TypeRepX $ mkTrApp f x
+                                    _ -> fail "getTypeRepX: Kind mismatch"
+                            Nothing -> fail "getTypeRepX: Arrow of non-Type argument"
                     _ -> fail "getTypeRepX: Applied non-arrow type"
         _ -> fail "Binary: Invalid TypeRepX"
 
