@@ -14,6 +14,7 @@ import qualified Data.ByteString as B
 import Type.Reflection
 import Type.Reflection.Unsafe
 import Data.Kind (Type)
+import GHC.Exts (RuntimeRep)
 #else
 import Data.Typeable
 #endif
@@ -84,12 +85,19 @@ instance Binary TyCon where
     get = mkTyCon <$> get <*> get <*> get
 
 putTypeRep :: TypeRep a -> Put
+-- Special handling for Type and RuntimeRep due to recursive kind relations.
+-- See Note [Mutually recursive representations of primitive types]
+putTypeRep rep
+  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type)
+  = put (0 :: Word8)
+  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep)
+  = put (1 :: Word8)
 putTypeRep rep@(TRCon con) = do
-    put (0 :: Word8)
+    put (2 :: Word8)
     put con
     putTypeRep (typeRepKind rep)
 putTypeRep (TRApp f x) = do
-    put (1 :: Word8)
+    put (3 :: Word8)
     putTypeRep f
     putTypeRep x
 putTypeRep _ = fail "putTypeRep: Impossible"
@@ -98,13 +106,15 @@ getTypeRepX :: Get TypeRepX
 getTypeRepX = do
     tag <- get :: Get Word8
     case tag of
-        0 -> do con <- get :: Get TyCon
+        0 -> return $ TypeRepX (typeRep :: TypeRep Type)
+        1 -> return $ TypeRepX (typeRep :: TypeRep RuntimeRep)
+        2 -> do con <- get :: Get TyCon
                 TypeRepX rep_k <- getTypeRepX
                 case rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
                     Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
                     Nothing    -> fail "getTypeRepX: Kind mismatch"
 
-        1 -> do TypeRepX f <- getTypeRepX
+        3 -> do TypeRepX f <- getTypeRepX
                 TypeRepX x <- getTypeRepX
                 case typeRepKind f of
                     TRFun arg _ ->
