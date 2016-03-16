@@ -612,9 +612,12 @@ getTypeRepX bh = do
         1 -> do TypeRepX f <- getTypeRepX bh
                 TypeRepX x <- getTypeRepX bh
                 case typeRepKind f of
-                    TRFun arg _ | Just HRefl <- arg `eqTypeRep` x ->
-                      pure $ TypeRepX $ mkTrApp f x
-                    _ -> fail "getTypeRepX: Kind mismatch"
+                    TRFun arg _ ->
+                        case arg `eqTypeRep` x of
+                            Just HRefl ->
+                                pure $ TypeRepX $ mkTrApp f x
+                            _ -> fail "getTypeRepX: Kind mismatch"
+                    _ -> fail "getTypeRepX: Applied non-arrow type"
         _ -> fail "Binary: Invalid TypeRepX"
 
 instance Typeable a => Binary (TypeRep (a :: k)) where
