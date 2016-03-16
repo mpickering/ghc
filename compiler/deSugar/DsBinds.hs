@@ -1207,10 +1207,10 @@ type TypeRepExpr = CoreExpr
 ds_ev_typeable :: Type -> EvTypeable -> DsM CoreExpr
 ds_ev_typeable ty (EvTypeableTyCon tc kind_ev)
   = do { mkTrCon <- dsLookupGlobalId mkTrConName
-                    -- mkTrCon :: forall k (a :: k). TyCon -> TTypeRep k -> TTypeRep a
+                    -- mkTrCon :: forall k (a :: k). TyCon -> TypeRep k -> TypeRep a
 
        ; tc_rep <- tyConRep tc                      -- :: TyCon
-       ; kind_rep <- getRep kind_ev (typeKind ty)   -- :: TTypeRep k
+       ; kind_rep <- getRep kind_ev (typeKind ty)   -- :: TypeRep k
 
          -- Note that we use the kind of the type, not the TyCon from which it is
          -- constructed since the latter may be kind polymorphic whereas the
@@ -1241,8 +1241,8 @@ ds_ev_typeable ty (EvTypeableTyLit ev)
     ty_kind = typeKind ty
 
     -- tr_fun is the Name of
-    --       typeNatTypeRep    :: KnownNat    a => Proxy# a -> TTypeRep a
-    -- of    typeSymbolTypeRep :: KnownSymbol a => Proxy# a -> TTypeRep a
+    --       typeNatTypeRep    :: KnownNat    a => Proxy# a -> TypeRep a
+    -- of    typeSymbolTypeRep :: KnownSymbol a => Proxy# a -> TypeRep a
     tr_fun | ty_kind `eqType` typeNatKind    = typeNatTypeRepName
            | ty_kind `eqType` typeSymbolKind = typeSymbolTypeRepName
            | otherwise = panic "dsEvTypeable: unknown type lit kind"
@@ -1256,10 +1256,10 @@ ds_ev_typeable ty ev
 
 getRep :: EvTerm          -- ^ EvTerm for @Typeable ty@
        -> Type            -- ^ The type @ty@
-       -> DsM TypeRepExpr -- ^ Return @CoreExpr :: TTypeRep ty@
+       -> DsM TypeRepExpr -- ^ Return @CoreExpr :: TypeRep ty@
                           -- namely @typeRep# dict@
 -- Remember that
---   typeRep# :: forall k (a::k). Typeable k a -> TTypeRep a
+--   typeRep# :: forall k (a::k). Typeable k a -> TypeRep a
 getRep ev ty
   = do { typeable_expr <- dsEvTerm ev
        ; typeRepId     <- dsLookupGlobalId typeRepIdName
