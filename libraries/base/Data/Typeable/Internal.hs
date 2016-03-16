@@ -71,6 +71,8 @@ module Data.Typeable.Internal (
     mkTrCon, mkTrApp, mkTyCon, mkTyCon#,
     typeSymbolTypeRep, typeNatTypeRep,
 
+    debugShow,
+
     -- * Representations for primitive types
     trTYPE,
     trTYPE'PtrRepLifted,
@@ -320,6 +322,22 @@ typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
 
 ----------------- Showing TypeReps --------------------
 
+debugShow :: TypeRep a -> String
+debugShow rep
+  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type) = "Type"
+  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep) = "RuntimeRep"
+  | (tc, _) <- splitApps rep
+  , isArrowTyCon tc = "Arrow"
+debugShow (TrApp _ f x) = "App ("++debugShow f++") ("++debugShow x++")"
+debugShow (TrTyCon _ x k)
+    | isArrowTyCon x = "Arrow"
+    | "->" <- show x = "Arrow #" ++ show ( tyConFingerprint x
+                                         , tyConFingerprint trArrowTyCon
+                                         , tyConFingerprint $ typeRepTyCon (typeRep :: TypeRep (->))
+                                         , typeRepTyCon (typeRep :: TypeRep (->))
+                                         )
+    | otherwise = show x++" :: "++debugShow k
+
 -- | @since 2.01
 instance Show (TypeRep (a :: k)) where
   showsPrec _ rep
@@ -329,16 +347,18 @@ instance Show (TypeRep (a :: k)) where
       showChar '(' . showArgs (showChar ',') tys . showChar ')'
     where (tc, tys) = splitApps rep
   showsPrec p (TrTyCon _ tycon _) = showsPrec p tycon
+  showsPrec _ (TrApp _ (TrTyCon _ tycon _) x)
+    | isArrowTyCon tycon =
+      shows x . showString " ->"
+
   showsPrec p (TrApp _ f x)
-    | Just HRefl <- f `eqTypeRep` (typeRep :: TypeRep (->)) =
-      shows x . showString " -> "
     | otherwise =
-      showsPrec p f . space . showParen need_parens (showsPrec 10 x)
+      showParen (p > 9) $
+      showsPrec p f .
+      space .
+      showsPrec 9 x
     where
       space = showChar ' '
-      need_parens = case x of
-                        TrApp {}   -> True
-                        TrTyCon {} -> False
 
 -- | @since 4.10.0.0
 instance Show TypeRepX where
@@ -350,6 +370,9 @@ splitApps = go []
     go :: [TypeRepX] -> TypeRep a -> (TyCon, [TypeRepX])
     go xs (TrTyCon _ tc _) = (tc, xs)
     go xs (TrApp _ f x)    = go (TypeRepX x : xs) f
+
+isArrowTyCon :: TyCon -> Bool
+isArrowTyCon tc = tc == typeRepTyCon (typeRep :: TypeRep (->))
 
 isListTyCon :: TyCon -> Bool
 isListTyCon tc = tc == typeRepTyCon (typeRep :: TypeRep [Int])
