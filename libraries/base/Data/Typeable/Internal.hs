@@ -190,7 +190,8 @@ pattern TRFun :: forall fun. ()
               => TypeRep arg
               -> TypeRep res
               -> TypeRep fun
-pattern TRFun arg res <- TrApp _ (TrApp _ (eqTypeRep trArrow -> Just HRefl) arg) res
+pattern TRFun arg res <- TrApp _ (TrApp _ (eqTypeRep trArrow -> Just HRefl) arg) res where
+  TRFun arg res = mkTrApp (mkTrApp trArrow arg) res
 
 decomposeFun :: forall fun r.
                 TypeRep fun
