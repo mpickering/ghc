@@ -31,6 +31,7 @@ module TysPrim(
 
         funTyCon, funTyConName,
         primTyCons,
+        primTypeableTyCons,
 
         charPrimTyCon,          charPrimTy, charPrimTyConName,
         intPrimTyCon,           intPrimTy, intPrimTyConName,
@@ -81,7 +82,7 @@ module TysPrim(
 #include "HsVersions.h"
 
 import {-# SOURCE #-} TysWiredIn
-  ( runtimeRepTy, unboxedTupleKind, liftedTypeKind
+  ( runtimeRepTyCon, runtimeRepTy, unboxedTupleKind, liftedTypeKind
   , vecRepDataConTyCon, tupleRepDataConTyCon
   , liftedRepDataConTy, unliftedRepDataConTy, intRepDataConTy
   , wordRepDataConTy, int64RepDataConTy, word64RepDataConTy, addrRepDataConTy
@@ -96,6 +97,7 @@ import {-# SOURCE #-} TysWiredIn
 
 import Var              ( TyVar, TyVarBndr(TvBndr), mkTyVar )
 import Name
+import NameEnv
 import TyCon
 import SrcLoc
 import Unique
@@ -155,6 +157,18 @@ primTyCons
     , tYPETyCon
 
 #include "primop-vector-tycons.hs-incl"
+    ]
+
+-- | The names of the 'TyCon's which we define 'Typeable' bindings for
+-- explicitly in "Data.Typeable.Internal"
+-- and should not generate bindings for in "GHC.Types".
+--
+-- See Note [Mutually recursive representations of primitive types]
+primTypeableTyCons :: NameEnv TyConRepName
+primTypeableTyCons = mkNameEnv
+    [ (tYPETyConName, trTYPEName)
+    , (tyConName runtimeRepTyCon, trRuntimeRepName)
+    , (funTyConName, trArrowName)
     ]
 
 mkPrimTc :: FastString -> Unique -> TyCon -> Name
@@ -357,26 +371,25 @@ Note [TYPE and RuntimeRep]
 All types that classify values have a kind of the form (TYPE rr), where
 
     data RuntimeRep     -- Defined in ghc-prim:GHC.Types
-      = LiftedRep
-      | UnliftedRep
+      = PtrRepLifted
+      | PtrRepUnlifted
       | IntRep
       | FloatRep
       .. etc ..
 
     rr :: RuntimeRep
 
-    TYPE :: RuntimeRep -> TYPE 'LiftedRep  -- Built in
+    TYPE :: RuntimeRep -> TYPE 'PtrRepLifted  -- Built in
 
 So for example:
-    Int        :: TYPE 'LiftedRep
-    Array# Int :: TYPE 'UnliftedRep
+    Int        :: TYPE 'PtrRepLifted
+    Array# Int :: TYPE 'PtrRepUnlifted
     Int#       :: TYPE 'IntRep
     Float#     :: TYPE 'FloatRep
-    Maybe      :: TYPE 'LiftedRep -> TYPE 'LiftedRep
-    (# , #)    :: TYPE r1 -> TYPE r2 -> TYPE (TupleRep [r1, r2])
+    Maybe      :: TYPE 'PtrRepLifted -> TYPE 'PtrRepLifted
 
 We abbreviate '*' specially:
-    type * = TYPE 'LiftedRep
+    type * = TYPE 'PtrRepLifted
 
 The 'rr' parameter tells us how the value is represented at runime.
 
@@ -404,12 +417,22 @@ generator never has to manipulate a value of type 'a :: TYPE rr'.
   Always inlined, and hence specialised to the call site
      (#,#) :: forall (r1 :: RuntimeRep) (r2 :: RuntimeRep)
                      (a :: TYPE r1) (b :: TYPE r2).
-                     a -> b -> TYPE ('TupleRep '[r1, r2])
+                     a -> b -> TYPE 'UnboxedTupleRep
+     See Note [Unboxed tuple kinds]
+
+Note [Unboxed tuple kinds]
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+What kind does (# Int, Float# #) have?
+The "right" answer would be
+    TYPE ('UnboxedTupleRep [PtrRepLifted, FloatRep])
+Currently we do not do this.  We just have
+    (# Int, Float# #) :: TYPE 'UnboxedTupleRep
+which does not tell us exactly how is is represented.
 
 Note [PrimRep and kindPrimRep]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 As part of its source code, in TyCon, GHC has
-  data PrimRep = LiftedRep | UnliftedRep | IntRep | FloatRep | ...etc...
+  data PrimRep = PtrRep | IntRep | FloatRep | ...etc...
 
 Notice that
  * RuntimeRep is part of the syntax tree of the program being compiled
@@ -431,8 +454,8 @@ PrimRep in the promoted data constructor itself: see TyCon.promDcRepInfo.
 
 -}
 
-tYPETyCon :: TyCon
-tYPETyConName :: Name
+tYPETyCon, unliftedTypeKindTyCon :: TyCon
+tYPETyConName, unliftedTypeKindTyConName :: Name
 
 tYPETyCon = mkKindTyCon tYPETyConName
                         (mkTemplateAnonTyConBinders [runtimeRepTy])
@@ -440,12 +463,22 @@ tYPETyCon = mkKindTyCon tYPETyConName
                         [Nominal]
                         (mkPrelTyConRepName tYPETyConName)
 
+   -- See Note [TYPE and RuntimeRep]
+   -- NB: unlifted is wired in because there is no way to parse it in
+   -- Haskell. That's the only reason for wiring it in.
+unliftedTypeKindTyCon = mkSynonymTyCon unliftedTypeKindTyConName
+                          [] liftedTypeKind []
+                          (tYPE (TyConApp ptrRepUnliftedDataConTyCon []))
+                          True   -- no foralls
+                          True   -- family free
+
 --------------------------
 -- ... and now their names
 
 -- If you edit these, you may need to update the GHC formalism
 -- See Note [GHC Formalism] in coreSyn/CoreLint.hs
 tYPETyConName             = mkPrimTyConName (fsLit "TYPE") tYPETyConKey tYPETyCon
+unliftedTypeKindTyConName = mkPrimTyConName (fsLit "#") unliftedTypeKindTyConKey unliftedTypeKindTyCon
 
 mkPrimTyConName :: FastString -> Unique -> TyCon -> Name
 mkPrimTyConName = mkPrimTcName BuiltInSyntax
@@ -476,44 +509,41 @@ pcPrimTyCon name roles rep
   = mkPrimTyCon name binders result_kind roles
   where
     binders     = mkTemplateAnonTyConBinders (map (const liftedTypeKind) roles)
-    result_kind = tYPE (primRepToRuntimeRep rep)
+    result_kind = tYPE rr
 
--- | Convert a 'PrimRep' to a 'Type' of kind RuntimeRep
--- Defined here to avoid (more) module loops
-primRepToRuntimeRep :: PrimRep -> Type
-primRepToRuntimeRep rep = case rep of
-  VoidRep       -> TyConApp tupleRepDataConTyCon [mkPromotedListTy runtimeRepTy []]
-  LiftedRep     -> liftedRepDataConTy
-  UnliftedRep   -> unliftedRepDataConTy
-  IntRep        -> intRepDataConTy
-  WordRep       -> wordRepDataConTy
-  Int64Rep      -> int64RepDataConTy
-  Word64Rep     -> word64RepDataConTy
-  AddrRep       -> addrRepDataConTy
-  FloatRep      -> floatRepDataConTy
-  DoubleRep     -> doubleRepDataConTy
-  VecRep n elem -> TyConApp vecRepDataConTyCon [n', elem']
-    where
-      n' = case n of
-        2  -> vec2DataConTy
-        4  -> vec4DataConTy
-        8  -> vec8DataConTy
-        16 -> vec16DataConTy
-        32 -> vec32DataConTy
-        64 -> vec64DataConTy
-        _  -> pprPanic "Disallowed VecCount" (ppr n)
+    rr = case rep of
+      VoidRep       -> voidRepDataConTy
+      PtrRep        -> TyConApp ptrRepUnliftedDataConTyCon []
+      IntRep        -> intRepDataConTy
+      WordRep       -> wordRepDataConTy
+      Int64Rep      -> int64RepDataConTy
+      Word64Rep     -> word64RepDataConTy
+      AddrRep       -> addrRepDataConTy
+      FloatRep      -> floatRepDataConTy
+      DoubleRep     -> doubleRepDataConTy
+      VecRep n elem -> TyConApp vecRepDataConTyCon [n', elem']
+        where
+          n' = case n of
+            2  -> vec2DataConTy
+            4  -> vec4DataConTy
+            8  -> vec8DataConTy
+            16 -> vec16DataConTy
+            32 -> vec32DataConTy
+            64 -> vec64DataConTy
+            _  -> pprPanic "Disallowed VecCount" (ppr n)
 
-      elem' = case elem of
-        Int8ElemRep   -> int8ElemRepDataConTy
-        Int16ElemRep  -> int16ElemRepDataConTy
-        Int32ElemRep  -> int32ElemRepDataConTy
-        Int64ElemRep  -> int64ElemRepDataConTy
-        Word8ElemRep  -> word8ElemRepDataConTy
-        Word16ElemRep -> word16ElemRepDataConTy
-        Word32ElemRep -> word32ElemRepDataConTy
-        Word64ElemRep -> word64ElemRepDataConTy
-        FloatElemRep  -> floatElemRepDataConTy
-        DoubleElemRep -> doubleElemRepDataConTy
+          elem' = case elem of
+            Int8ElemRep   -> int8ElemRepDataConTy
+            Int16ElemRep  -> int16ElemRepDataConTy
+            Int32ElemRep  -> int32ElemRepDataConTy
+            Int64ElemRep  -> int64ElemRepDataConTy
+            Word8ElemRep  -> word8ElemRepDataConTy
+            Word16ElemRep -> word16ElemRepDataConTy
+            Word32ElemRep -> word32ElemRepDataConTy
+            Word64ElemRep -> word64ElemRepDataConTy
+            FloatElemRep  -> floatElemRepDataConTy
+            DoubleElemRep -> doubleElemRepDataConTy
+
 
 pcPrimTyCon0 :: Name -> PrimRep -> TyCon
 pcPrimTyCon0 name rep
@@ -784,7 +814,7 @@ proxyPrimTyCon = mkPrimTyCon proxyPrimTyConName binders res_kind [Nominal,Nomina
   where
      -- Kind: forall k. k -> Void#
      binders = mkTemplateTyConBinders [liftedTypeKind] (\ks-> ks)
-     res_kind = unboxedTupleKind []
+     res_kind = tYPE voidRepDataConTy
 
 
 {- *********************************************************************
@@ -800,7 +830,7 @@ eqPrimTyCon  = mkPrimTyCon eqPrimTyConName binders res_kind roles
   where
     -- Kind :: forall k1 k2. k1 -> k2 -> Void#
     binders  = mkTemplateTyConBinders [liftedTypeKind, liftedTypeKind] (\ks -> ks)
-    res_kind = unboxedTupleKind []
+    res_kind = tYPE voidRepDataConTy
     roles    = [Nominal, Nominal, Nominal, Nominal]
 
 -- like eqPrimTyCon, but the type for *Representational* coercions
@@ -811,7 +841,7 @@ eqReprPrimTyCon = mkPrimTyCon eqReprPrimTyConName binders res_kind roles
   where
     -- Kind :: forall k1 k2. k1 -> k2 -> Void#
     binders  = mkTemplateTyConBinders [liftedTypeKind, liftedTypeKind] (\ks -> ks)
-    res_kind = unboxedTupleKind []
+    res_kind = tYPE voidRepDataConTy
     roles    = [Nominal, Nominal, Representational, Representational]
 
 -- like eqPrimTyCon, but the type for *Phantom* coercions.
@@ -822,7 +852,7 @@ eqPhantPrimTyCon = mkPrimTyCon eqPhantPrimTyConName binders res_kind roles
   where
     -- Kind :: forall k1 k2. k1 -> k2 -> Void#
     binders  = mkTemplateTyConBinders [liftedTypeKind, liftedTypeKind] (\ks -> ks)
-    res_kind = unboxedTupleKind []
+    res_kind = tYPE voidRepDataConTy
     roles    = [Nominal, Nominal, Phantom, Phantom]
 
 {- *********************************************************************
@@ -834,14 +864,14 @@ eqPhantPrimTyCon = mkPrimTyCon eqPhantPrimTyConName binders res_kind roles
 arrayPrimTyCon, mutableArrayPrimTyCon, mutableByteArrayPrimTyCon,
     byteArrayPrimTyCon, arrayArrayPrimTyCon, mutableArrayArrayPrimTyCon,
     smallArrayPrimTyCon, smallMutableArrayPrimTyCon :: TyCon
-arrayPrimTyCon             = pcPrimTyCon arrayPrimTyConName             [Representational] UnliftedRep
-mutableArrayPrimTyCon      = pcPrimTyCon  mutableArrayPrimTyConName     [Nominal, Representational] UnliftedRep
-mutableByteArrayPrimTyCon  = pcPrimTyCon mutableByteArrayPrimTyConName  [Nominal] UnliftedRep
-byteArrayPrimTyCon         = pcPrimTyCon0 byteArrayPrimTyConName        UnliftedRep
-arrayArrayPrimTyCon        = pcPrimTyCon0 arrayArrayPrimTyConName       UnliftedRep
-mutableArrayArrayPrimTyCon = pcPrimTyCon mutableArrayArrayPrimTyConName [Nominal] UnliftedRep
-smallArrayPrimTyCon        = pcPrimTyCon smallArrayPrimTyConName        [Representational] UnliftedRep
-smallMutableArrayPrimTyCon = pcPrimTyCon smallMutableArrayPrimTyConName [Nominal, Representational] UnliftedRep
+arrayPrimTyCon             = pcPrimTyCon arrayPrimTyConName             [Representational] PtrRep
+mutableArrayPrimTyCon      = pcPrimTyCon  mutableArrayPrimTyConName     [Nominal, Representational] PtrRep
+mutableByteArrayPrimTyCon  = pcPrimTyCon mutableByteArrayPrimTyConName  [Nominal] PtrRep
+byteArrayPrimTyCon         = pcPrimTyCon0 byteArrayPrimTyConName        PtrRep
+arrayArrayPrimTyCon        = pcPrimTyCon0 arrayArrayPrimTyConName       PtrRep
+mutableArrayArrayPrimTyCon = pcPrimTyCon mutableArrayArrayPrimTyConName [Nominal] PtrRep
+smallArrayPrimTyCon        = pcPrimTyCon smallArrayPrimTyConName        [Representational] PtrRep
+smallMutableArrayPrimTyCon = pcPrimTyCon smallMutableArrayPrimTyConName [Nominal, Representational] PtrRep
 
 mkArrayPrimTy :: Type -> Type
 mkArrayPrimTy elt           = TyConApp arrayPrimTyCon [elt]
@@ -868,7 +898,7 @@ mkSmallMutableArrayPrimTy s elt = TyConApp smallMutableArrayPrimTyCon [s, elt]
 ********************************************************************* -}
 
 mutVarPrimTyCon :: TyCon
-mutVarPrimTyCon = pcPrimTyCon mutVarPrimTyConName [Nominal, Representational] UnliftedRep
+mutVarPrimTyCon = pcPrimTyCon mutVarPrimTyConName [Nominal, Representational] PtrRep
 
 mkMutVarPrimTy :: Type -> Type -> Type
 mkMutVarPrimTy s elt        = TyConApp mutVarPrimTyCon [s, elt]
@@ -882,7 +912,7 @@ mkMutVarPrimTy s elt        = TyConApp mutVarPrimTyCon [s, elt]
 -}
 
 mVarPrimTyCon :: TyCon
-mVarPrimTyCon = pcPrimTyCon mVarPrimTyConName [Nominal, Representational] UnliftedRep
+mVarPrimTyCon = pcPrimTyCon mVarPrimTyConName [Nominal, Representational] PtrRep
 
 mkMVarPrimTy :: Type -> Type -> Type
 mkMVarPrimTy s elt          = TyConApp mVarPrimTyCon [s, elt]
@@ -896,7 +926,7 @@ mkMVarPrimTy s elt          = TyConApp mVarPrimTyCon [s, elt]
 -}
 
 tVarPrimTyCon :: TyCon
-tVarPrimTyCon = pcPrimTyCon tVarPrimTyConName [Nominal, Representational] UnliftedRep
+tVarPrimTyCon = pcPrimTyCon tVarPrimTyConName [Nominal, Representational] PtrRep
 
 mkTVarPrimTy :: Type -> Type -> Type
 mkTVarPrimTy s elt = TyConApp tVarPrimTyCon [s, elt]
@@ -924,7 +954,7 @@ mkStablePtrPrimTy ty = TyConApp stablePtrPrimTyCon [ty]
 -}
 
 stableNamePrimTyCon :: TyCon
-stableNamePrimTyCon = pcPrimTyCon stableNamePrimTyConName [Representational] UnliftedRep
+stableNamePrimTyCon = pcPrimTyCon stableNamePrimTyConName [Representational] PtrRep
 
 mkStableNamePrimTy :: Type -> Type
 mkStableNamePrimTy ty = TyConApp stableNamePrimTyCon [ty]
@@ -938,7 +968,7 @@ mkStableNamePrimTy ty = TyConApp stableNamePrimTyCon [ty]
 -}
 
 compactPrimTyCon :: TyCon
-compactPrimTyCon = pcPrimTyCon0 compactPrimTyConName UnliftedRep
+compactPrimTyCon = pcPrimTyCon0 compactPrimTyConName PtrRep
 
 compactPrimTy :: Type
 compactPrimTy = mkTyConTy compactPrimTyCon
@@ -954,7 +984,7 @@ compactPrimTy = mkTyConTy compactPrimTyCon
 bcoPrimTy    :: Type
 bcoPrimTy    = mkTyConTy bcoPrimTyCon
 bcoPrimTyCon :: TyCon
-bcoPrimTyCon = pcPrimTyCon0 bcoPrimTyConName UnliftedRep
+bcoPrimTyCon = pcPrimTyCon0 bcoPrimTyConName PtrRep
 
 {-
 ************************************************************************
@@ -965,7 +995,7 @@ bcoPrimTyCon = pcPrimTyCon0 bcoPrimTyConName UnliftedRep
 -}
 
 weakPrimTyCon :: TyCon
-weakPrimTyCon = pcPrimTyCon weakPrimTyConName [Representational] UnliftedRep
+weakPrimTyCon = pcPrimTyCon weakPrimTyConName [Representational] PtrRep
 
 mkWeakPrimTy :: Type -> Type
 mkWeakPrimTy v = TyConApp weakPrimTyCon [v]
@@ -990,7 +1020,7 @@ to the thread id internally.
 threadIdPrimTy :: Type
 threadIdPrimTy    = mkTyConTy threadIdPrimTyCon
 threadIdPrimTyCon :: TyCon
-threadIdPrimTyCon = pcPrimTyCon0 threadIdPrimTyConName UnliftedRep
+threadIdPrimTyCon = pcPrimTyCon0 threadIdPrimTyConName PtrRep
 
 {-
 ************************************************************************
