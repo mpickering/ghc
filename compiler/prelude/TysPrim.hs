@@ -24,7 +24,7 @@ module TysPrim(
         openAlphaTy, openBetaTy, openAlphaTyVar, openBetaTyVar,
 
         -- Kind constructors...
-        tYPETyConName, unliftedTypeKindTyConName,
+        tYPETyCon, tYPETyConName, unliftedTypeKindTyConName,
 
         -- Kinds
         tYPE,
