@@ -71,8 +71,6 @@ module Data.Typeable.Internal (
     mkTrCon, mkTrApp, mkTyCon, mkTyCon#,
     typeSymbolTypeRep, typeNatTypeRep,
 
-    debugShow,
-
     -- * Representations for primitive types
     trTYPE,
     trTYPE'PtrRepLifted,
@@ -322,23 +320,6 @@ typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
 
 ----------------- Showing TypeReps --------------------
 
-debugShow :: TypeRep a -> String
-debugShow rep
-  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type) = "Type"
-  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep) = "RuntimeRep"
-  | (tc, _) <- splitApps rep
-  , isArrowTyCon tc = "Arrow"
-debugShow (TrApp _ f x) = "App ("++debugShow f++") ("++debugShow x++")"
-debugShow (TrTyCon _ x k)
-    | isArrowTyCon x = "Arrow"
-    | "->" <- show x = "Arrow #" ++ show ( tyConFingerprint x
-                                         , tyConFingerprint trArrowTyCon
-                                         , tyConFingerprint $ typeRepTyCon (typeRep :: TypeRep (->))
-                                         , typeRepTyCon (typeRep :: TypeRep (->))
-                                         )
-    | otherwise = show x++" :: "++debugShow k
-
--- | @since 2.01
 instance Show (TypeRep (a :: k)) where
   showsPrec _ rep
     | isListTyCon tc, [ty] <- tys =

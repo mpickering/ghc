@@ -37,7 +37,6 @@ module Type.Reflection
     , I.tyConModule
     , I.tyConName
     , I.rnfTyCon
-    , I.debugShow
     ) where
 
 import qualified Data.Typeable.Internal as I
