@@ -68,6 +68,7 @@ module Data.Typeable
     , typeRepTyCon
     , rnfTypeRep
     , showsTypeRep
+    , mkFunTy
 
       -- * Observing type representations
     , funResultTy
@@ -167,6 +168,19 @@ funResultTy (I.TypeRepX f) (I.TypeRepX x) =
         Nothing -> Nothing
 -}
 funResultTy _ _ = Nothing
+
+-- | Build a function type.
+mkFunTy :: TypeRep -> TypeRep -> TypeRep
+mkFunTy (I.TypeRepX arg) (I.TypeRepX res)
+  | Just HRefl <- arg `I.eqTypeRep` liftedTy
+  , Just HRefl <- res `I.eqTypeRep` liftedTy
+  = I.TypeRepX (I.TRFun arg res)
+  | otherwise
+  = error $ "mkFunTy: Attempted to construct function type from non-lifted "++
+            "type: arg="++show arg++", res="++show res
+  where liftedTy = I.typeRep :: I.TypeRep *
+  -- TODO: We should be able to support this but the kind of (->) must be
+  -- generalized
 
 -- | Force a 'TypeRep' to normal form.
 rnfTypeRep :: TypeRep -> ()
