@@ -108,13 +108,10 @@ getTypeRepX = do
                 TypeRepX x <- getTypeRepX
                 case typeRepKind f of
                     TRFun arg _ ->
-                        case (typeRep :: TypeRep Type) `eqTypeRep` arg of
-                            Just HRefl -> -- FIXME: Generalize (->)
-                                case arg `eqTypeRep` x of
-                                    Just HRefl ->
-                                        pure $ TypeRepX $ mkTrApp f x
-                                    _ -> fail "getTypeRepX: Kind mismatch"
-                            _ -> fail "getTypeRepX: Arrow of non-Type argument"
+                        case arg `eqTypeRep` typeRepKind x of
+                            Just HRefl ->
+                                pure $ TypeRepX $ mkTrApp f x
+                            _ -> fail "getTypeRepX: Kind mismatch"
                     _ -> fail "getTypeRepX: Applied non-arrow type"
         _ -> fail "getTypeRepX: Invalid TypeRepX"
 
