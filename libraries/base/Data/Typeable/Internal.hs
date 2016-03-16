@@ -347,14 +347,18 @@ instance Show (TypeRep (a :: k)) where
       showChar '(' . showArgs (showChar ',') tys . showChar ')'
     where (tc, tys) = splitApps rep
   showsPrec p (TrTyCon _ tycon _) = showsPrec p tycon
-  showsPrec _ (TrApp _ (TrTyCon _ tycon _) x)
+  --showsPrec p (TRFun x r) =
+  --    showParen (p > 8) $
+  --    showsPrec 9 x . showString " -> " . showsPrec 8 r
+  showsPrec p (TrApp _ (TrApp _ (TrTyCon _ tycon _) x) r)
     | isArrowTyCon tycon =
-      shows x . showString " ->"
+      showParen (p > 8) $
+      showsPrec 9 x . showString " -> " . showsPrec p r
 
   showsPrec p (TrApp _ f x)
     | otherwise =
       showParen (p > 9) $
-      showsPrec p f .
+      showsPrec 8 f .
       space .
       showsPrec 9 x
     where
