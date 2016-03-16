@@ -26,10 +26,10 @@ import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
                    typeableClassName, coercibleTyConKey,
                    heqTyConKey, ipClassKey,
-                   trTYPE'PtrRepLiftedName, trRuntimeRepName, trArrowName )
+                   trTYPEName, trTYPE'PtrRepLiftedName, trRuntimeRepName, trArrowName )
 import TysWiredIn ( typeNatKind, typeSymbolKind, heqDataCon,
                     coercibleDataCon, runtimeRepTy )
-import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon )
+import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon, tYPETyCon )
 import Id( idType )
 import CoAxiom ( TypeEqn, CoAxiom(..), CoAxBranch(..), fromBranches )
 import Class
@@ -2164,7 +2164,9 @@ matchTypeable clas [k,t]  -- clas = Typeable
   | k `eqType` typeNatKind                 = doTyLit knownNatClassName         t
   | k `eqType` typeSymbolKind              = doTyLit knownSymbolClassName      t
   | t `eqType` liftedTypeKind              = doPrimRep trTYPE'PtrRepLiftedName t
+  | t `eqType` mkTyConTy tYPETyCon         = doPrimRep trTYPEName              t
   | t `eqType` runtimeRepTy                = doPrimRep trRuntimeRepName        t
+  | t `eqType` mkTyConTy funTyCon          = doPrimRep trArrowName             t
   | Just (tc, ks) <- splitTyConApp_maybe t -- See Note [Typeable (T a b c)]
   , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc
   | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
