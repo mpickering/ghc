@@ -264,8 +264,7 @@ typeRepKind (TrTyCon _ _ k) = k
 typeRepKind (TrApp _ f _) =
     case typeRepKind f of
         TRFun _arg res -> res
-        -- TODO: why is this case needed?
-        _  -> error "typeRepKind: impossible"
+        _              -> error "typeRepKind: impossible"
 
 -- | Observe the type constructor of a quantified type representation.
 typeRepXTyCon :: TypeRepX -> TyCon
