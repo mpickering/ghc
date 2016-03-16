@@ -1,7 +1,12 @@
+{-# LANGUAGE CPP #-}
+
 -- !!! Testing Typeable instances
 module Main(main) where
 
 import Data.Dynamic
+#if MIN_VERSION_base(4,9,0)
+import Data.Typeable (TypeCon, TypeRep)
+#endif
 import Data.Array
 import Data.Array.MArray
 import Data.Array.ST
