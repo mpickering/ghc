@@ -14,7 +14,8 @@ import IfaceEnv( newGlobalBinder )
 import TcEnv
 import TcRnMonad
 import PrelNames
-import TysPrim ( primTyCons )
+import TysPrim ( primTyCons, tYPETyConName, funTyConName )
+import TysWiredIn ( runtimeRepTyCon )
 import Id
 import Type
 import TyCon
@@ -22,6 +23,7 @@ import DataCon
 import Name( getOccName )
 import OccName
 import Module
+import NameSet
 import HsSyn
 import DynFlags
 import Bag
@@ -167,6 +169,17 @@ mkTypeableTyConBinds tycons
        ; gbl_env <- tcExtendGlobalValEnv tycon_rep_ids getGblEnv
        ; return (gbl_env `addTypecheckedBinds` tc_binds) }
 
+-- | The names of the 'TyCon's which we handle explicitly in "Data.Typeable.Internal"
+-- and should not generate bindings for in "GHC.Types".
+--
+-- See Note [Mutually recursive representations of primitive types]
+specialPrimTyCons :: NameSet
+specialPrimTyCons = mkNameSet
+    [ tYPETyConName
+    , tyConName runtimeRepTyCon
+    , funTyConName
+    ]
+
 -- | Generate bindings for the type representation of a wired-in TyCon defined
 -- by the virtual "GHC.Prim" module. This is where we inject the representation
 -- bindings for primitive types into "GHC.Types"
@@ -210,7 +223,9 @@ ghcPrimTypeableBinds stuff
   where
     all_prim_tys :: [TyCon]
     all_prim_tys = [ tc' | tc <- funTyCon : primTyCons
-                         , tc' <- tc : tyConATs tc ]
+                         , tc' <- tc : tyConATs tc
+                         , not $ tyConName tc' `elemNameSet` specialPrimTyCons
+                         ]
 
     mkBind :: TyCon -> LHsBinds Id
     mkBind = mk_typeable_binds stuff
