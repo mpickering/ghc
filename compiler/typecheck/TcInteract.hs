@@ -2002,7 +2002,7 @@ matchTypeable clas [k,t]  -- clas = Typeable
   | t `eqType` liftedTypeKind              = doPrimRep trTYPE'PtrRepLiftedName t
   | t `eqType` runtimeRepTy                = doPrimRep trRuntimeRepName        t
   | Just (tc, ks) <- splitTyConApp_maybe t -- See Note [Typeable (T a b c)]
-  , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc ks
+  , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc
   | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
   | Just (f,kt)   <- splitAppTy_maybe t    = doTyApp    clas t f kt
 
@@ -2037,8 +2037,8 @@ doPrimRep rep_name ty
 -- kind variables have been instantiated).
 --
 -- TODO: Do we want to encode the applied kinds in the representation?
-doTyConApp :: Class -> Type -> TyCon -> [Kind] -> TcS LookupInstResult
-doTyConApp clas ty tc ks
+doTyConApp :: Class -> Type -> TyCon -> TcS LookupInstResult
+doTyConApp clas ty tc
   = return $ GenInst [mk_typeable_pred clas $ typeKind ty]
                      (\[ev] -> EvTypeable ty $ EvTypeableTyCon tc ev)
                      True
