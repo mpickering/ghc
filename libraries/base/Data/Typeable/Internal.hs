@@ -434,11 +434,20 @@ For this reason we are forced to define their representations
 manually.
 -}
 
+-- | We can't use 'mkTrCon' here as it requires the fingerprint of the kind
+-- which is knot-tied.
+mkPrimTrCon :: forall k (a :: k). TyCon -> TypeRep k -> TypeRep a
+mkPrimTrCon tc kind = TrTyCon fpr tc kind
+  where
+    fpr_tc  = tyConFingerprint tc
+    fpr_tag = fingerprintString "prim"
+    fpr     = fingerprintFingerprints [fpr_tag, fpr_tc]
+
 mkPrimTyCon :: String -> TyCon
 mkPrimTyCon = mkTyCon "ghc-prim" "GHC.Prim"
 
 trTYPE :: TypeRep TYPE
-trTYPE = mkTrCon (mkPrimTyCon "TYPE") runtimeRep_arr_type
+trTYPE = mkPrimTrCon (mkPrimTyCon "TYPE") runtimeRep_arr_type
   where
     runtimeRep_arr :: TypeRep ((->) RuntimeRep)
     runtimeRep_arr = mkTrApp trArrow trRuntimeRep
@@ -447,10 +456,10 @@ trTYPE = mkTrCon (mkPrimTyCon "TYPE") runtimeRep_arr_type
     runtimeRep_arr_type = mkTrApp runtimeRep_arr star
 
 trRuntimeRep :: TypeRep RuntimeRep
-trRuntimeRep = mkTrCon (mkPrimTyCon "RuntimeRep") star
+trRuntimeRep = mkPrimTrCon (mkPrimTyCon "RuntimeRep") star
 
 tr'PtrRepLifted :: TypeRep 'PtrRepLifted
-tr'PtrRepLifted = mkTrCon (mkPrimTyCon "'PtrRepLifted") trRuntimeRep
+tr'PtrRepLifted = mkPrimTrCon (mkPrimTyCon "'PtrRepLifted") trRuntimeRep
 
 trTYPE'PtrRepLifted :: TypeRep (TYPE 'PtrRepLifted)
 trTYPE'PtrRepLifted = mkTrApp trTYPE tr'PtrRepLifted
@@ -459,7 +468,7 @@ trArrowTyCon :: TyCon
 trArrowTyCon = mkPrimTyCon "->"
 
 trArrow :: TypeRep (->)
-trArrow = mkTrCon trArrowTyCon star_arr_star_arr_star
+trArrow = mkPrimTrCon trArrowTyCon star_arr_star_arr_star
 
 -- Some useful aliases
 star :: TypeRep (TYPE 'PtrRepLifted)
