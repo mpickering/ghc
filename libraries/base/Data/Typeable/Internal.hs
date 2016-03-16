@@ -321,28 +321,48 @@ typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
 ----------------- Showing TypeReps --------------------
 
 -- | @since 2.01
-instance Show (TypeRep a) where
+instance Show (TypeRep (a :: k)) where
+  showsPrec _ rep
+    | isListTyCon tc, [ty] <- tys =
+      showChar '[' . shows ty . showChar ']'
+    | isTupleTyCon tc =
+      showChar '(' . showArgs (showChar ',') tys . showChar ')'
+    where (tc, tys) = splitApps rep
   showsPrec p (TrTyCon _ tycon _) = showsPrec p tycon
-  showsPrec p (TrApp _ f x)       = showsPrec p f . showString " " . showsPrec p x
-  -- TODO: Reconsider precedence
+  showsPrec p (TrApp _ f x)
+    | Just HRefl <- f `eqTypeRep` (typeRep :: TypeRep (->)) =
+      shows x . showString " -> "
+    | otherwise =
+      showsPrec p f . space . showParen need_parens (showsPrec 10 x)
+    where
+      space = showChar ' '
+      need_parens = case x of
+                        TrApp {}   -> True
+                        TrTyCon {} -> False
 
 -- | @since 4.10.0.0
 instance Show TypeRepX where
   showsPrec p (TypeRepX ty) = showsPrec p ty
 
--- Some (Show.TypeRepX) helpers:
-{-
--- FIXME: Handle tuples, etc.
+splitApps :: TypeRep a -> (TyCon, [TypeRepX])
+splitApps = go []
+  where
+    go :: [TypeRepX] -> TypeRep a -> (TyCon, [TypeRepX])
+    go xs (TrTyCon _ tc _) = (tc, xs)
+    go xs (TrApp _ f x)    = go (TypeRepX x : xs) f
+
+isListTyCon :: TyCon -> Bool
+isListTyCon tc = tc == typeRepTyCon (typeRep :: TypeRep [Int])
+
+isTupleTyCon :: TyCon -> Bool
+isTupleTyCon tc
+  | ('(':',':_) <- tyConName tc = True
+  | otherwise                   = False
+
 showArgs :: Show a => ShowS -> [a] -> ShowS
 showArgs _   []     = id
 showArgs _   [a]    = showsPrec 10 a
 showArgs sep (a:as) = showsPrec 10 a . sep . showArgs sep as
-
-showTuple :: [TypeRepX] -> ShowS
-showTuple args = showChar '('
-               . showArgs (showChar ',') args
-               . showChar ')'
--}
 
 -- | Helper to fully evaluate 'TypeRep' for use as @NFData(rnf)@ implementation
 --
