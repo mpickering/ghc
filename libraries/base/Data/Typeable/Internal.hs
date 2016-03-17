@@ -323,6 +323,8 @@ typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
 
 instance Show (TypeRep (a :: k)) where
   showsPrec _ rep
+    | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep *) =
+      showChar '*'
     | isListTyCon tc, [ty] <- tys =
       showChar '[' . shows ty . showChar ']'
     | isTupleTyCon tc =
