@@ -240,9 +240,9 @@ data AppResult (t :: k) where
     App :: TypeRep a -> TypeRep b -> AppResult (a b)
 
 -- | Pattern match on a type application
-pattern TRApp :: forall k2 (fun :: k2). ()
-              => forall k1 (a :: k1 -> k2) (b :: k1). (fun ~ a b)
-              => TypeRep a -> TypeRep b -> TypeRep fun
+pattern TRApp :: forall k2 (t :: k2). ()
+              => forall k1 (a :: k1 -> k2) (b :: k1). (t ~ a b)
+              => TypeRep a -> TypeRep b -> TypeRep t
 pattern TRApp f x <- TrApp _ f x
 
 withTypeable :: TypeRep a -> (Typeable a => b) -> b
