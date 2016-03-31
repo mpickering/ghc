@@ -37,7 +37,7 @@ module Demand (
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
         trimCPRInfo, returnsCPR_maybe,
         StrictSig(..), mkStrictSig, mkClosedStrictSig, nopSig, botSig, cprProdSig,
-        isTopSig, splitStrictSig, increaseStrictSigArity,
+        isTopSig, hasDemandEnvSig, splitStrictSig, increaseStrictSigArity,
 
         seqDemand, seqDemandList, seqDmdType, seqStrictSig,
 
@@ -52,7 +52,7 @@ module Demand (
         trimToType, TypeShape(..),
 
         useCount, isUsedOnce, reuseEnv,
-        killUsageDemand, killUsageSig, zapUsageDemand,
+        killUsageDemand, killUsageSig, zapUsageDemand, zapUsageEnvSig,
         strictifyDictDmd
 
      ) where
@@ -1671,6 +1671,9 @@ increaseStrictSigArity arity_increase (StrictSig (DmdType env dmds res))
 isTopSig :: StrictSig -> Bool
 isTopSig (StrictSig ty) = isTopDmdType ty
 
+hasDemandEnvSig :: StrictSig -> Bool
+hasDemandEnvSig (StrictSig (DmdType env _ _)) = not (isEmptyVarEnv env)
+
 isBottomingSig :: StrictSig -> Bool
 -- True if the signature diverges or throws an exception
 isBottomingSig (StrictSig (DmdType _ _ res)) = isBotRes res
@@ -1844,6 +1847,10 @@ tests, to see how important they are.
 zapUsageDemand :: Demand -> Demand
 -- Remove the usage info, but not the strictness info, from the demand
 zapUsageDemand = kill_usage (True, True)
+
+zapUsageEnvSig :: StrictSig -> StrictSig
+-- Remove the usage environment from the demand
+zapUsageEnvSig (StrictSig (DmdType _ ds r)) = mkClosedStrictSig ds r
 
 killUsageDemand :: DynFlags -> Demand -> Demand
 -- See Note [Killing usage information]
