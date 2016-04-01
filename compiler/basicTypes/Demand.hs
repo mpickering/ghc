@@ -46,9 +46,9 @@ module Demand (
         deferAfterIO,
         postProcessUnsat, postProcessDmdType,
 
-        splitProdDmd_maybe, peelCallDmd, mkCallDmd,
+        splitProdDmd_maybe, peelCallDmd, mkCallDmd, mkWorkerDemand,
         dmdTransformSig, dmdTransformDataConSig, dmdTransformDictSelSig,
-        argOneShots, argsOneShots,
+        argOneShots, argsOneShots, saturatedByOneShots,
         trimToType, TypeShape(..),
 
         useCount, isUsedOnce, reuseEnv,
@@ -667,6 +667,11 @@ mkProdDmd dx
 mkCallDmd :: CleanDemand -> CleanDemand
 mkCallDmd (JD {sd = d, ud = u})
   = JD { sd = mkSCall d, ud = mkUCall One u }
+
+mkWorkerDemand :: Int -> Demand
+mkWorkerDemand n = JD { sd = Lazy, ud = Use One (go n) }
+  where go 0 = Used
+        go n = mkUCall One $ go (n-1)
 
 cleanEvalDmd :: CleanDemand
 cleanEvalDmd = JD { sd = HeadStr, ud = Used }
@@ -1775,6 +1780,19 @@ argsOneShots (StrictSig (DmdType _ arg_ds _)) n_val_args
     -- Avoid list tail like [ [], [], [] ]
     cons [] [] = []
     cons a  as = a:as
+
+-- saturatedByOneShots n C1(C1(...)) = True,
+--   <=>
+-- there are at least n nested C1(..) calls
+saturatedByOneShots :: Int -> Demand -> Bool
+saturatedByOneShots n (JD { ud = usg })
+  = case usg of
+      Use _ arg_usg -> go n arg_usg
+      _             -> False
+  where
+    go 0 _             = True
+    go n (UCall One u) = go (n-1) u
+    go _ _             = False
 
 argOneShots :: OneShotInfo     -- OneShotLam or ProbOneShot,
             -> Demand          -- depending on saturation

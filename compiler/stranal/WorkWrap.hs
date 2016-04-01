@@ -330,9 +330,9 @@ splitFun :: DynFlags -> FamInstEnvs -> Id -> IdInfo -> [Demand] -> DmdResult -> 
 splitFun dflags fam_envs fn_id fn_info wrap_dmds res_info rhs
   = WARN( not (wrap_dmds `lengthIs` arity), ppr fn_id <+> (ppr arity $$ ppr wrap_dmds $$ ppr res_info) ) do
     -- The arity should match the signature
-    stuff <- mkWwBodies dflags fam_envs fun_ty wrap_dmds res_info one_shots
+    stuff <- mkWwBodies dflags fam_envs fun_ty wrap_dmds res_info
     case stuff of
-      Just (work_demands, wrap_fn, work_fn) -> do
+      Just (wrap_arity, work_demands, wrap_fn, work_fn) -> do
         work_uniq <- getUniqueM
         let work_rhs = work_fn rhs
             work_prag = InlinePragma { inl_src = "{-# INLINE"
@@ -360,8 +360,20 @@ splitFun dflags fam_envs fn_id fn_info wrap_dmds res_info rhs
                                 -- Even though we may not be at top level,
                                 -- it's ok to give it an empty DmdEnv
 
-                        `setIdArity` exprArity work_rhs
+                        `setIdDemandInfo` worker_demand
+
+                        `setIdArity` work_arity
                                 -- Set the arity so that the Core Lint check that the
+
+            work_arity = exprArity work_rhs
+
+            -- If the original function is called once, according to its demand info, then
+            -- so is the worker. This is important so that the occurrence analyser can
+            -- attach OneShot annotations to the worker’s lambda binders.
+            single_call = saturatedByOneShots wrap_arity (demandInfo fn_info)
+            worker_demand | single_call = mkWorkerDemand work_arity
+                          | otherwise   = topDmd
+
                                 -- arity is consistent with the demand type goes through
 
             wrap_act  = ActiveAfter "0" 0
@@ -380,6 +392,8 @@ splitFun dflags fam_envs fn_id fn_info wrap_dmds res_info rhs
                                 -- Zap any loop-breaker-ness, to avoid bleating from Lint
                                 -- about a loop breaker with an INLINE rule
 
+
+
         return $ [(work_id, work_rhs), (wrap_id, wrap_rhs)]
             -- Worker first, because wrapper mentions it
 
@@ -396,18 +410,6 @@ splitFun dflags fam_envs fn_id fn_info wrap_dmds res_info rhs
                        Just _  -> topRes    -- Cpr stuff done by wrapper; kill it here
                        Nothing -> res_info  -- Preserve exception/divergence
 
-    one_shots = get_one_shots rhs
-
--- If the original function has one-shot arguments, it is important to
--- make the wrapper and worker have corresponding one-shot arguments too.
--- Otherwise we spuriously float stuff out of case-expression join points,
--- which is very annoying.
-get_one_shots :: Expr Var -> [OneShotInfo]
-get_one_shots (Lam b e)
-  | isId b    = idOneShotInfo b : get_one_shots e
-  | otherwise = get_one_shots e
-get_one_shots (Tick _ e) = get_one_shots e
-get_one_shots _          = []
 
 {-
 Note [Do not split void functions]
