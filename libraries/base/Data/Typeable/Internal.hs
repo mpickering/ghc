@@ -85,6 +85,7 @@ import Data.Type.Equality
 import GHC.Word
 import GHC.Show
 import GHC.TypeLits( KnownNat, KnownSymbol, natVal', symbolVal' )
+import Unsafe.Coerce
 
 import GHC.Fingerprint.Type
 import {-# SOURCE #-} GHC.Fingerprint
@@ -245,8 +246,11 @@ pattern TRApp :: forall k2 (t :: k2). ()
               => TypeRep a -> TypeRep b -> TypeRep t
 pattern TRApp f x <- TrApp _ f x
 
+-- | Use a 'TypeRep' as 'Typeable' evidence.
 withTypeable :: TypeRep a -> (Typeable a => b) -> b
-withTypeable = undefined
+withTypeable rep f = f' rep
+  where f' :: TypeRep a -> b
+        f' = unsafeCoerce rep
 
 -- | Pattern match on a type constructor
 -- TODO: do we want to expose kinds in these patterns?
