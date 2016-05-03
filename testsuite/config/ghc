@@ -75,6 +75,7 @@ config.ghc_dynamic = ghc_dynamic
 
 if (ghc_with_profiling == 1 and ghc_with_threaded_rts == 1):
     config.run_ways.append('profthreaded')
+    config.run_ways.append('profthrdebug')
 
 if (ghc_with_llvm == 1):
     config.compile_ways.append('optllvm')
@@ -108,6 +109,7 @@ config.way_flags = lambda name : {
     'prof_hr'      : ['-O', '-prof', '-static', '-auto-all'],
     'dyn'          : ['-O', '-dynamic'],
     'static'       : ['-O', '-static'],
+    'profthrdebug' : ['-O', '-prof', '-static', '-threaded', '-debug'],
     'debug'        : ['-O', '-g', '-dannot-lint'],
     # llvm variants...
     'profllvm'         : ['-prof', '-static', '-auto-all', '-fllvm'],
@@ -138,6 +140,7 @@ config.way_rts_flags = {
     'prof_hd'      : ['-hd'],
     'prof_hy'      : ['-hy'],
     'prof_hr'      : ['-hr'],
+    'profthrdebug' : ['-p'],
     'dyn'          : [],
     'static'       : [],
     'debug'        : [],

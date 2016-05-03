@@ -497,16 +497,40 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
 
 #if ZERO_SLOP_FOR_LDV_PROF || ZERO_SLOP_FOR_SANITY_CHECK
 #define OVERWRITING_CLOSURE(c) overwritingClosure(c)
+#define OVERWRITING_CLOSURE_SIZE(c,s) overwritingClosureWithSize(c,s)
 #define OVERWRITING_CLOSURE_OFS(c,n) \
     overwritingClosureOfs(c,n)
 #else
 #define OVERWRITING_CLOSURE(c) /* nothing */
+#define OVERWRITING_CLOSURE_SIZE(c,s) /* nothing */
 #define OVERWRITING_CLOSURE_OFS(c,n) /* nothing */
 #endif
 
 #ifdef PROFILING
 void LDV_recordDead (StgClosure *c, nat size);
 #endif
+
+EXTERN_INLINE void overwritingClosureWithSize (StgClosure *p, nat size);
+EXTERN_INLINE void overwritingClosureWithSize (StgClosure *p, nat size)
+{
+    nat i;
+
+#if ZERO_SLOP_FOR_LDV_PROF && !ZERO_SLOP_FOR_SANITY_CHECK
+    // see Note [zeroing slop], also #8402
+    if (era <= 0) return;
+#endif
+
+    // For LDV profiling, we need to record the closure as dead
+#if defined(PROFILING)
+    LDV_recordDead(p, size);
+#endif
+
+    ASSERT(size >= sizeofW(StgThunkHeader));
+
+    for (i = 0; i < size - sizeofW(StgThunkHeader); i++) {
+        ((StgThunk *)(p))->payload[i] = 0;
+    }
+}
 
 EXTERN_INLINE void overwritingClosure (StgClosure *p);
 EXTERN_INLINE void overwritingClosure (StgClosure *p)
@@ -524,6 +548,8 @@ EXTERN_INLINE void overwritingClosure (StgClosure *p)
 #if defined(PROFILING)
     LDV_recordDead(p, size);
 #endif
+
+    ASSERT(size >= sizeofW(StgThunkHeader));
 
     for (i = 0; i < size - sizeofW(StgThunkHeader); i++) {
         ((StgThunk *)(p))->payload[i] = 0;
