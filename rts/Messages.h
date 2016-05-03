@@ -22,7 +22,7 @@ void sendMessage    (Capability *from_cap, Capability *to_cap, Message *msg);
 INLINE_HEADER void
 doneWithMsgThrowTo (MessageThrowTo *m)
 {
-    OVERWRITING_CLOSURE((StgClosure*)m);
+    OVERWRITING_CLOSURE_SIZE((StgClosure*)m, sizeofW(MessageThrowTo));
     unlockClosure((StgClosure*)m, &stg_MSG_NULL_info);
     LDV_RECORD_CREATE(m);
 }
