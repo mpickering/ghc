@@ -184,7 +184,14 @@ processNurseryForDead( void )
     for (bd = MainCapability.r.rNursery->blocks; bd != NULL; bd = bd->link) {
         p = bd->start;
         while (p < bd->free) {
+            // The start of the block may be zero filled which we need to skip
+            // over.
             while (p < bd->free && !*p) p++; // skip slop
+
+            // In debug mode, with sanity checking enabled, the start of the
+            // block may be filled with `0xaa` so if we find it, we just break.
+            IF_DEBUG(sanity, if (*((StgWord32*)p) == 0xaaaaaaaa) break;);
+
             if (p >= bd->free) break;
             p += processHeapClosureForDead((StgClosure *)p);
         }
