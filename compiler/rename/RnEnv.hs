@@ -1081,7 +1081,6 @@ lookupImpDeprec iface gre
        ParentIs  p              -> mi_warn_fn iface (nameOccName p)
        FldParent { par_is = p } -> mi_warn_fn iface (nameOccName p)
        NoParent                 -> Nothing
-       PatternSynonym           -> Nothing
 
 {-
 Note [Used names with interface not loaded]
@@ -2099,7 +2098,6 @@ warnUnusedTopBinds gres
          let isBoot = tcg_src env == HsBootFile
          let noParent gre = case gre_par gre of
                             NoParent -> True
-                            PatternSynonym -> True
                             _        -> False
              -- Don't warn about unused bindings with parents in
              -- .hs-boot files, as you are sometimes required to give

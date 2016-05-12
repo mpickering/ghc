@@ -12,7 +12,8 @@ module RnNames (
         gresFromAvails,
         calculateAvails,
         reportUnusedNames,
-        checkConName
+        checkConName,
+        exportItemErr
     ) where
 
 #include "HsVersions.h"
@@ -49,6 +50,7 @@ import PatSyn
 import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
+import Data.Foldable (asum)
 import Data.Either      ( partitionEithers, isRight, rights )
 -- import qualified Data.Foldable as Foldable
 import Data.Map         ( Map )
@@ -1004,7 +1006,7 @@ plusAvail a1 a2 = pprPanic "RnEnv.plusAvail" (hsep [ppr a1,ppr a2])
 
 -- | trims an 'AvailInfo' to keep only a single name
 trimAvail :: AvailInfo -> Name -> AvailInfo
-trimAvail (Avail b n)         _ = Avail b n
+trimAvail (Avail n)         _ = Avail n
 trimAvail (AvailTC n ns fs) m = case find ((== m) . flSelector) fs of
     Just x  -> AvailTC n [] [x]
     Nothing -> ASSERT( m `elem` ns ) AvailTC n [m] []
@@ -1017,7 +1019,7 @@ filterAvails keep avails = foldr (filterAvail keep) [] avails
 filterAvail :: (Name -> Bool) -> AvailInfo -> [AvailInfo] -> [AvailInfo]
 filterAvail keep ie rest =
   case ie of
-    Avail _ n | keep n    -> ie : rest
+    Avail n | keep n    -> ie : rest
             | otherwise -> rest
     AvailTC tc ns fs ->
         let ns' = filter keep ns
@@ -1061,14 +1063,6 @@ mkChildEnv gres = foldr add emptyNameEnv gres
         FldParent p _  -> extendNameEnv_Acc (:) singleton env p gre
         ParentIs  p    -> extendNameEnv_Acc (:) singleton env p gre
         NoParent       -> env
-        PatternSynonym -> env
-
-findPatSyns :: [GlobalRdrElt] -> [GlobalRdrElt]
-findPatSyns gres = foldr add [] gres
-  where
-    add g@(GRE { gre_par = PatternSynonym }) ps =
-      g:ps
-    add _ ps = ps
 
 findChildren :: NameEnv [a] -> Name -> [a]
 findChildren env n = lookupNameEnv env n `orElse` []
@@ -1227,6 +1221,7 @@ rnExports explicit_mod exports
                                                 Just _  -> rn_exports,
                             tcg_dus = tcg_dus tcg_env `plusDU`
                                       usesOnly final_ns })
+        ; failIfErrsM
         ; return (rn_exports, new_tcg_env) }
 
 exports_from_avail :: Maybe (Located [LIE RdrName])
@@ -1268,8 +1263,6 @@ exports_from_avail (Just (L _ rdr_items)) rdr_env imports this_mod
     kids_env :: NameEnv [GlobalRdrElt]
     kids_env = mkChildEnv (globalRdrEnvElts rdr_env)
 
-    pat_syns :: [GlobalRdrElt]
-    pat_syns = findPatSyns (globalRdrEnvElts rdr_env)
 
     imported_modules = [ imv_name imv
                        | xs <- moduleEnvElts $ imp_mods imports, imv <- xs ]
@@ -1347,13 +1340,13 @@ exports_from_avail (Just (L _ rdr_items)) rdr_env imports this_mod
 
     lookup_ie ie@(IEThingWith l wc sub_rdrs _)
         = do
-            (lname, subs, avails, flds) <- lookup_ie_with ie l sub_rdrs
+            (lname, subs, avails, flds) <- lookup_ie_with l sub_rdrs
             (_, all_avail, all_flds) <-
               case wc of
                 NoIEWildcard -> return (lname, [], [])
                 IEWildcard _ -> lookup_ie_all ie l
             let name = unLoc lname
-            return (IEThingWith lname wc subs [],
+            return (IEThingWith lname wc subs (map noLoc (flds ++ all_flds)),
                     AvailTC name (name : avails ++ all_avail)
                                  (flds ++ all_flds))
 
@@ -1821,7 +1814,7 @@ printMinimalImports imports_w_usage
     -- The main trick here is that if we're importing all the constructors
     -- we want to say "T(..)", but if we're importing only a subset we want
     -- to say "T(A,B,C)".  So we have to find out what the module exports.
-    to_ie _ (Avail _ n)
+    to_ie _ (Avail n)
        = [IEVar (noLoc n)]
     to_ie _ (AvailTC n [m] [])
        | n==m = [IEThingAbs (noLoc n)]
