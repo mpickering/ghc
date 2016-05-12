@@ -103,6 +103,7 @@ import CoAxiom
 import Annotations
 import Data.List ( sortBy )
 import Data.Ord
+import Data.Char
 import FastString
 import Maybes
 import Util
@@ -2471,6 +2472,12 @@ tc_export_with n ns = do
   things <- mapM tcLookupGlobal ns
   let psErr = exportErrCtxt "pattern synonym"
       selErr = exportErrCtxt "pattern synonym record selector"
+      data_cons = [("data constructor", c,  dataConTyCon c)
+                        | AConLike (RealDataCon c) <- things ]
+      rec_sels =  [("record selector", i, tc) | AnId i <- things
+                                 , isId i
+                                 , RecSelId { sel_tycon = RecSelData tc }
+                                    <- [idDetails i]  ]
       ps       = [(psErr p,p) | AConLike (PatSynCon p) <- things]
       sels     = [(selErr i,p) | AnId i <- things
                         , isId i
@@ -2478,25 +2485,44 @@ tc_export_with n ns = do
       pat_syns = ps ++ sels
 
 
-  -- See note [Types of TyCon]
-  checkTc ( null pat_syns || isTyConWithSrcDataCons ty_con) assocClassErr
-
   let actual_res_ty =
           mkTyConApp ty_con (mkTyVarTys (tyConTyVars ty_con))
-  mapM_ (tc_one_export_with actual_res_ty ty_con ) pat_syns
+
+  mapM_ (tc_one_dc_export_with ty_con) data_cons
+  mapM_ (tc_one_dc_export_with ty_con) rec_sels
+
+  -- See note [Types of TyCon]
+  checkTc ( null pat_syns || isTyConWithSrcDataCons ty_con) assocClassErr
+  mapM_ (tc_one_ps_export_with actual_res_ty ty_con ) pat_syns
 
   where
     assocClassErr :: SDoc
     assocClassErr =
       text "Pattern synonyms can be bundled only with datatypes."
 
+    -- Check whether a data constructor is exported with its parent.
+    tc_one_dc_export_with :: Outputable a =>
+                              TyCon -> (String, a, TyCon) -> TcM ()
+    tc_one_dc_export_with ty_con (what_is, thing, tc) =
+      let capitalise [] = []
+          capitalise (c:cs) = toUpper c : cs
+          errMsg = text "The type constructor" <+> quotes (ppr ty_con)
+                    <+> text "is not the parent of the" <+> text what_is
+                    <+> quotes (ppr thing) <> char '.'
+                    $$ text (capitalise what_is) <> text "s can only be exported with their parent type constructor."
+      in
 
-    tc_one_export_with :: TcTauType -- ^ TyCon type
+      unless (ty_con == tc)
+        (addErrTc errMsg)
+
+
+
+    tc_one_ps_export_with :: TcTauType -- ^ TyCon type
                        -> TyCon       -- ^ Parent TyCon
                        -> (SDoc, PatSyn)   -- ^ Corresponding bundled PatSyn
                                            -- and pretty printed origin
                        -> TcM ()
-    tc_one_export_with actual_res_ty ty_con (errCtxt, pat_syn)
+    tc_one_ps_export_with actual_res_ty ty_con (errCtxt, pat_syn)
       = addErrCtxt errCtxt $
       let (_, _, _, _, _, res_ty) = patSynSig pat_syn
           mtycon = tcSplitTyConApp_maybe res_ty
