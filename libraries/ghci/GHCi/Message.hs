@@ -37,7 +37,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 import Data.Dynamic
-#if MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,10,0)
 -- Previously this was re-exported by Data.Dynamic
 import Data.Typeable (TypeRep)
 #endif
