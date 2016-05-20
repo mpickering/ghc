@@ -10,7 +10,7 @@ module GHCi.TH.Binary () where
 
 import Data.Binary
 import qualified Data.ByteString as B
-#if MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,10,0)
 import Type.Reflection
 import Type.Reflection.Unsafe
 import Data.Kind (Type)
@@ -79,7 +79,7 @@ instance Binary TH.PatSynArgs
 
 -- We need Binary TypeRep for serializing annotations
 
-#if MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,10,0)
 instance Binary TyCon where
     put tc = put (tyConPackage tc) >> put (tyConModule tc) >> put (tyConName tc)
     get = mkTyCon <$> get <*> get <*> get

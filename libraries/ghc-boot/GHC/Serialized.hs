@@ -36,7 +36,7 @@ toSerialized serialize what = Serialized rep (serialize what)
 -- | If the 'Serialized' value contains something of the given type, then use the specified deserializer to return @Just@ that.
 -- Otherwise return @Nothing@.
 fromSerialized :: forall a. Typeable a => ([Word8] -> a) -> Serialized -> Maybe a
-#if MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,10,0)
 fromSerialized deserialize (Serialized the_type bytes)
   | the_type == rep = Just (deserialize bytes)
   | otherwise       = Nothing

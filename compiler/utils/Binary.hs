@@ -76,7 +76,7 @@ import qualified Data.ByteString.Unsafe   as BS
 import Data.IORef
 import Data.Char                ( ord, chr )
 import Data.Time
-#if MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,10,0)
 import Type.Reflection
 import Type.Reflection.Unsafe
 import Data.Kind (Type)
@@ -575,13 +575,13 @@ instance Binary TyCon where
         p <- get bh
         m <- get bh
         n <- get bh
-#if MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,10,0)
         return (mkTyCon p m n)
 #else
         return (mkTyCon3 p m n)
 #endif
 
-#if MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,10,0)
 putTypeRep :: BinHandle -> TypeRep a -> IO ()
 -- Special handling for Type, (->), and RuntimeRep due to recursive kind
 -- relations.
