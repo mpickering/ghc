@@ -247,10 +247,13 @@ pattern TRApp :: forall k2 (t :: k2). ()
 pattern TRApp f x <- TrApp _ f x
 
 -- | Use a 'TypeRep' as 'Typeable' evidence.
-withTypeable :: TypeRep a -> (Typeable a => b) -> b
-withTypeable rep f = f' rep
-  where f' :: TypeRep a -> b
-        f' = unsafeCoerce rep
+withTypeable :: forall a r. TypeRep a -> (Typeable a => r) -> r
+withTypeable rep k = unsafeCoerce k' rep
+  where k' :: Gift a r
+        k' = Gift k
+
+-- | A helper to satisfy the type checker in 'withTypeable'.
+newtype Gift a r = Gift (Typeable a => r)
 
 -- | Pattern match on a type constructor
 -- TODO: do we want to expose kinds in these patterns?
