@@ -112,6 +112,7 @@ import Inst (tcGetInsts)
 import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
+import GHC.Exts (groupWith, sortWith)
 
 #include "HsVersions.h"
 
@@ -2384,9 +2385,6 @@ loadUnqualIfaces hsc_env ictxt
 {-
 ******************************************************************************
 ** Typechecking module exports
-The renamer makes sure that only the correct pieces of a type or class can be
-bundled with the type or class in the export list.
-
 When it comes to pattern synonyms, in the renamer we have no way to check that
 whether a pattern synonym should be allowed to be bundled or not so we allow
 them to be bundled with any type or class. Here we then check that
@@ -2395,6 +2393,8 @@ them to be bundled with any type or class. Here we then check that
    have data constructors. Datatypes, newtypes and data families.
 2) Are the correct type, for example if P is a synonym
    then if we export Foo(P) then P should be an instance of Foo.
+
+We also check for normal parent-child relationships here as well.
 
 ******************************************************************************
 -}
@@ -2407,8 +2407,8 @@ tcExports (Just ies) = checkNoErrs $ mapM_ tc_export ies
 tc_export :: LIE Name -> TcM ()
 tc_export ie@(L _ (IEThingWith name _ names sels)) =
   addExportErrCtxt ie
-    $ tc_export_with (unLoc name) (map unLoc names
-                                    ++ map (flSelector . unLoc) sels)
+    $ tc_export_with (unLoc name) (map unLoc names)
+                                  (map unLoc sels)
 tc_export _ = return ()
 
 addExportErrCtxt :: LIE Name -> TcM a -> TcM a
@@ -2466,54 +2466,80 @@ exportErrCtxt herald exp =
 tc_export_with :: Name  -- ^ Type constructor
                -> [Name] -- ^ A mixture of data constructors, pattern syonyms
                          -- , class methods and record selectors.
+               -> [FieldLbl Name]
                -> TcM ()
-tc_export_with n ns = do
+tc_export_with n ns fls = do
   ty_con <- tcLookupTyCon n
   things <- mapM tcLookupGlobal ns
-  let psErr = exportErrCtxt "pattern synonym"
-      selErr = exportErrCtxt "pattern synonym record selector"
-      data_cons = [("data constructor", c,  dataConTyCon c)
+  let data_cons = [(c,  dataConTyCon c)
                         | AConLike (RealDataCon c) <- things ]
-      rec_sels =  [("record selector", i, tc) | AnId i <- things
-                                 , isId i
-                                 , RecSelId { sel_tycon = RecSelData tc }
-                                    <- [idDetails i]  ]
-      ps       = [(psErr p,p) | AConLike (PatSynCon p) <- things]
-      sels     = [(selErr i,p) | AnId i <- things
-                        , isId i
-                        , RecSelId {sel_tycon = RecSelPatSyn p} <- [idDetails i]]
-      pat_syns = ps ++ sels
-
+      ps        = [(psErr p,p) | AConLike (PatSynCon p) <- things]
+      ps_sels   = [(selErr i,p)
+                    | AnId i <- things
+                    , isId i
+                    , RecSelId {sel_tycon = RecSelPatSyn p} <- [idDetails i]]
 
   let actual_res_ty =
           mkTyConApp ty_con (mkTyVarTys (tyConTyVars ty_con))
 
   mapM_ (tc_one_dc_export_with ty_con) data_cons
-  mapM_ (tc_one_dc_export_with ty_con) rec_sels
+  mapM_ (tc_flds ty_con)  (partitionFieldLabels fls)
+
+  let pat_syns = ps ++ ps_sels
 
   -- See note [Types of TyCon]
   checkTc ( null pat_syns || isTyConWithSrcDataCons ty_con) assocClassErr
   mapM_ (tc_one_ps_export_with actual_res_ty ty_con ) pat_syns
 
   where
+    psErr = exportErrCtxt "pattern synonym"
+    selErr = exportErrCtxt "pattern synonym record selector"
+    -- Partition based on source-level name
+    partitionFieldLabels :: [FieldLbl Name] -> [(FastString, [Name])]
+    partitionFieldLabels = map assemble
+                         . groupWith flLabel
+                         . sortWith flLabel
+      where
+        assemble :: [FieldLbl Name] -> (FastString, [Name])
+        assemble [] = panic "partitionFieldLabels"
+        assemble fls@(fl:_) = (flLabel fl, map flSelector fls)
+
+    dcErrMsg :: Outputable a => TyCon -> String -> a -> [SDoc] -> SDoc
+    dcErrMsg ty_con what_is thing parents =
+            let capitalise [] = []
+                capitalise (c:cs) = toUpper c : cs
+            in
+              text "The type constructor" <+> quotes (ppr ty_con)
+                    <+> text "is not the parent of the" <+> text what_is
+                    <+> quotes (ppr thing) <> char '.'
+                    $$ text (capitalise what_is) <> text "s can only be exported with their parent type constructor."
+                    $$ (case parents of
+                          [] -> empty
+                          [_] -> text "Parent:"
+                          _  -> text "Parents:") <+> fsep (punctuate comma parents)
+
+    -- This is only used for normal record field labels
+    tc_flds :: TyCon -> (FastString, [Name]) -> TcM ()
+    tc_flds ty_con (fs, flds) = do
+      fldIds <- mapM tcLookupId flds
+      traceTc "tc_flds" (ppr fldIds)
+      let parents = [tc | i <- fldIds, RecSelId { sel_tycon = RecSelData tc }
+                                        <- [idDetails i]]
+      unless (any (ty_con ==) parents) $
+        addErrTc (dcErrMsg ty_con "record selector" fs (map ppr parents))
+
+
+
     assocClassErr :: SDoc
     assocClassErr =
       text "Pattern synonyms can be bundled only with datatypes."
 
     -- Check whether a data constructor is exported with its parent.
     tc_one_dc_export_with :: Outputable a =>
-                              TyCon -> (String, a, TyCon) -> TcM ()
-    tc_one_dc_export_with ty_con (what_is, thing, tc) =
-      let capitalise [] = []
-          capitalise (c:cs) = toUpper c : cs
-          errMsg = text "The type constructor" <+> quotes (ppr ty_con)
-                    <+> text "is not the parent of the" <+> text what_is
-                    <+> quotes (ppr thing) <> char '.'
-                    $$ text (capitalise what_is) <> text "s can only be exported with their parent type constructor."
-      in
-
+                              TyCon -> (a, TyCon) -> TcM ()
+    tc_one_dc_export_with ty_con (thing, tc) =
       unless (ty_con == tc)
-        (addErrTc errMsg)
+        (addErrTc (dcErrMsg ty_con "data constructor" thing [ppr tc]))
 
 
 
