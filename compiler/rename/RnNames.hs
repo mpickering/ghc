@@ -4,7 +4,7 @@
 \section[RnNames]{Extracting imported and top-level names in scope}
 -}
 
-{-# LANGUAGE CPP, NondecreasingIndentation #-}
+{-# LANGUAGE CPP, NondecreasingIndentation, MultiWayIf, NamedFieldPuns #-}
 
 module RnNames (
         rnImports, getLocalNonValBinders, newRecordSelector,
@@ -1090,6 +1090,58 @@ lookupChildren all_kids rdr_items
                       [(either (occNameFS . nameOccName) flLabel x, [x]) | x <- all_kids]
 
 
+-- This is a minefield. Three different things can appear in exports list.
+-- 1. Record selectors
+-- 2. Type constructors
+-- 3. Data constructors
+--
+-- However, things get put into weird name spaces.
+-- 1. Some type constructors are parsed as variables (-.->) for example.
+-- 2. All data constructors are parsed as type constructors
+-- 3. When there is ambiguity, we default type constructors to data
+-- constructors and require the explicit `type` keyword for type
+-- constructors.
+--
+--
+-- Further to this madness, duplicate record fields complicate
+-- things as we must find the FieldLabel rather than just the Name.
+--
+lookupChildrenExport :: Name -> [Located RdrName]
+                     -> RnM ([Located Name], [Located FieldLabel])
+lookupChildrenExport parent rdr_items =
+  do
+    let
+
+        doOne :: Located RdrName
+              -> RnM (Either (Located Name) [Located FieldLabel])
+        doOne n = do
+
+          let bareName = unLoc n
+              lkup = lookupExportChild parent
+
+          mname <- runMaybeT . asum . map (MaybeT . lkup) $
+            [ (setRdrNameSpace bareName varName)  -- Record selector
+            , (setRdrNameSpace bareName dataName) -- data constructor
+            , (setRdrNameSpace bareName tcName)   -- type constructor
+            ]
+
+          -- Default to data constructors for slightly better error
+          -- messages
+          let unboundName :: RdrName
+              unboundName = if rdrNameSpace bareName == varName
+                                then bareName
+                                else setRdrNameSpace bareName dataName
+
+
+          name <- maybe (Left <$> reportUnboundName unboundName) return mname
+
+          case name of
+            Right fls -> return $ Right (map (L (getLoc n)) fls)
+            Left name -> return $ Left (L (getLoc n) name)
+
+    xs <- mapM doOne rdr_items
+    return $ (fmap concat . partitionEithers) xs
+
 classifyGREs :: [GlobalRdrElt] -> ([Name], [FieldLabel])
 classifyGREs = partitionEithers . map classifyGRE
 
@@ -1355,26 +1407,16 @@ exports_from_avail (Just (L _ rdr_items)) rdr_env imports this_mod
 
     lookup_ie _ = panic "lookup_ie"    -- Other cases covered earlier
 
-    lookup_ie_with :: IE RdrName -> Located RdrName -> [Located RdrName]
+    lookup_ie_with :: Located RdrName -> [Located RdrName]
                    -> RnM (Located Name, [Located Name], [Name], [FieldLabel])
-    lookup_ie_with ie (L l rdr) sub_rdrs
+    lookup_ie_with (L l rdr) sub_rdrs
         = do name <- lookupGlobalOccRn rdr
-             let gres = findChildren kids_env name
-                 mchildren =
-                  lookupChildren (map classifyGRE (gres ++ pat_syns)) sub_rdrs
-             addUsedKids rdr gres
+             (non_flds, flds) <- lookupChildrenExport name sub_rdrs
              if isUnboundName name
                 then return (L l name, [], [name], [])
-                else
-                  case mchildren of
-                    Nothing -> do
-                          addErr (exportItemErr ie)
-                          return (L l name, [], [name], [])
-                    Just (non_flds, flds) -> do
-                          addUsedKids rdr gres
-                          return (L l name, non_flds
-                                 , map unLoc non_flds
-                                 , map unLoc flds)
+                else return (L l name, non_flds
+                            , map unLoc non_flds
+                            , map unLoc flds)
     lookup_ie_all :: IE RdrName -> Located RdrName
                   -> RnM (Located Name, [Name], [FieldLabel])
     lookup_ie_all ie (L l rdr) =
