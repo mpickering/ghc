@@ -126,7 +126,7 @@ pprLlvmCmmDecl (CmmProc mb_info entry_lbl live (ListGraph blks))
 
 
        let fun = LlvmFunction funDec funArgs llvmStdFunAttrs funSect
-                              prefix lmblocks
+                              prefix [] lmblocks
            name = decName $ funcDecl fun
            defName = name `appendFS` fsLit "$def"
            funcDecl' = (funcDecl fun) { decName = defName }
