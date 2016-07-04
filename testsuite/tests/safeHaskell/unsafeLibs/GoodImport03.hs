@@ -56,7 +56,7 @@ import Data.String
 import Data.Traversable
 import Data.Tuple
 import Data.Typeable
-import Data.Typeable.Internal
+import Data.Reflection
 import Data.Unique
 import Data.Version
 import Data.Word

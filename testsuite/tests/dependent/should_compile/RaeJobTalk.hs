@@ -11,7 +11,7 @@
 module RaeJobTalk where
 
 import Data.Type.Bool
-import Data.Type.Equality
+import Data.Type.Equality hiding ((:~~:)(..))
 import GHC.TypeLits
 import Data.Proxy
 import GHC.Exts
