@@ -103,7 +103,7 @@ putTypeRep (TRApp f x) = do
     put (4 :: Word8)
     putTypeRep f
     putTypeRep x
-putTypeRep _ = fail "putTypeRep: Impossible"
+putTypeRep _ = fail "GHCi.TH.Binary.putTypeRep: Impossible"
 
 getTypeRepX :: Get TypeRepX
 getTypeRepX = do
@@ -116,7 +116,10 @@ getTypeRepX = do
                 TypeRepX rep_k <- getTypeRepX
                 case rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
                     Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
-                    Nothing    -> fail "getTypeRepX: Kind mismatch"
+                    Nothing    -> failure "Kind mismatch"
+                                          [ "Type constructor: " ++ show con
+                                          , "Applied to type:  " ++ show rep_k
+                                          ]
 
         4 -> do TypeRepX f <- getTypeRepX
                 TypeRepX x <- getTypeRepX
@@ -125,17 +128,33 @@ getTypeRepX = do
                         case arg `eqTypeRep` typeRepKind x of
                             Just HRefl ->
                                 pure $ TypeRepX $ mkTrApp f x
-                            _ -> fail "getTypeRepX: Kind mismatch"
-                    _ -> fail "getTypeRepX: Applied non-arrow type"
-        _ -> fail "getTypeRepX: Invalid TypeRepX"
+                            _ -> failure "Kind mismatch"
+                                         [ "Found argument of kind:      " ++ show (typeRepKind x)
+                                         , "Where the constructor:       " ++ show f
+                                         , "Expects an argument of kind: " ++ show arg
+                                         ]
+                    _ -> failure "Applied non-arrow type"
+                                 [ "Applied type: " ++ show f
+                                 , "To argument:  " ++ show x
+                                 ]
+        _ -> failure "Invalid TypeRepX" []
+  where
+    failure description info =
+        fail $ unlines $ [ "GHCi.TH.Binary.getTypeRepX: "++description ]
+                      ++ map ("    "++) info
 
 instance Typeable a => Binary (TypeRep (a :: k)) where
     put = putTypeRep
     get = do
         TypeRepX rep <- getTypeRepX
-        case rep `eqTypeRep` (typeRep :: TypeRep a) of
+        case rep `eqTypeRep` expected of
             Just HRefl -> pure rep
-            Nothing    -> fail "Binary: Type mismatch"
+            Nothing    -> fail $ unlines
+                               [ "GHCi.TH.Binary: Type mismatch"
+                               , "    Deserialized type: " ++ show rep
+                               , "    Expected type:     " ++ show expected
+                               ]
+     where expected = typeRep :: TypeRep a
 
 instance Binary TypeRepX where
     put (TypeRepX rep) = putTypeRep rep
