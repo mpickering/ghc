@@ -292,12 +292,6 @@ eqTypeRep a b
   | typeRepFingerprint a == typeRepFingerprint b = Just (unsafeCoerce# HRefl)
   | otherwise                                    = Nothing
 
-{- *********************************************************************
-*                                                                      *
-                The Typeable class
-*                                                                      *
-********************************************************************* -}
-
 -------------------------------------------------------------
 --
 --      The Typeable class and friends
