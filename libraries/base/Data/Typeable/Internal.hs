@@ -225,7 +225,9 @@ mkTrCon tc kind = TrTyCon fpr tc kind
     fpr    = fingerprintFingerprints [fpr_tc, fpr_k]
 
 -- | Construct a representation for a type application.
--- TODO: Is this necessary?
+--
+-- Note that this is known-key to the compiler, which uses it in desugar
+-- 'Typeable' evidence.
 mkTrApp :: forall k1 k2 (a :: k1 -> k2) (b :: k1).
            TypeRep (a :: k1 -> k2)
         -> TypeRep (b :: k1)
