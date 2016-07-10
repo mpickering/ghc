@@ -186,13 +186,17 @@ instance Ord TypeRepX where
   TypeRepX a `compare` TypeRepX b =
     typeRepFingerprint a `compare` typeRepFingerprint b
 
+--pattern TRArrow :: TypeRep (->)
+pattern TRArrow <- (eqTypeRep trArrow -> Just HRefl)
+  where TRArrow = trArrow
+
 pattern TRFun :: forall fun. ()
               => forall arg res. (fun ~ (arg -> res))
               => TypeRep arg
               -> TypeRep res
               -> TypeRep fun
-pattern TRFun arg res <- TrApp _ (TrApp _ (eqTypeRep trArrow -> Just HRefl) arg) res where
-  TRFun arg res = mkTrApp (mkTrApp trArrow arg) res
+pattern TRFun arg res <- TRApp (TRApp TRArrow arg) res
+  where TRFun arg res = mkTrApp (mkTrApp trArrow arg) res
 
 decomposeFun :: forall fun r.
                 TypeRep fun
