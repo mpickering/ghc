@@ -247,6 +247,7 @@ pattern TRApp :: forall k2 (t :: k2). ()
               => forall k1 (a :: k1 -> k2) (b :: k1). (t ~ a b)
               => TypeRep a -> TypeRep b -> TypeRep t
 pattern TRApp f x <- TrApp _ f x
+  where TRApp f x = mkTrApp f x
 
 -- | Use a 'TypeRep' as 'Typeable' evidence.
 withTypeable :: forall a r. TypeRep a -> (Typeable a => r) -> r
