@@ -333,13 +333,17 @@ instance Show (TypeRep (a :: k)) where
     showsPrec = showTypeable
 
 showTypeable :: Int -> TypeRep (a :: k) -> ShowS
-showTypeable p rep =
+showTypeable p rep
+  | Just HRefl <- star `eqTypeRep` rep =
+    showTypeable' 9 rep
+
+  | otherwise =
     showParen (p > 9) $
-    showTypeable' 8 rep . showString " :: " . showTypeable' 8 (typeRepKind rep)
+    showTypeable' 9 rep . showString " :: " . showTypeable' 8 (typeRepKind rep)
 
 showTypeable' :: Int -> TypeRep (a :: k) -> ShowS
 showTypeable' _ rep
-  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep *) =
+  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type) =
     showChar '*'
   | isListTyCon tc, [ty] <- tys =
     showChar '[' . shows ty . showChar ']'
