@@ -2209,7 +2209,7 @@ doTyConApp clas ty tc
                      (\[ev] -> EvTypeable ty $ EvTypeableTyCon tc ev)
                      True
 
--- | Representation for TyCon applications of a concrete kind. We just use the 
+-- | Representation for TyCon applications of a concrete kind. We just use the
 -- kind itself, but first we must make sure that we've instantiated all kind-
 -- polymorphism, but no more.
 onlyNamedBndrsApplied :: TyCon -> [KindOrType] -> Bool
