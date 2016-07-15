@@ -132,7 +132,18 @@ hasBuiltinDeriving clas
                , (functorClassKey,     simple gen_Functor_binds)
                , (foldableClassKey,    simple gen_Foldable_binds)
                , (traversableClassKey, simple gen_Traversable_binds)
-               , (liftClassKey,        simple gen_Lift_binds) ]
+               , (liftClassKey,        simple gen_Lift_binds)
+               --, (eq1ClassKey,         simple gen_Eq1_binds)
+               --, (eq2ClassKey,         simple gen_Eq2_binds)
+               --, (ord1ClassKey,        simple gen_Ord1_binds)
+               --, (ord2ClassKey,        simple gen_Ord2_binds)
+               --, (read1ClassKey,       simple gen_Read1_binds)
+               --, (read2ClassKey,       simple gen_Read2_binds)
+               , (show1ClassKey,       with_fix_env gen_Show1_binds)
+               --, (show2ClassKey,       with_fix_env gen_Show2_binds)
+               --, (bifunctorClassKey,   simple gen_Bifunctor_binds)
+               --, (bifoldableClassKey,  simple gen_Bifoldable_binds)
+               {-, (bitraversableClassKey, simple gen_Bitraversable_binds)-} ]
 
     simple gen_fn loc tc
       = return (gen_fn loc tc)
@@ -1223,6 +1234,105 @@ gen_Show_binds get_fixity loc tycon
              con_prec_plus_one = 1 + getPrec is_infix get_fixity dc_nm
              arg_prec | record_syntax = 0  -- Record fields don't need parens
                       | otherwise     = con_prec_plus_one
+
+gen_Show1_binds :: (Name -> Fixity) -> SrcSpan -> TyCon -> (LHsBinds RdrName, BagDerivStuff)
+gen_Show1_binds = undefined
+{-
+gen_Show1_binds get_fixity loc tycon
+  = (listToBag [lift_shows_prec], emptyBag)
+  where
+    data_cons = tyConDataCons tycon
+    lift_shows_prec = mk_FunBind loc liftShowsPrec_RDR (map pats_etc data_cons)
+
+    ft_liftShowsPrec :: FFoldType (Bool -> LHsExpr RdrName)
+    ft_liftShowsPrec
+      = FT {
+           , ft_bad_app = panic "in other argument" }
+
+    pats_etc data_con
+      | nullary_con =  -- skip the showParen junk...
+         ASSERT(null bs_needed)
+         ([nlWildPat, nlWildPat, nlWildPat, con_pat], mk_showString_app op_con_str)
+      | otherwise   =
+         ([sp_Pat, sl_Pat, a_Pat, con_pat],
+          showParen_Expr (genOpApp a_Expr ge_RDR
+                              (nlHsLit (HsInt "" con_prec_plus_one)))
+                         (nlHsPar (nested_compose_Expr show_thingies)))
+        where
+             data_con_RDR  = getRdrName data_con
+             con_arity     = dataConSourceArity data_con
+             bs_needed     = take con_arity bs_RDRs
+             arg_tys       = dataConOrigArgTys data_con         -- Correspond 1-1 with bs_needed
+             con_pat       = nlConVarPat data_con_RDR bs_needed
+             nullary_con   = con_arity == 0
+             labels        = map flLabel $ dataConFieldLabels data_con
+             lab_fields    = length labels
+             record_syntax = lab_fields > 0
+
+             dc_nm          = getName data_con
+             dc_occ_nm      = getOccName data_con
+             con_str        = occNameString dc_occ_nm
+             op_con_str     = wrapOpParens con_str
+             backquote_str  = wrapOpBackquotes con_str
+
+             show_thingies
+                | is_infix      = [show_arg1, mk_showString_app (" " ++ backquote_str ++ " "), show_arg2]
+                | record_syntax = mk_showString_app (op_con_str ++ " {") :
+                                  show_record_args ++ [mk_showString_app "}"]
+                | otherwise     = mk_showString_app (op_con_str ++ " ") : show_prefix_args
+
+             show_label l = mk_showString_app (nm ++ " = ")
+                        -- Note the spaces around the "=" sign.  If we
+                        -- don't have them then we get Foo { x=-1 } and
+                        -- the "=-" parses as a single lexeme.  Only the
+                        -- space after the '=' is necessary, but it
+                        -- seems tidier to have them both sides.
+                 where
+                   nm       = wrapOpParens (unpackFS l)
+
+             show_args               = zipWith show_arg bs_needed arg_tys
+             (show_arg1:show_arg2:_) = show_args
+             show_prefix_args        = intersperse (nlHsVar showSpace_RDR) show_args
+
+                -- Assumption for record syntax: no of fields == no of
+                -- labelled fields (and in same order)
+             show_record_args = concat $
+                                intersperse [mk_showString_app ", "] $
+                                [ [show_label lbl, arg]
+                                | (lbl,arg) <- zipEqual "gen_Show1_binds"
+                                                        labels show_args ]
+
+             show_arg :: RdrName -> Type -> LHsExpr RdrName
+             show_arg b arg_ty
+               | isUnliftedType arg_ty
+               -- See Note [Deriving and unboxed types] in TcDeriv
+               = nlHsApps compose_RDR [mk_shows_app boxed_arg,
+                                       mk_showString_app postfixMod]
+               | otherwise
+               = mk_showsPrec_app arg_prec arg
+                 where
+                   arg        = nlHsVar b
+                   boxed_arg  = box "Show1" tycon arg arg_ty
+                   postfixMod = assoc_ty_id "Show1" tycon postfixModTbl arg_ty
+
+                -- Fixity stuff
+             is_infix = dataConIsInfix data_con
+             con_prec_plus_one = 1 + getPrec is_infix get_fixity dc_nm
+             arg_prec | record_syntax = 0  -- Record fields don't need parens
+                      | otherwise     = con_prec_plus_one
+
+sp_RDR, sl_RDR :: RdrName -- TEMPORARY
+sp_RDR = mkVarUnqual (fsLit "sp")
+sl_RDR = mkVarUnqual (fsLit "sl")
+
+sp_Pat, sl_Pat :: LPat RdrName -- TEMPORARY
+sp_Pat = nlVarPat sp_RDR
+sl_Pat = nlVarPat sl_RDR
+
+sp_Expr, sl_Expr :: LHsExpr RdrName -- TEMPORARY
+sp_Expr = nlHsVar sp_RDR
+sl_Expr = nlHsVar sl_RDR
+-}
 
 wrapOpParens :: String -> String
 wrapOpParens s | isSym s   = '(' : s ++ ")"

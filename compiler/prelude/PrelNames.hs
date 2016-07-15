@@ -179,7 +179,11 @@ basicKnownKeyNames
         --      classes that are grabbed by key (e.g., eqClassKey)
         --      classes in "Class.standardClassKeys" (quite a few)
         eqClassName,                    -- mentioned, derivable
+        -- eq1ClassName,                   -- derivable
+        -- eq2ClassName,                   -- derivable
         ordClassName,                   -- derivable
+        -- ord1ClassName,                  -- derivable
+        -- ord2ClassName,                  -- derivable
         boundedClassName,               -- derivable
         numClassName,                   -- mentioned, numeric
         enumClassName,                  -- derivable
@@ -197,6 +201,7 @@ basicKnownKeyNames
         alternativeClassName,
         foldableClassName,
         traversableClassName,
+        -- bifunctorClassName, bifoldableClassName, bitraversableClassName,
         semigroupClassName, sappendName,
         monoidClassName, memptyName, mappendName, mconcatName,
 
@@ -261,9 +266,13 @@ basicKnownKeyNames
 
         -- Show stuff
         showClassName,
+        show1ClassName,
+        -- show2ClassName,
 
         -- Read stuff
         readClassName,
+        -- read1ClassName,
+        -- read2ClassName,
 
         -- Stable pointers
         newStablePtrName,
@@ -435,7 +444,8 @@ gHC_PRIM, gHC_TYPES, gHC_GENERICS, gHC_MAGIC,
     rEAD_PREC, lEX, gHC_INT, gHC_WORD, mONAD, mONAD_FIX, mONAD_ZIP, mONAD_FAIL,
     aRROW, cONTROL_APPLICATIVE, gHC_DESUGAR, rANDOM, gHC_EXTS,
     cONTROL_EXCEPTION_BASE, gHC_TYPELITS, dATA_TYPE_EQUALITY,
-    dATA_COERCE :: Module
+    dATA_COERCE, dATA_FUNCTOR_CLASSES :: Module
+    {-, dATA_BIFUNCTOR, dATA_BIFOLDABLE, dATA_BITRAVERSABLE :: Module-}
 
 gHC_PRIM        = mkPrimModule (fsLit "GHC.Prim")   -- Primitive types and values
 gHC_TYPES       = mkPrimModule (fsLit "GHC.Types")
@@ -493,6 +503,10 @@ gHC_GENERICS    = mkBaseModule (fsLit "GHC.Generics")
 gHC_TYPELITS    = mkBaseModule (fsLit "GHC.TypeLits")
 dATA_TYPE_EQUALITY = mkBaseModule (fsLit "Data.Type.Equality")
 dATA_COERCE     = mkBaseModule (fsLit "Data.Coerce")
+dATA_FUNCTOR_CLASSES = mkBaseModule (fsLit "Data.Functor.Classes")
+-- dATA_BIFUNCTOR       = mkBaseModule (fsLit "Data.Bifunctor")
+-- dATA_BIFOLDABLE      = mkBaseModule (fsLit "Data.Bifoldable")
+-- dATA_BITRAVERSABLE   = mkBaseModule (fsLit "Data.Bitraversable")
 
 gHC_PARR' :: Module
 gHC_PARR' = mkBaseModule (fsLit "GHC.PArr")
@@ -712,6 +726,26 @@ shows_RDR               = varQual_RDR gHC_SHOW (fsLit "shows")
 showString_RDR          = varQual_RDR gHC_SHOW (fsLit "showString")
 showSpace_RDR           = varQual_RDR gHC_SHOW (fsLit "showSpace")
 showParen_RDR           = varQual_RDR gHC_SHOW (fsLit "showParen")
+
+{-
+liftEq_RDR, liftEq2_RDR, liftCompare_RDR, liftCompare2_RDR, read???,
+    liftShowsPrec_RDR, liftShowsPrec2_RDR :: RdrName
+-}
+liftShowsPrec_RDR :: RdrName -- TEMPORARY
+-- liftEq_RDR         = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftEq")
+-- liftEq2_RDR        = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftEq2")
+-- liftCompare_RDR    = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftCompare")
+-- liftCompare2_RDR   = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftCompare2")
+liftShowsPrec_RDR  = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftShowsPrec")
+-- liftShowsPrec2_RDR = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftShowsPrec2")
+
+{-
+bimap_RDR, bifoldMap_RDR, bifoldr_RDR, bitraverse_RDR :: RdrName
+bimap_RDR      = varQual_RDR dATA_BIFUNCTOR     (fsLit "bimap")
+bifoldMap_RDR  = varQual_RDR dATA_BIFOLDABLE    (fsLit "bifoldMap")
+bifoldr_RDR    = varQual_RDR dATA_BIFOLDABLE    (fsLit "bifoldr")
+bitraverse_RDR = varQual_RDR dATA_BITRAVERSABLE (fsLit "bitraverse")
+-}
 
 undefined_RDR :: RdrName
 undefined_RDR = varQual_RDR gHC_ERR (fsLit "undefined")
@@ -968,7 +1002,28 @@ memptyName         = varQual gHC_BASE       (fsLit "mempty")    memptyClassOpKey
 mappendName        = varQual gHC_BASE       (fsLit "mappend")   mappendClassOpKey
 mconcatName        = varQual gHC_BASE       (fsLit "mconcat")   mconcatClassOpKey
 
+-- Classes (???)
+{-
+eq1ClassName, eq2ClassName, ord1ClassName, ord2ClassName, read1ClassName,
+    read2ClassName, show1ClassName, show2ClassName :: Name
+-}
+show1ClassName :: Name -- TEMPORARY
+-- eq1ClassName   = clsQual dATA_FUNCTOR_CLASSES (fsLit "Eq1")   eq1ClassKey
+-- eq2ClassName   = clsQual dATA_FUNCTOR_CLASSES (fsLit "Eq2")   eq2ClassKey
+-- ord1ClassName  = clsQual dATA_FUNCTOR_CLASSES (fsLit "Ord1")  ord1ClassKey
+-- ord2ClassName  = clsQual dATA_FUNCTOR_CLASSES (fsLit "Ord2")  ord2ClassKey
+-- read1ClassName = clsQual dATA_FUNCTOR_CLASSES (fsLit "Read1") read1ClassKey
+-- read2ClassName = clsQual dATA_FUNCTOR_CLASSES (fsLit "Read2") read2ClassKey
+show1ClassName = clsQual dATA_FUNCTOR_CLASSES (fsLit "Show1") show1ClassKey
+-- show2ClassName = clsQual dATA_FUNCTOR_CLASSES (fsLit "Show2") show2ClassKey
 
+-- Classes (Bifunctor, Bifoldable, Bitraversable)
+{-
+bifunctorClassName, bifoldableClassName, bitraversableClassName :: Name
+bifunctorClassName     = clsQual dATA_BIFUNCTOR     (fsLit "Bifunctor")     bifunctorClassKey
+bifoldableClassName    = clsQual dATA_BIFOLDABLE    (fsLit "Bifoldable")    bifoldableClassKey
+bitraversableClassName = clsQual dATA_BITRAVERSABLE (fsLit "Bitraversable") bitraversableClassKey
+-}
 
 -- AMP additions
 
@@ -1508,6 +1563,27 @@ monoidClassKey    = mkPreludeClassUnique 47
 -- Implicit Parameters
 ipClassKey :: Unique
 ipClassKey = mkPreludeClassUnique 48
+
+{-
+eq1ClassKey, eq2ClassKey, ord1ClassKey, ord2ClassKey, read1ClassKey,
+    read2ClassKey, show1ClassKey, show2ClassKey, bifunctorClassKey,
+    bifoldableClassKey, bitraversableClassKey :: Unique
+-}
+show1ClassKey :: Unique -- TEMPORARY
+{-
+eq1ClassKey           = mkPreludeClassUnique 49
+eq2ClassKey           = mkPreludeClassUnique 50
+ord1ClassKey          = mkPreludeClassUnique 51
+ord2ClassKey          = mkPreludeClassUnique 52
+read1ClassKey         = mkPreludeClassUnique 53
+read2ClassKey         = mkPreludeClassUnique 54
+show1ClassKey         = mkPreludeClassUnique 55
+show2ClassKey         = mkPreludeClassUnique 56
+bifunctorClassKey     = mkPreludeClassUnique 57
+bifoldableClassKey    = mkPreludeClassUnique 58
+bitraversableClassKey = mkPreludeClassUnique 59
+-}
+show1ClassKey = mkPreludeClassUnique 49 -- TEMPORARY
 
 ---------------- Template Haskell -------------------
 --      THNames.hs: USES ClassUniques 200-299

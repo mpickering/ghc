@@ -1346,6 +1346,19 @@ sideConditions mtheta cls
   | cls_key == liftClassKey        = Just (checkFlag LangExt.DeriveLift `andCond`
                                            cond_vanilla `andCond`
                                            cond_args cls)
+--   | cls_key == eq1ClassKey         =
+--   | cls_key == eq2ClassKey         =
+--   | cls_key == ord1ClassKey        =
+--   | cls_key == ord2ClassKey        =
+--   | cls_key == read1ClassKey       =
+--   | cls_key == read2ClassKey       =
+  | cls_key == show1ClassKey       = Just ({-checkFlag LangExt.??? `andCond`-}
+                                           cond_vanilla `andCond`
+                                           cond_functorOK True True)
+--   | cls_key == show2ClassKey       =
+--   | cls_key == bifunctorClassKey   =
+--   | cls_key == bifoldableClassKey  =
+--   | cls_key == bitraversableClassKey =
   | otherwise                      = Nothing
   where
     cls_key = getUnique cls
