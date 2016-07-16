@@ -19,7 +19,7 @@ module TcGenDeriv (
         BagDerivStuff, DerivStuff(..),
 
         hasBuiltinDeriving,
-        FFoldType(..), functorLikeTraverse,
+        FFoldType(..), makeFTFunctorLike, foldType,
         deepSubtypesContaining, foldDataConArgs,
         mkCoerceClassMethEqn,
         gen_Newtype_binds,
@@ -1721,25 +1721,26 @@ gen_Functor_binds loc tycon
          | otherwise      = map fmap_eqn data_cons
 
     ft_fmap :: FFoldType (State [RdrName] (LHsExpr RdrName))
-    ft_fmap = FT { ft_triv = mkSimpleLam $ \x -> return x
-                   -- fmap f = \x -> x
-                 , ft_var  = return f_Expr
-                   -- fmap f = f
-                 , ft_fun  = \g h -> do
-                     gg <- g
-                     hh <- h
-                     mkSimpleLam2 $ \x b -> return $
-                       nlHsApp hh (nlHsApp x (nlHsApp gg b))
-                   -- fmap f = \x b -> h (x (g b))
-                 , ft_tup = \t gs -> do
-                     gg <- sequence gs
-                     mkSimpleLam $ mkSimpleTupleCase match_for_con t gg
-                   -- fmap f = \x -> case x of (a1,a2,..) -> (g1 a1,g2 a2,..)
-                 , ft_ty_app = \_ g -> nlHsApp fmap_Expr <$> g
-                   -- fmap f = fmap g
-                 , ft_forall = \_ g -> g
-                 , ft_bad_app = panic "in other argument"
-                 , ft_co_var = panic "contravariant" }
+    ft_fmap = FunctorLikeFT
+        { ft_triv = mkSimpleLam $ \x -> return x
+           -- fmap f = \x -> x
+        , ft_var  = return f_Expr
+           -- fmap f = f
+        , ft_fun  = \g h -> do
+            gg <- g
+            hh <- h
+            mkSimpleLam2 $ \x b -> return $
+              nlHsApp hh (nlHsApp x (nlHsApp gg b))
+          -- fmap f = \x b -> h (x (g b))
+        , ft_tup = \t gs -> do
+            gg <- sequence gs
+            mkSimpleLam $ mkSimpleTupleCase match_for_con t gg
+          -- fmap f = \x -> case x of (a1,a2,..) -> (g1 a1,g2 a2,..)
+        , ft_ty_app = \_ g -> nlHsApp fmap_Expr <$> g
+          -- fmap f = fmap g
+        , ft_forall = \_ g -> g
+        , ft_bad_app = panic "in other argument"
+        , ft_co_var = panic "contravariant" }
 
     -- Con a1 a2 ... -> Con (f1 a1) (f2 a2) ...
     match_for_con :: [LPat RdrName] -> DataCon -> [LHsExpr RdrName]
@@ -1754,85 +1755,141 @@ Since several things use the same pattern of traversal, this is abstracted into 
 This function works like a fold: it makes a value of type 'a' in a bottom up way.
 -}
 
--- Generic traversal for Functor deriving
--- See Note [FFoldType and functorLikeTraverse]
+-- Generic traversal for deriving type classes of kind * -> *
+-- See Note [FFoldType and foldType]
 data FFoldType a      -- Describes how to fold over a Type in a functor like way
-   = FT { ft_triv    :: a
-          -- ^ Does not contain variable
-        , ft_var     :: a
-          -- ^ The variable itself
-        , ft_co_var  :: a
-          -- ^ The variable itself, contravariantly
-        , ft_fun     :: a -> a -> a
-          -- ^ Function type
-        , ft_tup     :: TyCon -> [a] -> a
-          -- ^ Tuple type
-        , ft_ty_app  :: Type -> a -> a
-          -- ^ Type app, variable only in last argument
-        , ft_bad_app :: a
-          -- ^ Type app, variable other than in last argument
-        , ft_forall  :: TcTyVar -> a -> a
-          -- ^ Forall type
+   = FunctorLikeFT
+     { ft_triv    :: a
+       -- ^ Does not contain variable
+     , ft_var     :: a
+       -- ^ The variable itself
+     , ft_ty_app  :: Type -> a -> a
+       -- ^ Type app, variable only in last argument
+     , ft_bad_app :: a
+       -- ^ Type app, variable other than in last argument
+     , ft_forall  :: TcTyVar -> a -> a
+       -- ^ Forall type
+
+     -- Fields specific to FunctorLikeFT
+     , ft_co_var  :: a
+       -- ^ The variable itself, contravariantly
+     , ft_fun     :: a -> a -> a
+       -- ^ Function type
+     , ft_tup     :: TyCon -> [a] -> a
+       -- ^ Tuple type
      }
 
-functorLikeTraverse :: forall a.
-                       TyVar         -- ^ Variable to look for
-                    -> FFoldType a   -- ^ How to fold
-                    -> Type          -- ^ Type to process
-                    -> a
-functorLikeTraverse var (FT { ft_triv = caseTrivial,     ft_var = caseVar
-                            , ft_co_var = caseCoVar,     ft_fun = caseFun
-                            , ft_tup = caseTuple,        ft_ty_app = caseTyApp
-                            , ft_bad_app = caseWrongArg, ft_forall = caseForAll })
-                    ty
-  = fst (go False ty)
+   | SimpleFT
+     { ft_triv    :: a
+       -- ^ Does not contain variable
+     , ft_var     :: a
+       -- ^ The variable itself
+     , ft_ty_app  :: Type -> a -> a
+       -- ^ Type app, variable only in last argument
+     , ft_bad_app :: a
+       -- ^ Type app, variable other than in last argument
+     , ft_forall  :: TcTyVar -> a -> a
+       -- ^ Forall type
+     }
+
+makeFTFunctorLike :: a -> (a -> a -> a) -> (TyCon -> [a] -> a)
+                  -> FFoldType a -> FFoldType a
+makeFTFunctorLike _ _ _ (ft@FunctorLikeFT{}) = ft
+makeFTFunctorLike caseCoVar caseFun caseTup
+                  (SimpleFT { ft_triv = caseTriv, ft_var = caseVar
+                            , ft_ty_app = caseTyApp, ft_bad_app = caseBadApp
+                            , ft_forall = caseForall })
+  = FunctorLikeFT { ft_triv = caseTriv, ft_var = caseVar
+                  , ft_ty_app = caseTyApp, ft_bad_app = caseBadApp
+                  , ft_forall = caseForall, ft_co_var = caseCoVar
+                  , ft_fun = caseFun, ft_tup = caseTup }
+
+foldType :: forall a.
+            TyVar       -- ^ Variable to look for
+         -> FFoldType a -- ^ How to fold
+         -> Type        -- ^ Type to process
+         -> a
+foldType var ft ty = fst (go False ty)
   where
-    go :: Bool        -- Covariant or contravariant context
+    go :: Bool      -- Covariant or contravariant context. This only matters
+                    -- when the FFoldType is a FunctorLikeFT.
        -> Type
-       -> (a, Bool)   -- (result of type a, does type contain var)
+       -> (a, Bool) -- (result of type a, does type contain var)
 
     go co ty | Just ty' <- coreView ty = go co ty'
-    go co (TyVarTy    v) | v == var = (if co then caseCoVar else caseVar,True)
+    go co (TyVarTy v)
+       | v == var
+       = ( if co then case ft of
+                        FunctorLikeFT{ft_co_var = caseCoVar} -> caseCoVar
+                        SimpleFT{} -> panic "unexpected contravariance"
+                 else ft_var ft
+         , True )
     go co (FunTy x y)  | isPredTy x = go co y
-                       | xc || yc   = (caseFun xr yr,True)
+                       -- FunctorLikeFTs have a special case for function
+                       -- types...
+                       | xc || yc, FunctorLikeFT{ft_fun = caseFun} <- ft
+                       = (caseFun xr yr,True)
+                       -- ...otherwise, functions are treated like any other
+                       -- types.
+                       | xc, SimpleFT{} <- ft
+                       = (ft_bad_app ft,True)
+                       | yc, SimpleFT{} <- ft
+                       = (ft_ty_app ft funTy yr,True)
         where (xr,xc) = go (not co) x
               (yr,yc) = go co       y
-    go co (AppTy    x y) | xc = (caseWrongArg,   True)
-                         | yc = (caseTyApp x yr, True)
+
+              funTy = TyConApp funTyCon [x]
+    go co (AppTy    x y) | xc = (ft_bad_app ft,     True)
+                         | yc = (ft_ty_app ft x yr, True)
         where (_, xc) = go co x
               (yr,yc) = go co y
     go co ty@(TyConApp con args)
-       | not (or xcs)     = (caseTrivial, False)   -- Variable does not occur
+       | not (or xcs)     = (ft_triv ft, False)   -- Variable does not occur
+
        -- At this point we know that xrs, xcs is not empty,
        -- and at least one xr is True
-       | isTupleTyCon con = (caseTuple con xrs, True)
-       | or (init xcs)    = (caseWrongArg, True)         -- T (..var..)    ty
-       | Just (fun_ty, _) <- splitAppTy_maybe ty         -- T (..no var..) ty
-                          = (caseTyApp fun_ty (last xrs), True)
-       | otherwise        = (caseWrongArg, True)   -- Non-decomposable (eg type function)
+       | isTupleTyCon con, FunctorLikeFT{ft_tup = caseTuple} <- ft
+       = (caseTuple con xrs, True)
+
+       | or (init xcs)
+       = (ft_bad_app ft, True)                   -- T (..var..)    ty
+
+       | Just (fun_ty, _) <- splitAppTy_maybe ty -- T (..no var..) ty
+       = (ft_ty_app ft fun_ty (last xrs), True)
+
+       | otherwise
+       = (ft_bad_app ft, True)   -- Non-decomposable (eg type function)
        where
          (xrs,xcs) = unzip (map (go co) args)
     go co (ForAllTy (TvBndr v vis) x)
        | isVisibleArgFlag vis = panic "unexpected visible binder"
-       | v /= var && xc       = (caseForAll v xr,True)
+       | v /= var && xc       = (ft_forall ft v xr,True)
        where (xr,xc) = go co x
 
-    go _ _ = (caseTrivial,False)
+    go _ _ = (ft_triv ft,False)
 
 -- Return all syntactic subterms of ty that contain var somewhere
 -- These are the things that should appear in instance constraints
-deepSubtypesContaining :: TyVar -> Type -> [TcType]
-deepSubtypesContaining tv
-  = functorLikeTraverse tv
-        (FT { ft_triv = []
-            , ft_var = []
-            , ft_fun = (++)
-            , ft_tup = \_ xs -> concat xs
-            , ft_ty_app = (:)
-            , ft_bad_app = panic "in other argument"
-            , ft_co_var = panic "contravariant"
-            , ft_forall = \v xs -> filterOut ((v `elemVarSet`) . tyCoVarsOfType) xs })
+deepSubtypesContaining :: TyVar
+                       -> Bool
+                       -> Type
+                       -> [TcType]
+deepSubtypesContaining tv functor_like = foldType tv $
+    if functor_like then functorLikeSubtypesFT else simpleSubtypesFT
 
+simpleSubtypesFT :: FFoldType [TcType]
+simpleSubtypesFT = SimpleFT
+    { ft_triv = []
+    , ft_var = []
+    , ft_ty_app = (:)
+    , ft_bad_app = panic "in other argument"
+    , ft_forall = \v xs -> filterOut ((v `elemVarSet`) . tyCoVarsOfType) xs }
+
+functorLikeSubtypesFT :: FFoldType [TcType]
+functorLikeSubtypesFT = makeFTFunctorLike (panic "contravariant") -- ft_co_var
+                                          (++)                    -- ft_fun
+                                          (\_ xs -> concat xs)    -- ft_tup
+                                          simpleSubtypesFT
 
 foldDataConArgs :: FFoldType a -> DataCon -> [a]
 -- Fold over the arguments of the datacon
@@ -1841,7 +1898,7 @@ foldDataConArgs ft con
   where
     foldArg
       = case getTyVar_maybe (last (tyConAppArgs (dataConOrigResTy con))) of
-             Just tv -> functorLikeTraverse tv ft
+             Just tv -> foldType tv ft
              Nothing -> const (ft_triv ft)
     -- If we are deriving Foldable for a GADT, there is a chance that the last
     -- type variable in the data type isn't actually a type variable at all.
@@ -2042,10 +2099,10 @@ gen_Foldable_binds loc tycon
 
     -- Yields 'Just' an expression if we're folding over a type that mentions
     -- the last type parameter of the datatype. Otherwise, yields 'Nothing'.
-    -- See Note [FFoldType and functorLikeTraverse]
+    -- See Note [FFoldType and foldType]
     ft_foldr :: FFoldType (State [RdrName] (Maybe (LHsExpr RdrName)))
-    ft_foldr
-      = FT { ft_triv    = return Nothing
+    ft_foldr = FunctorLikeFT
+           { ft_triv    = return Nothing
              -- foldr f = \x z -> z
            , ft_var     = return $ Just f_Expr
              -- foldr f = f
@@ -2076,10 +2133,10 @@ gen_Foldable_binds loc tycon
         mkFoldr :: [LHsExpr RdrName] -> LHsExpr RdrName
         mkFoldr = foldr nlHsApp z
 
-    -- See Note [FFoldType and functorLikeTraverse]
+    -- See Note [FFoldType and foldType]
     ft_foldMap :: FFoldType (State [RdrName] (Maybe (LHsExpr RdrName)))
-    ft_foldMap
-      = FT { ft_triv = return Nothing
+    ft_foldMap = FunctorLikeFT
+           { ft_triv = return Nothing
              -- foldMap f = \x -> mempty
            , ft_var  = return (Just f_Expr)
              -- foldMap f = f
@@ -2160,10 +2217,10 @@ gen_Traversable_binds loc tycon
 
     -- Yields 'Just' an expression if we're folding over a type that mentions
     -- the last type parameter of the datatype. Otherwise, yields 'Nothing'.
-    -- See Note [FFoldType and functorLikeTraverse]
+    -- See Note [FFoldType and foldType]
     ft_trav :: FFoldType (State [RdrName] (Maybe (LHsExpr RdrName)))
-    ft_trav
-      = FT { ft_triv    = return Nothing
+    ft_trav = FunctorLikeFT
+           { ft_triv    = return Nothing
              -- traverse f = pure x
            , ft_var     = return (Just f_Expr)
              -- traverse f = f x
@@ -2889,8 +2946,10 @@ See Trac #10447 for the original discussion on this feature. Also see
 https://ghc.haskell.org/trac/ghc/wiki/Commentary/Compiler/DeriveFunctor
 for a more in-depth explanation.
 
-Note [FFoldType and functorLikeTraverse]
+Note [FFoldType and foldType]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+TODO: This whole section needs to be modernized.
+
 Deriving Functor, Foldable, and Traversable all require generating expressions
 which perform an operation on each argument of a data constructor depending
 on the argument's type. In particular, a generated operation can be different
