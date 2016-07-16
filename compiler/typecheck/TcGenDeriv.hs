@@ -1236,8 +1236,7 @@ gen_Show_binds get_fixity loc tycon
                       | otherwise     = con_prec_plus_one
 
 gen_Show1_binds :: (Name -> Fixity) -> SrcSpan -> TyCon -> (LHsBinds RdrName, BagDerivStuff)
-gen_Show1_binds = undefined
-{-
+-- gen_Show1_binds = undefined
 gen_Show1_binds get_fixity loc tycon
   = (listToBag [lift_shows_prec], emptyBag)
   where
@@ -1245,9 +1244,14 @@ gen_Show1_binds get_fixity loc tycon
     lift_shows_prec = mk_FunBind loc liftShowsPrec_RDR (map pats_etc data_cons)
 
     ft_liftShowsPrec :: FFoldType (Bool -> LHsExpr RdrName)
-    ft_liftShowsPrec
-      = FT {
-           , ft_bad_app = panic "in other argument" }
+    ft_liftShowsPrec = SimpleFT
+        { ft_triv = \sl -> nlHsVar $ if sl then showList_RDR else showsPrec_RDR
+        , ft_var = \sl -> if sl then sl_Expr else sp_Expr
+        , ft_ty_app = \_ g sl ->
+            nlHsApps (if sl then liftShowList_RDR else liftShowsPrec_RDR)
+                     [g False, g True]
+        , ft_forall = \_ g -> g
+        , ft_bad_app = panic "in other argument" }
 
     pats_etc data_con
       | nullary_con =  -- skip the showParen junk...
@@ -1309,8 +1313,9 @@ gen_Show1_binds get_fixity loc tycon
                = nlHsApps compose_RDR [mk_shows_app boxed_arg,
                                        mk_showString_app postfixMod]
                | otherwise
-               = mk_showsPrec_app arg_prec arg
+               = watman `nlHsApp` nlHsLit (HsInt "" arg_prec) `nlHsApp` arg
                  where
+                   watman     = foldArg ft_liftShowsPrec data_con arg_ty False
                    arg        = nlHsVar b
                    boxed_arg  = box "Show1" tycon arg arg_ty
                    postfixMod = assoc_ty_id "Show1" tycon postfixModTbl arg_ty
@@ -1332,7 +1337,6 @@ sl_Pat = nlVarPat sl_RDR
 sp_Expr, sl_Expr :: LHsExpr RdrName -- TEMPORARY
 sp_Expr = nlHsVar sp_RDR
 sl_Expr = nlHsVar sl_RDR
--}
 
 wrapOpParens :: String -> String
 wrapOpParens s | isSym s   = '(' : s ++ ")"
@@ -1893,13 +1897,13 @@ functorLikeSubtypesFT = makeFTFunctorLike (panic "contravariant") -- ft_co_var
 
 foldDataConArgs :: FFoldType a -> DataCon -> [a]
 -- Fold over the arguments of the datacon
-foldDataConArgs ft con
-  = map foldArg (dataConOrigArgTys con)
-  where
-    foldArg
-      = case getTyVar_maybe (last (tyConAppArgs (dataConOrigResTy con))) of
-             Just tv -> foldType tv ft
-             Nothing -> const (ft_triv ft)
+foldDataConArgs ft con = map (foldArg ft con) (dataConOrigArgTys con)
+
+foldArg :: FFoldType a -> DataCon -> Type -> a
+foldArg ft con
+  = case getTyVar_maybe (last (tyConAppArgs (dataConOrigResTy con))) of
+           Just tv -> foldType tv ft
+           Nothing -> const (ft_triv ft)
     -- If we are deriving Foldable for a GADT, there is a chance that the last
     -- type variable in the data type isn't actually a type variable at all.
     -- (for example, this can happen if the last type variable is refined to
@@ -2873,6 +2877,9 @@ recompilations as uniques are nondeterministic.
 
 Note [DeriveFoldable with ExistentialQuantification]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+TODO: It's not just Foldable anymore! At least give lip service to the other
+derivable typeclasses for which this applies?
+
 Functor and Traversable instances can only be derived for data types whose
 last type parameter is truly universally polymorphic. For example:
 

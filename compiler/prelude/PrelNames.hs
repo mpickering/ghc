@@ -729,14 +729,15 @@ showParen_RDR           = varQual_RDR gHC_SHOW (fsLit "showParen")
 
 {-
 liftEq_RDR, liftEq2_RDR, liftCompare_RDR, liftCompare2_RDR, read???,
-    liftShowsPrec_RDR, liftShowsPrec2_RDR :: RdrName
+    liftShowsPrec_RDR, liftShowList_RDR liftShowsPrec2_RDR :: RdrName
 -}
-liftShowsPrec_RDR :: RdrName -- TEMPORARY
+liftShowsPrec_RDR, liftShowList_RDR :: RdrName -- TEMPORARY
 -- liftEq_RDR         = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftEq")
 -- liftEq2_RDR        = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftEq2")
 -- liftCompare_RDR    = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftCompare")
 -- liftCompare2_RDR   = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftCompare2")
 liftShowsPrec_RDR  = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftShowsPrec")
+liftShowList_RDR   = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftShowList")
 -- liftShowsPrec2_RDR = varQual_RDR dATA_FUNCTOR_CLASSES (fsLit "liftShowsPrec2")
 
 {-

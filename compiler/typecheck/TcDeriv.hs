@@ -1337,15 +1337,15 @@ sideConditions mtheta cls
                                            cond_args cls)
   | cls_key == functorClassKey     = Just (checkFlag LangExt.DeriveFunctor `andCond`
                                            cond_vanilla `andCond`
-                                           cond_functorOK True False)
+                                           cond_higherOrderOK (Just True) False)
   | cls_key == foldableClassKey    = Just (checkFlag LangExt.DeriveFoldable `andCond`
                                            cond_vanilla `andCond`
-                                           cond_functorOK False True)
+                                           cond_higherOrderOK (Just False) True)
                                            -- Functor/Fold/Trav works ok
                                            -- for rank-n types
   | cls_key == traversableClassKey = Just (checkFlag LangExt.DeriveTraversable `andCond`
                                            cond_vanilla `andCond`
-                                           cond_functorOK False False)
+                                           cond_higherOrderOK (Just False) False)
   | cls_key == genClassKey         = Just (checkFlag LangExt.DeriveGeneric `andCond`
                                            cond_vanilla `andCond`
                                            cond_RepresentableOk)
@@ -1363,7 +1363,7 @@ sideConditions mtheta cls
 --   | cls_key == read2ClassKey       =
   | cls_key == show1ClassKey       = Just ({-checkFlag LangExt.??? `andCond`-}
                                            cond_vanilla `andCond`
-                                           cond_functorOK True True)
+                                           cond_higherOrderOK Nothing True)
 --   | cls_key == show2ClassKey       =
 --   | cls_key == bifunctorClassKey   =
 --   | cls_key == bifoldableClassKey  =
@@ -1509,14 +1509,22 @@ cond_isProduct (_, rep_tc)
 functorLikeClassKeys :: [Unique]
 functorLikeClassKeys = [functorClassKey, foldableClassKey, traversableClassKey]
 
-cond_functorOK :: Bool -> Bool -> Condition
+cond_higherOrderOK :: Maybe Bool -> Bool -> Condition
+-- TODO: The documentation for this needs to be revamped, since it's more than
+-- just Functor et al. now. In particular, do all of these requirements apply
+-- for the other classes like Eq1?
+
+-- TODO: The first Bool argument ONLY applies if we're checking Functor et al.,
+-- making it a redundant argument for all other classes like Eq1. Should we
+-- perhaps turn it into a Maybe Bool?
+
 -- OK for Functor/Foldable/Traversable class
 -- Currently: (a) at least one argument
 --            (b) don't use argument contravariantly
 --            (c) don't use argument in the wrong place, e.g. data T a = T (X a a)
 --            (d) optionally: don't use function types
 --            (e) no "stupid context" on data type
-cond_functorOK allowFunctions allowExQuantifiedLastTyVar (_, rep_tc)
+cond_higherOrderOK isFunctorLike allowExQuantifiedLastTyVar (_, rep_tc)
   | null tc_tvs
   = NotValid (text "Data type" <+> quotes (ppr rep_tc)
               <+> text "must have some type parameters")
@@ -1549,16 +1557,25 @@ cond_functorOK allowFunctions allowExQuantifiedLastTyVar (_, rep_tc)
       = NotValid (badCon con existential)
 
     ft_check :: DataCon -> FFoldType Validity
-    ft_check con = FunctorLikeFT
-        { ft_triv = IsValid, ft_var = IsValid
-        , ft_co_var = NotValid (badCon con covariant)
-        , ft_fun = \x y -> if allowFunctions
-                              then x `andValid` y
-                              else NotValid (badCon con functions)
-        , ft_tup = \_ xs  -> allValid xs
-        , ft_ty_app = \_ x   -> x
-        , ft_bad_app = NotValid (badCon con wrong_arg)
-        , ft_forall = \_ x   -> x }
+    ft_check con = case isFunctorLike of
+                     Just allow_funs -> ft_functor_like allow_funs
+                     Nothing         -> ft_simple
+      where
+        ft_simple :: FFoldType Validity
+        ft_simple = SimpleFT
+          { ft_triv = IsValid, ft_var = IsValid
+          , ft_ty_app = \_ x   -> x
+          , ft_bad_app = NotValid (badCon con wrong_arg)
+          , ft_forall = \_ x   -> x }
+
+        ft_functor_like :: Bool -> FFoldType Validity
+        ft_functor_like allow_funs = makeFTFunctorLike
+          (NotValid (badCon con covariant))
+          (\x y -> if allow_funs
+                      then x `andValid` y
+                      else NotValid (badCon con functions))
+          (\_ xs -> allValid xs)
+          ft_simple
 
     existential = text "must be truly polymorphic in the last argument of the data type"
     covariant   = text "must not use the type variable in a function argument"
