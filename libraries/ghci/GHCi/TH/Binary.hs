@@ -114,7 +114,7 @@ getTypeRepX = do
         2 -> return $ TypeRepX (typeRep :: TypeRep (->))
         3 -> do con <- get :: Get TyCon
                 TypeRepX rep_k <- getTypeRepX
-                case rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
+                case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
                     Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
                     Nothing    -> failure "Kind mismatch"
                                           [ "Type constructor: " ++ show con

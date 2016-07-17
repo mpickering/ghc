@@ -620,7 +620,7 @@ getTypeRepX bh = do
         2 -> return $ TypeRepX (typeRep :: TypeRep (->))
         3 -> do con <- get bh :: IO TyCon
                 TypeRepX rep_k <- getTypeRepX bh
-                case rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
+                case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
                     Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
                     Nothing    -> failure "Kind mismatch in constructor application"
                                           [ "    Type constructor: " ++ show con
