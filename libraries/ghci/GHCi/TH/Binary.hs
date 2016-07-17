@@ -14,7 +14,7 @@ import qualified Data.ByteString as B
 import Type.Reflection
 import Type.Reflection.Unsafe
 import Data.Kind (Type)
-import GHC.Exts (RuntimeRep)
+import GHC.Exts (TYPE, RuntimeRep)
 #else
 import Data.Typeable
 #endif
@@ -85,11 +85,13 @@ instance Binary TyCon where
     get = mkTyCon <$> get <*> get <*> get
 
 putTypeRep :: TypeRep a -> Put
--- Special handling for Type, (->), and RuntimeRep due to recursive kind
+-- Special handling for TYPE, (->), and RuntimeRep due to recursive kind
 -- relations.
 -- See Note [Mutually recursive representations of primitive types]
 putTypeRep rep
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type)
+  = put (5 :: Word8)
+  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep TYPE)
   = put (0 :: Word8)
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep)
   = put (1 :: Word8)
@@ -109,7 +111,8 @@ getTypeRepX :: Get TypeRepX
 getTypeRepX = do
     tag <- get :: Get Word8
     case tag of
-        0 -> return $ TypeRepX (typeRep :: TypeRep Type)
+        5 -> return $ TypeRepX (typeRep :: TypeRep Type)
+        0 -> return $ TypeRepX (typeRep :: TypeRep TYPE)
         1 -> return $ TypeRepX (typeRep :: TypeRep RuntimeRep)
         2 -> return $ TypeRepX (typeRep :: TypeRep (->))
         3 -> do con <- get :: Get TyCon
