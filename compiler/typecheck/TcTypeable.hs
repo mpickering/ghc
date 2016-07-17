@@ -167,9 +167,9 @@ mkTypeableTyConBinds tycons
        ; gbl_env <- tcExtendGlobalValEnv tycon_rep_ids getGblEnv
        ; return (gbl_env `addTypecheckedBinds` tc_binds) }
 
--- | Generate bindings for the type representation of a wired-in TyCon defined
+-- | Generate bindings for the type representation of a wired-in 'TyCon's defined
 -- by the virtual "GHC.Prim" module. This is where we inject the representation
--- bindings for primitive types into "GHC.Types"
+-- bindings for these primitive types into "GHC.Types"
 --
 -- See Note [Grand plan for Typeable] in this module.
 mkPrimTypeableBinds :: TcM TcGblEnv
