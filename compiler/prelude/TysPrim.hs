@@ -160,10 +160,11 @@ primTyCons
     ]
 
 -- | The names of the 'TyCon's which we define 'Typeable' bindings for
--- explicitly in "Data.Typeable.Internal"
--- and should not generate bindings for in "GHC.Types".
+-- explicitly in "Data.Typeable.Internal" and should not generate representation
+-- bindings for in "GHC.Types".
 --
--- See Note [Mutually recursive representations of primitive types]
+-- See Note [Mutually recursive representations of primitive types] in
+-- "Data.Typeable.Internal" and Note [Grand plan for Typeable] in "TcTypeable".
 primTypeableTyCons :: NameEnv TyConRepName
 primTypeableTyCons = mkNameEnv
     [ (tYPETyConName, trTYPEName)
