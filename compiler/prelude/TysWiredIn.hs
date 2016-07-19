@@ -865,7 +865,7 @@ mk_tuple Unboxed arity = (tycon, tuple_con)
     tc_res_kind = unboxedTupleKind rr_tys
 
     tc_arity    = arity * 2
-    flavour     = UnboxedAlgTyCon
+    flavour     = UnboxedAlgTyCon (mkPrelTyConRepName tc_name)
 
     dc_tvs               = binderVars tc_binders
     (rr_tys, dc_arg_tys) = splitAt arity (mkTyVarTys dc_tvs)
