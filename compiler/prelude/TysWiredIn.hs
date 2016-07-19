@@ -800,7 +800,7 @@ mk_tuple Unboxed arity = (tycon, tuple_con)
                 | otherwise  = unboxedTupleKind
 
     tc_arity    = arity * 2
-    flavour     = UnboxedAlgTyCon
+    flavour     = UnboxedAlgTyCon (mkPrelTyConRepName tc_name)
 
     dc_tvs     = binderVars tc_binders
     dc_arg_tys = mkTyVarTys (drop arity dc_tvs)

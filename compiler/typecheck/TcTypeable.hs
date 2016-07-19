@@ -14,6 +14,7 @@ import TcEnv
 import TcRnMonad
 import PrelNames
 import TysPrim ( primTyCons, primTypeableTyCons )
+import TysWiredIn ( tupleTyCon )
 import Id
 import Type
 import TyCon
@@ -25,6 +26,8 @@ import NameEnv
 import HsSyn
 import DynFlags
 import Bag
+import BasicTypes ( Boxity(..) )
+import Constants  ( mAX_TUPLE_SIZE )
 import Fingerprint(Fingerprint(..), fingerprintString)
 import Outputable
 import FastString ( FastString, mkFastString )
@@ -197,6 +200,22 @@ mkPrimTypeableBinds
        }
   where
 
+-- | This is the list of primitive 'TyCon's for which we must generate bindings
+-- in "GHC.Types". This should include all types defined in "GHC.Prim".
+--
+-- The majority of the types we need here are contained in 'primTyCons'.
+-- However, not all of them: in particular unboxed tuples are absent since we
+-- don't want to include them in the original name cache. See
+-- Note [Built-in syntax and the OrigNameCache] in IfaceEnv for more.
+ghcPrimTypeableTyCons :: [TyCon]
+ghcPrimTypeableTyCons = filter (not . definedManually) $ concat
+    [ [funTyCon, tupleTyCon Unboxed 0]
+    , map (tupleTyCon Unboxed) [2..mAX_TUPLE_SIZE]
+    , primTyCons
+    ]
+  where
+    definedManually tc = tyConName tc `elemNameEnv` primTypeableTcCons
+
 -- | Generate bindings for the type representation of the wired-in TyCons defined
 -- by the virtual "GHC.Prim" module. This differs from the usual
 -- @mkTypeableBinds@ path in that here we need to lie to 'mk_typeable_binds'
@@ -209,10 +228,8 @@ ghcPrimTypeableBinds stuff
   = unionManyBags (map mkBind all_prim_tys)
   where
     all_prim_tys :: [TyCon]
-    all_prim_tys = [ tc' | tc <- funTyCon : primTyCons
-                         , tc' <- tc : tyConATs tc
-                         , not $ tyConName tc' `elemNameEnv` primTypeableTyCons
-                         ]
+    all_prim_tys = [ tc' | tc <- ghcPrimTypeableTyCons
+                         , tc' <- tc : tyConATs tc ]
 
     mkBind :: TyCon -> LHsBinds Id
     mkBind = mk_typeable_binds stuff

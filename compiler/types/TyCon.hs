@@ -824,6 +824,7 @@ data AlgTyConFlav
     -- | An unboxed type constructor. Note that this carries no TyConRepName
     -- as it is not representable.
   | UnboxedAlgTyCon
+       TyConRepName
 
   -- | Type constructors representing a class dictionary.
   -- See Note [ATyCon for classes] in TyCoRep
@@ -877,7 +878,7 @@ instance Outputable AlgTyConFlav where
 -- name, if any
 okParent :: Name -> AlgTyConFlav -> Bool
 okParent _       (VanillaAlgTyCon {})            = True
-okParent _       (UnboxedAlgTyCon)               = True
+okParent _       (UnboxedAlgTyCon {})            = True
 okParent tc_name (ClassTyCon cls _)              = tc_name == tyConName (classTyCon cls)
 okParent _       (DataFamInstTyCon _ fam_tc tys) = tyConArity fam_tc == length tys
 
@@ -1087,6 +1088,7 @@ tyConRepName_maybe (PrimTyCon  { primRepName = mb_rep_nm })
 tyConRepName_maybe (AlgTyCon { algTcParent = parent })
   | VanillaAlgTyCon rep_nm <- parent = Just rep_nm
   | ClassTyCon _ rep_nm    <- parent = Just rep_nm
+  | UnboxedAlgTyCon rep_nm    <- parent = Just rep_nm
 tyConRepName_maybe (FamilyTyCon { famTcFlav = DataFamilyTyCon rep_nm })
   = Just rep_nm
 tyConRepName_maybe (PromotedDataCon { tcRepName = rep_nm })
