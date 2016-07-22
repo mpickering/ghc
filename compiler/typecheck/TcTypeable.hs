@@ -214,7 +214,11 @@ ghcPrimTypeableTyCons = filter (not . definedManually) $ concat
     , primTyCons
     ]
   where
-    definedManually tc = tyConName tc `elemNameEnv` primTypeableTcCons
+    -- Some things, like TYPE, have mutually recursion kind relationships and
+    -- therefore have manually-defined representations. See Note [Mutually
+    -- recursive representations of primitive types] in Data.Typeable.Internal
+    -- and Note [Grand plan for Typeable] for details.
+    definedManually tc = tyConName tc `elemNameEnv` primTypeableTyCons
 
 -- | Generate bindings for the type representation of the wired-in TyCons defined
 -- by the virtual "GHC.Prim" module. This differs from the usual
