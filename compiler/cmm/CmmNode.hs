@@ -59,9 +59,9 @@ data CmmNode e x where
     -- instructions for a debugger. This describes how to reconstruct
     -- the "old" value of a register if we want to navigate the stack
     -- up one frame. Having unwind information for @Sp@ will allow the
-    -- debugger to "walk" the stack. The label represents a pointer
-    -- to the current location in the generated code.
-  CmmUnwind :: [(GlobalReg, CmmExpr)] -> CmmNode O O
+    -- debugger to "walk" the stack. The expression may be 'Nothing'
+    -- which indicates that the given register can't be unwound.
+  CmmUnwind :: [(GlobalReg, Maybe CmmExpr)] -> CmmNode O O
 
   CmmAssign :: !CmmReg -> !CmmExpr -> CmmNode O O
     -- Assign to register
@@ -464,7 +464,7 @@ mapExp _ f@(CmmEntry{})                          = f
 mapExp _ m@(CmmComment _)                        = m
 mapExp _ m@(CmmTick _)                           = m
 --mapExp f   (CmmUnwind regs)                      = CmmUnwind (map (fmap f) regs)
-mapExp f   (CmmUnwind regs)                      = CmmUnwind regs
+mapExp _   (CmmUnwind regs)                      = CmmUnwind regs
 mapExp f   (CmmAssign r e)                       = CmmAssign r (f e)
 mapExp f   (CmmStore addr e)                     = CmmStore (f addr) (f e)
 mapExp f   (CmmUnsafeForeignCall tgt fs as)      = CmmUnsafeForeignCall (mapForeignTarget f tgt) fs (map f as)
@@ -496,7 +496,7 @@ mapExpM _ (CmmEntry{})              = Nothing
 mapExpM _ (CmmComment _)            = Nothing
 mapExpM _ (CmmTick _)               = Nothing
 --mapExpM f (CmmUnwind regs)          = CmmUnwind `fmap` mapM (\(r,e) -> f e >>= \e' -> pure (r,e')) regs
-mapExpM f (CmmUnwind regs)          = Just (CmmUnwind regs)
+mapExpM _ (CmmUnwind regs)          = Just (CmmUnwind regs)
 mapExpM f (CmmAssign r e)           = CmmAssign r `fmap` f e
 mapExpM f (CmmStore addr e)         = (\[addr', e'] -> CmmStore addr' e') `fmap` mapListM f [addr, e]
 mapExpM _ (CmmBranch _)             = Nothing
@@ -549,7 +549,7 @@ foldExp :: (CmmExpr -> z -> z) -> CmmNode e x -> z -> z
 foldExp _ (CmmEntry {}) z                         = z
 foldExp _ (CmmComment {}) z                       = z
 foldExp _ (CmmTick {}) z                          = z
-foldExp f (CmmUnwind regs) z                      = z
+foldExp _ (CmmUnwind regs) z                      = z
 foldExp f (CmmAssign _ e) z                       = f e z
 foldExp f (CmmStore addr e) z                     = f addr $ f e z
 foldExp f (CmmUnsafeForeignCall t _ as) z         = foldr f (foldExpForeignTarget f t z) as
