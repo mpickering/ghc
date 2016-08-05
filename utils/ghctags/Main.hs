@@ -179,7 +179,7 @@ flagsFromCabal :: FilePath -> IO [String]
 flagsFromCabal distPref = do
   lbi <- getPersistBuildConfig distPref
   let pd = localPkgDescr lbi
-  case maybeGetDefaultLibraryLocalBuildInfo lbi of
+  case undefined lbi of
     Just clbi ->
       let CLib lib = getComponent pd (componentLocalName clbi)
           bi = libBuildInfo lib

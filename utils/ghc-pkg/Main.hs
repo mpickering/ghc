@@ -1079,7 +1079,7 @@ type PackageCacheFormat = GhcPkg.InstalledPackageInfo
                             PackageName
                             UnitId
                             ModuleName
-                            OriginalModule
+                            Module
 
 convertPackageInfoToCacheFormat :: InstalledPackageInfo -> PackageCacheFormat
 convertPackageInfoToCacheFormat pkg =
@@ -1132,9 +1132,9 @@ instance GhcPkg.BinaryStringRep String where
   fromStringRep = fromUTF8 . BS.unpack
   toStringRep   = BS.pack . toUTF8
 
-instance GhcPkg.DbModuleRep UnitId ModuleName OriginalModule where
-  fromDbModule (GhcPkg.DbModule uid mod_name) = OriginalModule uid mod_name
-  toDbModule (OriginalModule uid mod_name) = GhcPkg.DbModule uid mod_name
+instance GhcPkg.DbModuleRep UnitId ModuleName Module where
+  fromDbModule (GhcPkg.DbModule uid mod_name) = Module uid mod_name
+  toDbModule (Module uid mod_name) = GhcPkg.DbModule uid mod_name
 
 -- -----------------------------------------------------------------------------
 -- Exposing, Hiding, Trusting, Distrusting, Unregistering are all similar
@@ -1782,10 +1782,10 @@ checkDuplicateModules pkg
 checkOriginalModule :: String
                     -> PackageDBStack
                     -> InstalledPackageInfo
-                    -> OriginalModule
+                    -> Module
                     -> Validate ()
 checkOriginalModule field_name db_stack pkg
-    (OriginalModule definingPkgId definingModule) =
+    (Module definingPkgId definingModule) =
   let mpkg = if definingPkgId == installedUnitId pkg
               then Just pkg
               else PackageIndex.lookupUnitId ipix definingPkgId

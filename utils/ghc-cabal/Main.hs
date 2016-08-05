@@ -150,12 +150,12 @@ doCopy directory distDir
       noGhcPrimHook f pd lbi us flags
               = let pd'
                      | packageName pd == PackageName "ghc-prim" =
-                        case libraries pd of
+                        case allLibraries pd of
                         [lib] ->
                             let ghcPrim = fromJust (simpleParse "GHC.Prim")
                                 ems = filter (ghcPrim /=) (exposedModules lib)
                                 lib' = lib { exposedModules = ems }
-                            in pd { libraries = [lib'] }
+                            in pd { subLibraries = [lib'], library = Nothing }
                         [] ->
                             error "Expected a library, but none found"
                         _ ->
@@ -326,7 +326,7 @@ generate directory distdir dll0Modules config_args
           comp = compiler lbi
           libBiModules lib = (libBuildInfo lib, libModules lib)
           exeBiModules exe = (buildInfo exe, ModuleName.main : exeModules exe)
-          biModuless = (map libBiModules $ libraries pd)
+          biModuless = (map libBiModules $ allLibraries pd)
                     ++ (map exeBiModules $ executables pd)
           buildableBiModuless = filter isBuildable biModuless
               where isBuildable (bi', _) = buildable bi'
