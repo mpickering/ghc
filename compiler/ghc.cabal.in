@@ -419,6 +419,7 @@ Library
         TcPat
         TcPatSyn
         TcRnDriver
+        TcRnExports
         TcRnMonad
         TcRnTypes
         TcRules
