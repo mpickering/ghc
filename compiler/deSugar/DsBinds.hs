@@ -361,7 +361,11 @@ makeCorePair :: DynFlags -> Id -> Bool -> Arity -> CoreExpr -> (Id, CoreExpr)
 makeCorePair dflags gbl_id is_default_method dict_arity rhs
   | is_default_method                 -- Default methods are *always* inlined
   = (gbl_id `setIdUnfolding` mkCompulsoryUnfolding rhs, rhs)
-
+  | (isId gbl_id) &&
+    (isEmptyInlineSpec inline_spec) &&
+      (isOverloadedTy (idType gbl_id))
+  = (gbl_id `setIdUnfolding` inlinable_unf, rhs)
+    -- Expose unfolding of overloaded function if we know no better
   | otherwise
   = case inlinePragmaSpec inline_prag of
           EmptyInlineSpec -> (gbl_id, rhs)
@@ -371,6 +375,7 @@ makeCorePair dflags gbl_id is_default_method dict_arity rhs
 
   where
     inline_prag   = idInlinePragma gbl_id
+    inline_spec   = inlinePragmaSpec inline_prag
     inlinable_unf = mkInlinableUnfolding dflags rhs
     inline_pair
        | Just arity <- inlinePragmaSat inline_prag
