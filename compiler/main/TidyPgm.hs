@@ -61,6 +61,7 @@ import Outputable
 import UniqDFM
 import SrcLoc
 import qualified ErrUtils as Err
+import TcType           ( isOverloadedTy )
 
 import Control.Monad
 import Data.Function
@@ -730,6 +731,7 @@ addExternal expose_all id = (new_needed_ids, show_unfold)
     never_active   = isNeverActive (inlinePragmaActivation (inlinePragInfo idinfo))
     loop_breaker   = isStrongLoopBreaker (occInfo idinfo)
     bottoming_fn   = isBottomingSig (strictnessInfo idinfo)
+    is_overloaded  = isOverloadedTy (idType id)
 
         -- Stuff to do with the Id's unfolding
         -- We leave the unfolding there even if there is a worker
@@ -741,7 +743,8 @@ addExternal expose_all id = (new_needed_ids, show_unfold)
 
        || isStableSource src     -- Always expose things whose
                                  -- source is an inline rule
-
+       || is_overloaded          -- Always expose overloaded things so that
+                                 -- they can be specialised at call sites.
        || not (bottoming_fn      -- No need to inline bottom functions
            || never_active       -- Or ones that say not to
            || loop_breaker       -- Or that are loop breakers
