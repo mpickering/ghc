@@ -759,29 +759,33 @@ lookupExportChild parent rdr_name
         checkAmbig overload_ok rdr_name parent gres
           -- Don't record ambiguous selector usage
           | all isRecFldGRE gres && overload_ok
-                = return $
-                    FoundFLs [fldParentToFieldLabel (gre_name gre) mfs
-                             | gre <- gres
-                             , let FldParent _ mfs = gre_par gre ]
-          | Just gre <- disambigChildren rdr_name parent gres
+                = case picked_gres of
+                    [] -> mkNameErr (dcErrMsg parent "record selector" rdr_name [])
+
+
+                    _  ->
+                      return $
+                        FoundFLs [fldParentToFieldLabel (gre_name gre) mfs
+                                 | gre <- gres
+                                 , let FldParent _ mfs = gre_par gre ]
+          | Just gre <- disambigChildren
             = do
                 addUsedGRE True gre
                 return (checkFld gre)
           | otherwise = do
               addNameClashErrRn rdr_name gres
               return (FoundName (gre_name (head gres)))
-
-        -- Return the single child with the matching parent if it exists
-        disambigChildren :: RdrName -> Name
-                            -> [GlobalRdrElt] -> Maybe GlobalRdrElt
-        disambigChildren rdr_name the_parent gres =
-          case picked_gres of
-            [] -> Nothing
-            [x] -> Just x
-            _  -> Nothing
           where
-            picked_gres :: [GlobalRdrElt]
-            picked_gres
+          -- Return the single child with the matching parent if it exists
+          disambigChildren :: Maybe GlobalRdrElt
+          disambigChildren =
+            case picked_gres of
+              [] -> Nothing
+              [x] -> Just x
+              _  -> Nothing
+
+          picked_gres :: [GlobalRdrElt]
+          picked_gres
               | isUnqual rdr_name = filter right_parent gres
               | otherwise         = filter right_parent (pickGREs rdr_name gres)
 
@@ -789,12 +793,12 @@ lookupExportChild parent rdr_name
             -- Crucially, pattern synonyms have no parents so are ignored
             -- by this check and can't be disambiguated by the type
             -- constructor.
-            right_parent (GRE { gre_par = p })
-              | ParentIs parent <- p               =
-                  parent == the_parent
-              | FldParent { par_is = parent } <- p =
-                  parent == the_parent
-              | otherwise                          = False
+          right_parent (GRE { gre_par = p })
+            | ParentIs cur_parent <- p               =
+                  parent == cur_parent
+            | FldParent { par_is = cur_parent } <- p =
+                  parent == cur_parent
+            | otherwise                          = False
 
 
 classifyGREs :: [GlobalRdrElt] -> ([Name], [FieldLabel])
