@@ -14,7 +14,7 @@ module RnEnv (
         lookupLocalOccThLvl_maybe,
         lookupTypeOccRn, lookupKindOccRn,
         lookupGlobalOccRn, lookupGlobalOccRn_maybe,
-        lookupOccRn_overloaded, lookupGlobalOccRn_overloaded, lookupExportChild,
+        lookupOccRn_overloaded, lookupGlobalOccRn_overloaded, lookupExactOcc,
         reportUnboundName, unknownNameSuggestions,
         addNameClashErrRn,
 
@@ -552,91 +552,6 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name
 
 
 
--- | Used in export lists to lookup the children.
-lookupExportChild :: Name -> RdrName -> RnM (Maybe (Either Name [FieldLabel]))
-lookupExportChild parent rdr_name
-  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
-  = Just . Left  <$> lookupExactOcc n
-
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = Just . Left <$> lookupOrig rdr_mod rdr_occ
-
-  | isUnboundName parent
-    -- Avoid an error cascade from malformed decls:
-    --   instance Int where { foo = e }
-    -- We have already generated an error in rnLHsInstDecl
-  = return (Just (Left (mkUnboundNameRdr rdr_name)))
-
-  | otherwise = do
-  gre_env <- getGlobalRdrEnv
-  overload_ok <- xoptM LangExt.DuplicateRecordFields
-
-
-  case lookupGRE_RdrName rdr_name gre_env of
-    [] -> return Nothing
-    [x] -> do
-      addUsedGRE True x
-      return (Just ((:[]) <$> checkFld x))
-    xs  -> Just <$> checkAmbig overload_ok rdr_name parent xs
-  where
-
-
-        checkFld :: GlobalRdrElt -> Either Name FieldLabel
-        checkFld GRE{gre_name, gre_par} =
-          case gre_par of
-            FldParent _ mfs -> Right (fldParentToFieldLabel gre_name mfs)
-            _ -> Left gre_name
-
-
-        fldParentToFieldLabel :: Name -> Maybe FastString -> FieldLabel
-        fldParentToFieldLabel name mfs =
-          case mfs of
-            Nothing ->
-              let fs = occNameFS (nameOccName name)
-              in FieldLabel fs False name
-            Just fs -> FieldLabel fs True name
-
-        checkAmbig :: Bool
-                   -> RdrName
-                   -> Name -- parent
-                   -> [GlobalRdrElt]
-                   -> RnM (Either Name [FieldLabel])
-        checkAmbig overload_ok rdr_name parent gres
-          -- Don't record ambiguous selector usage
-          | all isRecFldGRE
-                   gres && overload_ok
-                = return $
-                    Right [fldParentToFieldLabel (gre_name gre) mfs
-                            | gre <- gres
-                            , let FldParent _ mfs = gre_par gre ]
-          | Just gre <- disambigChildren rdr_name parent gres
-            = do
-                addUsedGRE True gre
-                return ((:[]) <$> checkFld gre)
-          | otherwise = do
-              addNameClashErrRn rdr_name gres
-              return (Left (gre_name (head gres)))
-
-        -- Return the single child with the matching parent
-        disambigChildren :: RdrName -> Name
-                            -> [GlobalRdrElt] -> Maybe GlobalRdrElt
-        disambigChildren rdr_name the_parent gres =
-          case picked_gres of
-            [] -> Nothing
-            [x] -> Just x
-            _  -> Nothing
-          where
-            picked_gres :: [GlobalRdrElt]
-            picked_gres
-              | isUnqual rdr_name = filter right_parent gres
-              | otherwise         = filter right_parent (pickGREs rdr_name gres)
-
-            right_parent (GRE { gre_par = p })
-              | ParentIs parent <- p               =
-                  parent == the_parent
-              | FldParent { par_is = parent } <- p =
-                  parent == the_parent
-              | otherwise                          = False
 
 {-
 Note [Family instance binders]
