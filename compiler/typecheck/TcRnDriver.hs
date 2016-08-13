@@ -81,7 +81,6 @@ import RnEnv
 import RnSource
 import ErrUtils
 import Id
-import IdInfo
 import VarEnv
 import Module
 import UniqDFM
@@ -96,7 +95,6 @@ import ListSetOps
 import Outputable
 import ConLike
 import DataCon
-import PatSyn
 import Type
 import Class
 import BasicTypes hiding( SuccessFlag(..) )
@@ -104,7 +102,6 @@ import CoAxiom
 import Annotations
 import Data.List ( sortBy )
 import Data.Ord
-import Data.Char
 import FastString
 import Maybes
 import Util
@@ -113,7 +110,6 @@ import Inst (tcGetInsts)
 import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
-import GHC.Exts (groupWith, sortWith)
 
 #include "HsVersions.h"
 
@@ -339,8 +335,7 @@ tcRnModuleTcRnM hsc_env hsc_src
 
                 -- Process the export list
         traceRn (text "rn4a: before exports");
-        (rn_exports, tcg_env) <- rnExports explicit_mod_hdr export_ies tcg_env ;
-        tcExports rn_exports ;
+        (_, tcg_env) <- rnExports explicit_mod_hdr export_ies tcg_env ;
         traceRn (text "rn4b: after exports") ;
 
                 -- Check that main is exported (must be after rnExports)

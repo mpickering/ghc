@@ -25,7 +25,6 @@ import DynFlags
 import HsSyn
 import TcEnv
 import RnEnv
-import RnHsDoc          ( rnHsDoc )
 import LoadIface        ( loadSrcInterface )
 import TcRnMonad
 import PrelNames
@@ -42,7 +41,6 @@ import Outputable
 import Maybes
 import SrcLoc
 import BasicTypes      ( TopLevelFlag(..), StringLiteral(..) )
-import ErrUtils
 import Util
 import FastString
 import FastStringEnv
@@ -53,7 +51,6 @@ import PatSyn
 import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
-import Data.Foldable (asum)
 import Data.Either      ( partitionEithers, isRight, rights )
 -- import qualified Data.Foldable as Foldable
 import Data.Map         ( Map )
