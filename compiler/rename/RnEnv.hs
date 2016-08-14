@@ -4,7 +4,7 @@
 \section[RnEnv]{Environment manipulation for the renamer monad}
 -}
 
-{-# LANGUAGE CPP, MultiWayIf, NamedFieldPuns #-}
+{-# LANGUAGE CPP, MultiWayIf #-}
 
 module RnEnv (
         newTopSrcBinder,
@@ -549,9 +549,6 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name
       | ParentIs parent <- p               = parent == the_parent
       | FldParent { par_is = parent } <- p = parent == the_parent
       | otherwise                          = False
-
-
-
 
 {-
 Note [Family instance binders]
