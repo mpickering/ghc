@@ -335,7 +335,7 @@ tcRnModuleTcRnM hsc_env hsc_src
 
                 -- Process the export list
         traceRn (text "rn4a: before exports");
-        (_, tcg_env) <- rnExports explicit_mod_hdr export_ies tcg_env ;
+        tcg_env <- tcRnExports explicit_mod_hdr export_ies tcg_env ;
         traceRn (text "rn4b: after exports") ;
 
                 -- Check that main is exported (must be after rnExports)

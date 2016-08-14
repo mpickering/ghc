@@ -1,6 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
-module TcRnExports (rnExports) where
+module TcRnExports (tcRnExports) where
 
 import HsSyn
 import PrelNames
@@ -105,16 +105,16 @@ type ExportOccMap = OccEnv (Name, IE RdrName)
         --   it came from.  It's illegal to export two distinct things
         --   that have the same occurrence name
 
-rnExports :: Bool       -- False => no 'module M(..) where' header at all
+tcRnExports :: Bool       -- False => no 'module M(..) where' header at all
           -> Maybe (Located [LIE RdrName]) -- Nothing => no explicit export list
           -> TcGblEnv
-          -> RnM (Maybe [LIE Name], TcGblEnv)
+          -> RnM TcGblEnv
 
         -- Complains if two distinct exports have same OccName
         -- Warns about identical exports.
         -- Complains about exports items not in scope
 
-rnExports explicit_mod exports
+tcRnExports explicit_mod exports
           tcg_env@TcGblEnv { tcg_mod     = this_mod,
                               tcg_rdr_env = rdr_env,
                               tcg_imports = imports }
@@ -153,7 +153,7 @@ rnExports explicit_mod exports
                             tcg_dus = tcg_dus tcg_env `plusDU`
                                       usesOnly final_ns }
         ; failIfErrsM
-        ; return (rn_exports, new_tcg_env) }
+        ; return new_tcg_env }
 
 exports_from_avail :: Maybe (Located [LIE RdrName])
                          -- Nothing => no explicit export list
@@ -333,6 +333,17 @@ exports_from_avail (Just (L _ rdr_items)) rdr_env imports this_mod
     addUsedKids :: RdrName -> [GlobalRdrElt] -> RnM ()
     addUsedKids parent_rdr kid_gres = addUsedGREs (pickGREs parent_rdr kid_gres)
 
+classifyGREs :: [GlobalRdrElt] -> ([Name], [FieldLabel])
+classifyGREs = partitionEithers . map classifyGRE
+
+classifyGRE :: GlobalRdrElt -> Either Name FieldLabel
+classifyGRE gre = case gre_par gre of
+  FldParent _ Nothing -> Right (FieldLabel (occNameFS (nameOccName n)) False n)
+  FldParent _ (Just lbl) -> Right (FieldLabel lbl True n)
+  _                      -> Left  n
+  where
+    n = gre_name gre
+
 isDoc :: IE RdrName -> Bool
 isDoc (IEDoc _)      = True
 isDoc (IEDocNamed _) = True
@@ -359,10 +370,6 @@ We also check for normal parent-child relationships here as well.
 ******************************************************************************
 -}
 
-addExportErrCtxt :: (HasOccName s, OutputableBndr s) => IE s -> TcM a -> TcM a
-addExportErrCtxt ie = addErrCtxt exportCtxt
-  where
-    exportCtxt = text "In the export:" <+> ppr ie
 
 
 -- Note: [Types of TyCon]
@@ -407,18 +414,209 @@ addExportErrCtxt ie = addErrCtxt exportCtxt
 -- actually prevent a library author completely confusing their users if
 -- they want to.
 
-exportErrCtxt :: Outputable o => String -> o -> SDoc
-exportErrCtxt herald exp =
-  text "In the" <+> text (herald ++ ":") <+> ppr exp
 
+-- This is a minefield. Three different things can appear in exports list.
+-- 1. Record selectors
+-- 2. Type constructors
+-- 3. Data constructors
+--
+-- However, things get put into weird name spaces.
+-- 1. Some type constructors are parsed as variables (-.->) for example.
+-- 2. All data constructors are parsed as type constructors
+-- 3. When there is ambiguity, we default type constructors to data
+-- constructors and require the explicit `type` keyword for type
+-- constructors.
+--
+-- How does the `type` keyword fit in with this? Confusingly, it does
+-- not disambiguate between data and type construtors. It is meant to be
+-- used to disambiguate variables and type constructors.
+--
+-- Further to this madness, duplicate record fields complicate
+-- things as we must find the FieldLabel rather than just the Name.
+--
+lookupChildrenExport :: Name -> [Located RdrName]
+                     -> RnM ([Located Name], [Located FieldLabel])
+lookupChildrenExport parent rdr_items =
+  do
+    xs <- mapAndReportM doOne rdr_items
+    return $ (fmap concat . partitionEithers) xs
+    where
+        -- Pick out the possible namespaces in order of priority
+        -- This is a consequence of how the parser parses all
+        -- data constructors as type constructors.
+        choosePossibleNamespaces :: NameSpace -> [NameSpace]
+        choosePossibleNamespaces ns
+          | ns == varName = [varName, tcName]
+          | ns == tcName  = [dataName, tcName]
+          | otherwise = [ns]
+        -- Process an individual child
+        doOne :: Located RdrName
+              -> RnM (Either (Located Name) [Located FieldLabel])
+        doOne n = do
+
+          let bareName = unLoc n
+              lkup v = lookupExportChild parent (setRdrNameSpace bareName v)
+
+          name <-  fmap mconcat . mapM lkup $
+                    (choosePossibleNamespaces (rdrNameSpace bareName))
+
+          -- Default to data constructors for slightly better error
+          -- messages
+          let unboundName :: RdrName
+              unboundName = if rdrNameSpace bareName == varName
+                                then bareName
+                                else setRdrNameSpace bareName dataName
+
+          case name of
+            NameNotFound -> Left . L (getLoc n) <$> reportUnboundName unboundName
+            FoundFLs fls -> return $ Right (map (L (getLoc n)) fls)
+            FoundName name -> return $ Left (L (getLoc n) name)
+            NameErr err_msg -> reportError err_msg >> failM
+
+
+
+
+-- Records the result of looking up a child.
+data ChildLookupResult
+      = NameNotFound                --  We couldn't find a suitable name
+      | NameErr ErrMsg              --  We found an unambiguous name
+                                    --  but there's another error
+                                    --  we should abort from
+      | FoundName Name              --  We resolved to a normal name
+      | FoundFLs [FieldLabel]       --  We resolved to a FL
+
+-- | Also captures the current context
+mkNameErr :: SDoc -> TcM ChildLookupResult
+mkNameErr errMsg = do
+  tcinit <- tcInitTidyEnv
+  NameErr <$> mkErrTcM (tcinit, errMsg)
+
+instance Outputable ChildLookupResult where
+  ppr NameNotFound = text "NameNotFound"
+  ppr (FoundName n) = text "Found:" <+> ppr n
+  ppr (FoundFLs fls) = text "FoundFLs:" <+> ppr fls
+  ppr (NameErr _) = text "Error"
+
+-- Left biased accumulation monoid. Chooses the left-most positive occurence.
+instance Monoid ChildLookupResult where
+  mempty = NameNotFound
+  NameNotFound `mappend` m2 = m2
+  NameErr m `mappend` _ = NameErr m -- Abort from the first error
+--  NameErr m1 `mappend` NameErr _  = NameErr m1 -- Choose the first name err
+--  NameErr _ `mappend` m2   = m2
+  FoundName n1 `mappend` _ = FoundName n1
+  FoundFLs fls `mappend` _ = FoundFLs fls
+
+-- | Used in export lists to lookup the children.
+lookupExportChild :: Name -> RdrName -> RnM ChildLookupResult
+lookupExportChild parent rdr_name
+  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
+  = FoundName  <$> lookupExactOcc n
+
+  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
+  = FoundName <$> lookupOrig rdr_mod rdr_occ
+
+  | isUnboundName parent
+    -- Avoid an error cascade from malformed decls:
+    --   instance Int where { foo = e }
+    -- We have already generated an error in rnLHsInstDecl
+  = return (FoundName (mkUnboundNameRdr rdr_name))
+
+  | otherwise = do
+  gre_env <- getGlobalRdrEnv
+  overload_ok <- xoptM LangExt.DuplicateRecordFields
+
+
+  case lookupGRE_RdrName rdr_name gre_env of
+    [] -> return NameNotFound
+    [x] -> do
+      addUsedGRE True x
+      case gre_par x of
+        FldParent p _
+          -> if (p == parent)
+              then return (checkFld x)
+              else mkNameErr (dcErrMsg parent "record selector" rdr_name [ppr p])
+        ParentIs  p
+          -> if (p == parent)
+               then return (checkFld x)
+               else mkNameErr (dcErrMsg parent "data constructor" rdr_name [ppr p])
+        _ -> checkParent parent (gre_name x)
+    xs  -> checkAmbig overload_ok rdr_name parent xs
+    where
+
+        -- Convert into FieldLabel if necessary
+        checkFld :: GlobalRdrElt -> ChildLookupResult
+        checkFld GRE{gre_name, gre_par} =
+          case gre_par of
+            FldParent _ mfs -> FoundFLs  [(fldParentToFieldLabel gre_name mfs)]
+            _ -> FoundName gre_name
+
+        fldParentToFieldLabel :: Name -> Maybe FastString -> FieldLabel
+        fldParentToFieldLabel name mfs =
+          case mfs of
+            Nothing ->
+              let fs = occNameFS (nameOccName name)
+              in FieldLabel fs False name
+            Just fs -> FieldLabel fs True name
+
+        -- Check whether the occurences of the names are disambiguated by
+        -- the parent type constructor. Duplicate pattern synonyms
+        -- in scope always fail this check.
+        checkAmbig :: Bool
+                   -> RdrName
+                   -> Name -- parent
+                   -> [GlobalRdrElt]
+                   -> RnM ChildLookupResult
+        checkAmbig overload_ok rdr_name parent gres
+          -- Don't record ambiguous selector usage
+          | all isRecFldGRE gres && overload_ok
+                = case picked_gres of
+                    [] -> mkNameErr (dcErrMsg parent "record selector" rdr_name [])
+
+                    _  ->
+                      return $
+                        FoundFLs [fldParentToFieldLabel (gre_name gre) mfs
+                                 | gre <- gres
+                                 , let FldParent _ mfs = gre_par gre ]
+          | Just gre <- disambigChildren
+            = do
+                addUsedGRE True gre
+                return (checkFld gre)
+          | otherwise = do
+              addNameClashErrRn rdr_name gres
+              return (FoundName (gre_name (head gres)))
+          where
+          -- Return the single child with the matching parent if it exists
+          disambigChildren :: Maybe GlobalRdrElt
+          disambigChildren =
+            case picked_gres of
+              [] -> Nothing
+              [x] -> Just x
+              _  -> Nothing
+
+          picked_gres :: [GlobalRdrElt]
+          picked_gres
+              | isUnqual rdr_name = filter right_parent gres
+              | otherwise         = filter right_parent (pickGREs rdr_name gres)
+
+            -- This only picks out record selectors and data constructors.
+            -- Crucially, pattern synonyms have no parents so are ignored
+            -- by this check and can't be disambiguated by the type
+            -- constructor.
+          right_parent (GRE { gre_par = p })
+            | ParentIs cur_parent <- p               =
+                  parent == cur_parent
+            | FldParent { par_is = cur_parent } <- p =
+                  parent == cur_parent
+            | otherwise                          = False
 
 -- | Given a resolved name in the children export list and a parent. Decide
 -- whether we are allowed to export the child with the parent.
--- INVARIANT: Only called with PaySyn things
+-- INVARIANT: Only called with PatSyn things
 checkParent    :: Name   -- ^ Type constructor
                -> Name   -- ^ A mixture of data constructors, pattern syonyms
                          -- , class methods and record selectors.
-               -> TcM LookupResult
+               -> TcM ChildLookupResult
 checkParent n ns = do
   ty_con <- tcLookupTyCon n
   things <- tcLookupGlobal ns
@@ -431,7 +629,7 @@ checkParent n ns = do
         | isId i               ->
         case idDetails i of
           RecSelId { sel_tycon = RecSelPatSyn p } -> handlePatSyn (selErr i, p)
-          _ -> panic "No handled"
+          _ -> mkNameErr (dcErrMsg n (tyThingCategory things) ns [])
       AConLike (PatSynCon p)    ->  handlePatSyn (psErr p, p)
       _ -> mkNameErr (dcErrMsg n (tyThingCategory things) ns [])
   where
@@ -447,7 +645,7 @@ checkParent n ns = do
                        -> TyCon       -- ^ Parent TyCon
                        -> (SDoc, PatSyn)   -- ^ Corresponding bundled PatSyn
                                            -- and pretty printed origin
-                       -> TcM LookupResult
+                       -> TcM ChildLookupResult
     tc_one_ps_export_with actual_res_ty ty_con (errCtxt, pat_syn)
       =
       if (not $ isTyConWithSrcDataCons ty_con)
@@ -471,15 +669,12 @@ checkParent n ns = do
               -- See note [Typing Pattern Synonym Exports]
               if (p_ty_con == ty_con)
                 then return (FoundName ns)
-                else failWithTc typeMismatchError
-                  --mkNameErr typeMismatchError
+                else mkNameErr typeMismatchError
 
 
 
 
 {-===========================================================================-}
-
-
 
 
 check_occs :: IE RdrName -> ExportOccMap -> [Name] -> RnM ExportOccMap
@@ -566,6 +761,15 @@ nullModuleExport mod
 dodgyExportWarn :: Name -> SDoc
 dodgyExportWarn item = dodgyMsg (text "export") item
 
+exportErrCtxt :: Outputable o => String -> o -> SDoc
+exportErrCtxt herald exp =
+  text "In the" <+> text (herald ++ ":") <+> ppr exp
+
+
+addExportErrCtxt :: (HasOccName s, OutputableBndr s) => IE s -> TcM a -> TcM a
+addExportErrCtxt ie = addErrCtxt exportCtxt
+  where
+    exportCtxt = text "In the export:" <+> ppr ie
 
 exportItemErr :: IE RdrName -> SDoc
 exportItemErr export_item
@@ -610,204 +814,3 @@ exportClashErr global_env name1 name2 ie1 ie2
     (name1', ie1', name2', ie2') = if get_loc name1 < get_loc name2
                                    then (name1, ie1, name2, ie2)
                                    else (name2, ie2, name1, ie1)
-
--- This is a minefield. Three different things can appear in exports list.
--- 1. Record selectors
--- 2. Type constructors
--- 3. Data constructors
---
--- However, things get put into weird name spaces.
--- 1. Some type constructors are parsed as variables (-.->) for example.
--- 2. All data constructors are parsed as type constructors
--- 3. When there is ambiguity, we default type constructors to data
--- constructors and require the explicit `type` keyword for type
--- constructors.
---
--- How does the `type` keyword fit in with this? Confusingly, it does
--- not disambiguate between data and type construtors. It is meant to be
--- used to disambiguate variables and type constructors.
---
--- Further to this madness, duplicate record fields complicate
--- things as we must find the FieldLabel rather than just the Name.
---
-lookupChildrenExport :: Name -> [Located RdrName]
-                     -> RnM ([Located Name], [Located FieldLabel])
-lookupChildrenExport parent rdr_items =
-  do
-    let
-        -- Pick out the possible namespaces in order of priority
-        choosePossibleNamespaces :: NameSpace -> [NameSpace]
-        choosePossibleNamespaces ns
-          | ns == varName = [varName, tcName]
-          | ns == tcName  = [dataName, tcName]
-          | otherwise = [ns]
-
-        doOne :: Located RdrName
-              -> RnM (Either (Located Name) [Located FieldLabel])
-        doOne n = do
-
-          let bareName = unLoc n
-              lkup v = lookupExportChild parent (setRdrNameSpace bareName v)
-
-          name <-  fmap mconcat . mapM lkup $
-                    (choosePossibleNamespaces (rdrNameSpace bareName))
-
-          -- Default to data constructors for slightly better error
-          -- messages
-          let unboundName :: RdrName
-              unboundName = if rdrNameSpace bareName == varName
-                                then bareName
-                                else setRdrNameSpace bareName dataName
-
-          case name of
-            NameNotFound -> Left . L (getLoc n) <$> reportUnboundName unboundName
-            FoundFLs fls -> return $ Right (map (L (getLoc n)) fls)
-            FoundName name -> return $ Left (L (getLoc n) name)
-            NameErr err_msg -> reportError err_msg >> failM
-
-    xs <- mapAndReportM doOne rdr_items
-
-    return $ (fmap concat . partitionEithers) xs
-
-
-
-data LookupResult = NameNotFound | FoundName Name | FoundFLs [FieldLabel]
-                  | NameErr ErrMsg
-
--- | Also captures the current context
-mkNameErr :: SDoc -> TcM LookupResult
-mkNameErr errMsg = do
-  tcinit <- tcInitTidyEnv
-  NameErr <$> mkErrTcM (tcinit, errMsg)
-
-instance Outputable LookupResult where
-  ppr NameNotFound = text "NameNotFound"
-  ppr (FoundName n) = text "Found:" <+> ppr n
-  ppr (FoundFLs fls) = text "FoundFLs:" <+> ppr fls
-  ppr (NameErr _) = text "Error"
-
--- Left biased accumulation monoid. Chooses the left-most positive occurence.
-instance Monoid LookupResult where
-  mempty = NameNotFound
-  NameNotFound `mappend` m2 = m2
-  NameErr m `mappend` NameNotFound = NameErr m
-  NameErr m1 `mappend` NameErr _  = NameErr m1 -- Choose the first name err
-  NameErr _ `mappend` m2   = m2
-  FoundName n1 `mappend` _ = FoundName n1
-  FoundFLs fls `mappend` _ = FoundFLs fls
-
--- | Used in export lists to lookup the children.
-lookupExportChild :: Name -> RdrName -> RnM LookupResult
-lookupExportChild parent rdr_name
-  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
-  = FoundName  <$> lookupExactOcc n
-
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = FoundName <$> lookupOrig rdr_mod rdr_occ
-
-  | isUnboundName parent
-    -- Avoid an error cascade from malformed decls:
-    --   instance Int where { foo = e }
-    -- We have already generated an error in rnLHsInstDecl
-  = return (FoundName (mkUnboundNameRdr rdr_name))
-
-  | otherwise = do
-  gre_env <- getGlobalRdrEnv
-  overload_ok <- xoptM LangExt.DuplicateRecordFields
-
-
-  case lookupGRE_RdrName rdr_name gre_env of
-    [] -> return NameNotFound
-    [x] -> do
-      addUsedGRE True x
-      case gre_par x of
-        FldParent p _
-          -> if (p == parent)
-              then return (checkFld x)
-              else mkNameErr (dcErrMsg parent "record selector" rdr_name [ppr p])
-        ParentIs  p
-          -> if (p == parent)
-               then return (checkFld x)
-               else mkNameErr (dcErrMsg parent "data constructor" rdr_name [ppr p])
-        _ -> checkParent parent (gre_name x)
-    xs  -> checkAmbig overload_ok rdr_name parent xs
-    where
-
-        -- Convert into FieldLabel if necessary
-        checkFld :: GlobalRdrElt -> LookupResult
-        checkFld GRE{gre_name, gre_par} =
-          case gre_par of
-            FldParent _ mfs -> FoundFLs  [(fldParentToFieldLabel gre_name mfs)]
-            _ -> FoundName gre_name
-
-        fldParentToFieldLabel :: Name -> Maybe FastString -> FieldLabel
-        fldParentToFieldLabel name mfs =
-          case mfs of
-            Nothing ->
-              let fs = occNameFS (nameOccName name)
-              in FieldLabel fs False name
-            Just fs -> FieldLabel fs True name
-
-        -- Check whether the occurences of the names are disambiguated by
-        -- the parent type constructor. Duplicate pattern synonyms
-        -- in scope always fail this check.
-        checkAmbig :: Bool
-                   -> RdrName
-                   -> Name -- parent
-                   -> [GlobalRdrElt]
-                   -> RnM LookupResult
-        checkAmbig overload_ok rdr_name parent gres
-          -- Don't record ambiguous selector usage
-          | all isRecFldGRE gres && overload_ok
-                = case picked_gres of
-                    [] -> mkNameErr (dcErrMsg parent "record selector" rdr_name [])
-
-
-                    _  ->
-                      return $
-                        FoundFLs [fldParentToFieldLabel (gre_name gre) mfs
-                                 | gre <- gres
-                                 , let FldParent _ mfs = gre_par gre ]
-          | Just gre <- disambigChildren
-            = do
-                addUsedGRE True gre
-                return (checkFld gre)
-          | otherwise = do
-              addNameClashErrRn rdr_name gres
-              return (FoundName (gre_name (head gres)))
-          where
-          -- Return the single child with the matching parent if it exists
-          disambigChildren :: Maybe GlobalRdrElt
-          disambigChildren =
-            case picked_gres of
-              [] -> Nothing
-              [x] -> Just x
-              _  -> Nothing
-
-          picked_gres :: [GlobalRdrElt]
-          picked_gres
-              | isUnqual rdr_name = filter right_parent gres
-              | otherwise         = filter right_parent (pickGREs rdr_name gres)
-
-            -- This only picks out record selectors and data constructors.
-            -- Crucially, pattern synonyms have no parents so are ignored
-            -- by this check and can't be disambiguated by the type
-            -- constructor.
-          right_parent (GRE { gre_par = p })
-            | ParentIs cur_parent <- p               =
-                  parent == cur_parent
-            | FldParent { par_is = cur_parent } <- p =
-                  parent == cur_parent
-            | otherwise                          = False
-
-
-classifyGREs :: [GlobalRdrElt] -> ([Name], [FieldLabel])
-classifyGREs = partitionEithers . map classifyGRE
-
-classifyGRE :: GlobalRdrElt -> Either Name FieldLabel
-classifyGRE gre = case gre_par gre of
-  FldParent _ Nothing -> Right (FieldLabel (occNameFS (nameOccName n)) False n)
-  FldParent _ (Just lbl) -> Right (FieldLabel lbl True n)
-  _                      -> Left  n
-  where
-    n = gre_name gre
