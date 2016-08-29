@@ -1,0 +1,12 @@
+# GHC Differentials
+
+This repository acts as a staging area for the version control history of
+Differentials submitted to GHC's [Phabricator
+instance](http://phabricator.haskell.org).
+
+It contains tags with names of the form,
+ * `phabricator/base/1234`: The base commit of revision 1234
+ * `phabricator/diff/1234`: The head commit of revision 1234
+
+Note that a "revision" is not a differential; rather, it is a specific version
+of a differential.
