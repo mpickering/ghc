@@ -85,6 +85,7 @@ import Data.Type.Equality
 import GHC.Word
 import GHC.Show
 import GHC.TypeLits( KnownNat, KnownSymbol, natVal', symbolVal' )
+import Data.Type.Equality
 import Unsafe.Coerce
 
 import GHC.Fingerprint.Type
@@ -167,6 +168,11 @@ on f g = \ x y -> g x `f` g y
 -- | @since 2.01
 instance Eq (TypeRep a) where
   (==) = (==) `on` typeRepFingerprint
+
+instance TestEquality TypeRep where
+  testEquality a b
+    | typeRepFingerprint a == typeRepFingerprint b = Just (unsafeCoerce# Refl)
+    | otherwise                                    = Nothing
 
 -- | @since 4.4.0.0
 instance Ord (TypeRep a) where
