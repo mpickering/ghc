@@ -338,14 +338,18 @@ typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
 instance Show (TypeRep (a :: k)) where
     showsPrec = showTypeable
 
+fpr _ = id
+--fpr rep = showString " (" . shows (typeRepFingerprint rep) . showString ")"
+
 showTypeable :: Int -> TypeRep (a :: k) -> ShowS
 showTypeable p rep
   | Just HRefl <- star `eqTypeRep` typeRepKind rep =
-    showTypeable' 9 rep
+    showParen True $
+    showTypeable' 1 rep . fpr (typeRepKind rep) . fpr rep
 
   | otherwise =
-    showParen (p > 9) $
-    showTypeable' 9 rep . showString " :: " . showTypeable' 8 (typeRepKind rep)
+    showParen (p > 1) $
+    showTypeable' 1 rep . showString " :: " . showParen True (showTypeable' 0 (typeRepKind rep) . fpr (typeRepKind rep)) . fpr rep
 
 showTypeable' :: Int -> TypeRep (a :: k) -> ShowS
 showTypeable' _ rep
@@ -356,10 +360,9 @@ showTypeable' _ rep
   | isTupleTyCon tc =
     showChar '(' . showArgs (showChar ',') tys . showChar ')'
   where (tc, tys) = splitApps rep
-showTypeable' p (TrTyCon _ tycon _) = showsPrec p tycon
---showTypeable' p (TRFun x r) =
---      showParen (p > 8) $
---      showsPrec 9 x . showString " -> " . showsPrec 8 r
+showTypeable' p (TrTyCon _ tycon _) =
+    showParen (p > 9) $
+    showsPrec p tycon
 showTypeable' p (TrApp _ (TrApp _ (TrTyCon _ tycon _) x) r)
   | isArrowTyCon tycon =
     showParen (p > 8) $
