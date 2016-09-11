@@ -383,7 +383,7 @@ delete                  =  deleteBy (==)
 
 -- | The 'deleteBy' function behaves like 'delete', but takes a
 -- user-supplied equality predicate.
-deleteBy                :: (a -> a -> Bool) -> a -> [a] -> [a]
+deleteBy                :: (a -> b -> Bool) -> a -> [b] -> [b]
 deleteBy _  _ []        = []
 deleteBy eq x (y:ys)    = if x `eq` y then ys else y : deleteBy eq x ys
 
@@ -726,7 +726,7 @@ unzip7          =  foldr (\(a,b,c,d,e,f,g) ~(as,bs,cs,ds,es,fs,gs) ->
 -- | The 'deleteFirstsBy' function takes a predicate and two lists and
 -- returns the first list with the first occurrence of each element of
 -- the second list removed.
-deleteFirstsBy          :: (a -> a -> Bool) -> [a] -> [a] -> [a]
+deleteFirstsBy          :: (a -> b -> Bool) -> [b] -> [a] -> [b]
 deleteFirstsBy eq       =  foldl (flip (deleteBy eq))
 
 -- | The 'group' function takes a list and returns a list of lists such
