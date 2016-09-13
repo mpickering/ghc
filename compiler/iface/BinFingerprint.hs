@@ -16,8 +16,14 @@ import Panic
 import Util
 
 fingerprintBinMem :: BinHandle -> IO Fingerprint
-fingerprintBinMem bh =
-  withBinBuffer bh (return . fingerprintByteString)
+fingerprintBinMem bh = withBinBuffer bh f
+  where
+    f bs =
+        -- we need to take care that we force the result here
+        -- lest a reference to the ByteString may leak out of
+        -- withBinBuffer.
+        let fp = fingerprintByteString bs
+        in fp `seq` return fp
 
 computeFingerprint :: (Binary a)
                    => (BinHandle -> Name -> IO ())

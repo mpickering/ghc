@@ -103,7 +103,10 @@ getUserData bh = bh_usr bh
 setUserData :: BinHandle -> UserData -> BinHandle
 setUserData bh us = bh { bh_usr = us }
 
--- | Get access to the underlying buffer
+-- | Get access to the underlying buffer.
+--
+-- It is quite important that no references to the 'ByteString' leak out of the
+-- continuation lest terrible things happen.
 withBinBuffer :: BinHandle -> (ByteString -> IO a) -> IO a
 withBinBuffer (BinMem _ ix_r _ arr_r) action = do
   arr <- readIORef arr_r
