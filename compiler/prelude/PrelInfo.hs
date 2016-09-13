@@ -9,8 +9,14 @@ module PrelInfo (
         -- * Known-key names
         isKnownKeyName,
         lookupKnownKeyName,
+
+        -- ** Internal use
+        -- | 'knownKeyNames' is exported to seed the original name cache only;
+        -- if you find yourself wanting to look at it you might consider using
+        -- 'lookupKnownKeyName' or 'isKnownKeyName'.
         knownKeyNames,
 
+        -- * Miscellaneous
         wiredInIds, ghcPrimIds,
         primOpRules, builtinRules,
 
