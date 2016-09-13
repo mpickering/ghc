@@ -140,7 +140,6 @@ import DynFlags
 import ErrUtils
 
 import Outputable
-import UniqFM
 import NameEnv
 import HscStats         ( ppSourceStats )
 import HscTypes
