@@ -33,6 +33,7 @@ import Util
 import Bag
 import MonadUtils
 import Control.Monad
+import Data.Maybe ( isJust )
 import Data.List  ( zip4, foldl' )
 import BasicTypes
 
@@ -695,6 +696,26 @@ zonk_eq_types = go
     go (TyVarTy tv1) (TyVarTy tv2) = tyvar_tyvar tv1 tv2
     go (TyVarTy tv1) ty2           = tyvar NotSwapped tv1 ty2
     go ty1 (TyVarTy tv2)           = tyvar IsSwapped  tv2 ty1
+
+    -- We handle FunTys explicitly here despite the fact that they could also be
+    -- treated as an application. Why? Well, for one it's cheaper to just look
+    -- at two types (the argument and result types) than four (the argument,
+    -- result, and their RuntimeReps). Also, we haven't completely zonked yet,
+    -- so we may run into an unzonked type variable while trying to compute the
+    -- RuntimeReps of the argument and result types. This can be observed in
+    -- testcase tc269.
+    go ty1 ty2
+      | Just (arg1, res1) <- split1
+      , Just (arg2, res2) <- split2
+      = do { res_a <- go arg1 arg2
+           ; res_b <- go res1 res2
+           ; return $ combine_rev mkFunTy res_b res_a
+           }
+      | isJust split1 || isJust split2
+      = bale_out ty1 ty2
+      where
+        split1 = tcSplitFunTy_maybe ty1
+        split2 = tcSplitFunTy_maybe ty2
 
     go ty1 ty2
       | Just (tc1, tys1) <- tcRepSplitTyConApp_maybe ty1
@@ -1830,7 +1851,7 @@ unifyWanted loc role orig_ty1 orig_ty2
     go (FunTy s1 t1) (FunTy s2 t2)
       = do { co_s <- unifyWanted loc role s1 s2
            ; co_t <- unifyWanted loc role t1 t2
-           ; return (mkTyConAppCo role funTyCon [co_s,co_t]) }
+           ; return (mkFunCo role co_s co_t) }
     go (TyConApp tc1 tys1) (TyConApp tc2 tys2)
       | tc1 == tc2, tys1 `equalLength` tys2
       , isInjectiveTyCon tc1 role -- don't look under newtypes at Rep equality
