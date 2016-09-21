@@ -1,5 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
 module TcRnExports (tcRnExports) where
 
 import HsSyn
@@ -30,9 +31,6 @@ import FastString
 import Maybes
 import qualified GHC.LanguageExtensions as LangExt
 import Util (capitalise)
-
-
-import IfaceEnv
 
 
 import Control.Monad
@@ -353,32 +351,190 @@ isDoc _ = False
 -- Renaming and typechecking of exports happens after everything else has
 -- been typechecked.
 
-{-
-******************************************************************************
-** Typechecking module exports
-When it comes to pattern synonyms, in the renamer we have no way to check that
-whether a pattern synonym should be allowed to be bundled or not so we allow
-them to be bundled with any type or class. Here we then check that
-
-1) Pattern synonyms are only bundled with types which are able to
-   have data constructors. Datatypes, newtypes and data families.
-2) Are the correct type, for example if P is a synonym
-   then if we export Foo(P) then P should be an instance of Foo.
-
-We also check for normal parent-child relationships here as well.
-
-******************************************************************************
--}
 
 
-
--- Note: [Types of TyCon]
+-- Renaming exports lists is a minefield. Five different things can appear in
+-- children export lists ( T(A, B, C) ).
+-- 1. Record selectors
+-- 2. Type constructors
+-- 3. Data constructors
+-- 4. Pattern Synonyms
+-- 5. Pattern Synonym Selectors
 --
--- This check appears to be overlly complicated, Richard asked why it
--- is not simply just `isAlgTyCon`. The answer for this is that
--- a classTyCon is also an `AlgTyCon` which we explicitly want to disallow.
--- (It is either a newtype or data depending on the number of methods)
+-- However, things get put into weird name spaces.
+-- 1. Some type constructors are parsed as variables (-.->) for example.
+-- 2. All data constructors are parsed as type constructors
+-- 3. When there is ambiguity, we default type constructors to data
+-- constructors and require the explicit `type` keyword for type
+-- constructors.
 --
+-- This function first establishes the possible namespaces that an
+-- identifier might be in (`choosePossibleNameSpaces`).
+--
+-- Then for each namespace in turn, tries to find the correct identifier
+-- there returning the first positive result or the first terminating
+-- error.
+--
+
+
+-- Records the result of looking up a child.
+data ChildLookupResult
+      = NameNotFound                --  We couldn't find a suitable name
+      | NameErr ErrMsg              --  We found an unambiguous name
+                                    --  but there's another error
+                                    --  we should abort from
+      | FoundName Name              --  We resolved to a normal name
+      | FoundFL FieldLabel       --  We resolved to a FL
+
+instance Outputable ChildLookupResult where
+  ppr NameNotFound = text "NameNotFound"
+  ppr (FoundName n) = text "Found:" <+> ppr n
+  ppr (FoundFL fls) = text "FoundFL:" <+> ppr fls
+  ppr (NameErr _) = text "Error"
+
+-- Left biased accumulation monoid. Chooses the left-most positive occurence.
+instance Monoid ChildLookupResult where
+  mempty = NameNotFound
+  NameNotFound `mappend` m2 = m2
+  NameErr m `mappend` _ = NameErr m -- Abort from the first error
+  FoundName n1 `mappend` _ = FoundName n1
+  FoundFL fls `mappend` _ = FoundFL fls
+
+lookupChildrenExport :: Name -> [Located RdrName]
+                     -> RnM ([Located Name], [Located FieldLabel])
+lookupChildrenExport parent rdr_items =
+  do
+    xs <- mapAndReportM doOne rdr_items
+    return $ partitionEithers xs
+    where
+        -- Pick out the possible namespaces in order of priority
+        -- This is a consequence of how the parser parses all
+        -- data constructors as type constructors.
+        choosePossibleNamespaces :: NameSpace -> [NameSpace]
+        choosePossibleNamespaces ns
+          | ns == varName = [varName, tcName]
+          | ns == tcName  = [dataName, tcName]
+          | otherwise = [ns]
+        -- Process an individual child
+        doOne :: Located RdrName
+              -> RnM (Either (Located Name) (Located FieldLabel))
+        doOne n = do
+
+          let bareName = unLoc n
+              lkup v = lookupExportChild parent (setRdrNameSpace bareName v)
+
+          name <-  fmap mconcat . mapM lkup $
+                    (choosePossibleNamespaces (rdrNameSpace bareName))
+
+          -- Default to data constructors for slightly better error
+          -- messages
+          let unboundName :: RdrName
+              unboundName = if rdrNameSpace bareName == varName
+                                then bareName
+                                else setRdrNameSpace bareName dataName
+
+          case name of
+            NameNotFound -> Left . L (getLoc n) <$> reportUnboundName unboundName
+            FoundFL fls -> return $ Right (L (getLoc n) fls)
+            FoundName name -> return $ Left (L (getLoc n) name)
+            NameErr err_msg -> reportError err_msg >> failM
+
+
+
+-- | Also captures the current context
+mkNameErr :: SDoc -> TcM ChildLookupResult
+mkNameErr errMsg = do
+  tcinit <- tcInitTidyEnv
+  NameErr <$> mkErrTcM (tcinit, errMsg)
+
+
+-- | Used in export lists to lookup the children.
+lookupExportChild :: Name -> RdrName -> RnM ChildLookupResult
+lookupExportChild parent rdr_name
+  | isUnboundName parent
+    -- Avoid an error cascade
+  = return (FoundName (mkUnboundNameRdr rdr_name))
+
+  | otherwise = do
+  gre_env <- getGlobalRdrEnv
+
+  let original_gres = lookupGRE_RdrName rdr_name gre_env
+  -- Disambiguate the lookup based on the parent information.
+  -- The remaining GREs are things that we *could* export here, note that
+  -- this includes things which have `NoParent`. Those are sorted in
+  -- `checkPatSynParent`.
+  case picked_gres original_gres of
+    [] -> noMatchingParentErr original_gres
+    [g] ->
+      case getParent g of
+        Nothing -> checkPatSynParent parent (gre_name g)
+        _ -> checkFld g
+    -- Ambiguous occurence
+    gres -> mkNameClashErr gres
+    where
+        -- Convert into FieldLabel if necessary
+        checkFld :: GlobalRdrElt -> RnM ChildLookupResult
+        checkFld g@GRE{gre_name, gre_par} = do
+          addUsedGRE True g
+          return $ case gre_par of
+            FldParent _ mfs ->  do
+              FoundFL  (fldParentToFieldLabel gre_name mfs)
+            _ -> FoundName gre_name
+
+        fldParentToFieldLabel :: Name -> Maybe FastString -> FieldLabel
+        fldParentToFieldLabel name mfs =
+          case mfs of
+            Nothing ->
+              let fs = occNameFS (nameOccName name)
+              in FieldLabel fs False name
+            Just fs -> FieldLabel fs True name
+
+        -- Called when we fine no matching GREs after disambiguation but
+        -- there are three situations where this happens.
+        -- 1. There were none to begin with.
+        -- 2. None of the matching ones were the parent but
+        --  a. They were from an overloaded record field so we can report
+        --     a better error
+        --  b. The original lookup was actually ambiguous.
+        --     For example, the case where overloading is off and two
+        --     record fields are in scope from different record
+        --     constructors, neither of which is the parent.
+        noMatchingParentErr :: [GlobalRdrElt] -> RnM ChildLookupResult
+        noMatchingParentErr original_gres = do
+          overload_ok <- xoptM LangExt.DuplicateRecordFields
+          case original_gres of
+            [] ->  return NameNotFound
+            [g] -> mkDcErrMsg parent (gre_name g) [p | Just p <- [getParent g]]
+            gss@(g:_:_) ->
+              if all isRecFldGRE gss && overload_ok
+                then mkNameErr (dcErrMsg parent "record selector"
+                                  (expectJust "noMatchingParentErr" (greLabel g))
+                                  [ppr p | x <- gss, Just p <- [getParent x]])
+                else mkNameClashErr gss
+
+        mkNameClashErr :: [GlobalRdrElt] -> RnM ChildLookupResult
+        mkNameClashErr gres = do
+          addNameClashErrRn rdr_name gres
+          return (FoundName (gre_name (head gres)))
+
+        getParent :: GlobalRdrElt -> Maybe Name
+        getParent (GRE { gre_par = p } ) =
+          case p of
+            ParentIs cur_parent -> Just cur_parent
+            FldParent { par_is = cur_parent } -> Just cur_parent
+            NoParent -> Nothing
+
+        picked_gres :: [GlobalRdrElt] -> [GlobalRdrElt]
+        picked_gres = filter right_parent
+
+        right_parent :: GlobalRdrElt -> Bool
+        right_parent p
+          | Just cur_parent <- getParent p
+            = parent == cur_parent
+          | otherwise
+            = True
+
+
 --
 -- Note: [Typing Pattern Synonym Exports]
 -- It proved quite a challenge to precisely specify which pattern synonyms
@@ -413,225 +569,52 @@ We also check for normal parent-child relationships here as well.
 -- pattern synonyms are defined with definite type constructors, but don't
 -- actually prevent a library author completely confusing their users if
 -- they want to.
-
-
--- This is a minefield. Three different things can appear in exports list.
--- 1. Record selectors
--- 2. Type constructors
--- 3. Data constructors
 --
--- However, things get put into weird name spaces.
--- 1. Some type constructors are parsed as variables (-.->) for example.
--- 2. All data constructors are parsed as type constructors
--- 3. When there is ambiguity, we default type constructors to data
--- constructors and require the explicit `type` keyword for type
--- constructors.
+-- So, we check for exactly four things
+-- 1. The name arises from a pattern synonym definition. (Either a pattern
+--    synonym constructor or a pattern synonym selector)
+-- 2. The pattern synonym is only bundled with a datatype or newtype.
+-- 3. Check that the head of the result type constructor is an actual type
+--    constructor and not a type variable. (See above example)
+-- 4. Is so, check that this type constructor is the same as the parent
+--    type constructor.
 --
--- How does the `type` keyword fit in with this? Confusingly, it does
--- not disambiguate between data and type construtors. It is meant to be
--- used to disambiguate variables and type constructors.
 --
--- Further to this madness, duplicate record fields complicate
--- things as we must find the FieldLabel rather than just the Name.
+-- Note: [Types of TyCon]
 --
-lookupChildrenExport :: Name -> [Located RdrName]
-                     -> RnM ([Located Name], [Located FieldLabel])
-lookupChildrenExport parent rdr_items =
-  do
-    xs <- mapAndReportM doOne rdr_items
-    return $ (fmap concat . partitionEithers) xs
-    where
-        -- Pick out the possible namespaces in order of priority
-        -- This is a consequence of how the parser parses all
-        -- data constructors as type constructors.
-        choosePossibleNamespaces :: NameSpace -> [NameSpace]
-        choosePossibleNamespaces ns
-          | ns == varName = [varName, tcName]
-          | ns == tcName  = [dataName, tcName]
-          | otherwise = [ns]
-        -- Process an individual child
-        doOne :: Located RdrName
-              -> RnM (Either (Located Name) [Located FieldLabel])
-        doOne n = do
-
-          let bareName = unLoc n
-              lkup v = lookupExportChild parent (setRdrNameSpace bareName v)
-
-          name <-  fmap mconcat . mapM lkup $
-                    (choosePossibleNamespaces (rdrNameSpace bareName))
-
-          -- Default to data constructors for slightly better error
-          -- messages
-          let unboundName :: RdrName
-              unboundName = if rdrNameSpace bareName == varName
-                                then bareName
-                                else setRdrNameSpace bareName dataName
-
-          case name of
-            NameNotFound -> Left . L (getLoc n) <$> reportUnboundName unboundName
-            FoundFLs fls -> return $ Right (map (L (getLoc n)) fls)
-            FoundName name -> return $ Left (L (getLoc n) name)
-            NameErr err_msg -> reportError err_msg >> failM
-
-
-
-
--- Records the result of looking up a child.
-data ChildLookupResult
-      = NameNotFound                --  We couldn't find a suitable name
-      | NameErr ErrMsg              --  We found an unambiguous name
-                                    --  but there's another error
-                                    --  we should abort from
-      | FoundName Name              --  We resolved to a normal name
-      | FoundFLs [FieldLabel]       --  We resolved to a FL
-
--- | Also captures the current context
-mkNameErr :: SDoc -> TcM ChildLookupResult
-mkNameErr errMsg = do
-  tcinit <- tcInitTidyEnv
-  NameErr <$> mkErrTcM (tcinit, errMsg)
-
-instance Outputable ChildLookupResult where
-  ppr NameNotFound = text "NameNotFound"
-  ppr (FoundName n) = text "Found:" <+> ppr n
-  ppr (FoundFLs fls) = text "FoundFLs:" <+> ppr fls
-  ppr (NameErr _) = text "Error"
-
--- Left biased accumulation monoid. Chooses the left-most positive occurence.
-instance Monoid ChildLookupResult where
-  mempty = NameNotFound
-  NameNotFound `mappend` m2 = m2
-  NameErr m `mappend` _ = NameErr m -- Abort from the first error
---  NameErr m1 `mappend` NameErr _  = NameErr m1 -- Choose the first name err
---  NameErr _ `mappend` m2   = m2
-  FoundName n1 `mappend` _ = FoundName n1
-  FoundFLs fls `mappend` _ = FoundFLs fls
-
--- | Used in export lists to lookup the children.
-lookupExportChild :: Name -> RdrName -> RnM ChildLookupResult
-lookupExportChild parent rdr_name
-  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
-  = FoundName  <$> lookupExactOcc n
-
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = FoundName <$> lookupOrig rdr_mod rdr_occ
-
-  | isUnboundName parent
-    -- Avoid an error cascade from malformed decls:
-    --   instance Int where { foo = e }
-    -- We have already generated an error in rnLHsInstDecl
-  = return (FoundName (mkUnboundNameRdr rdr_name))
-
-  | otherwise = do
-  gre_env <- getGlobalRdrEnv
-  overload_ok <- xoptM LangExt.DuplicateRecordFields
-
-
-  case lookupGRE_RdrName rdr_name gre_env of
-    [] -> return NameNotFound
-    [x] -> do
-      addUsedGRE True x
-      case gre_par x of
-        FldParent p _
-          -> if (p == parent)
-              then return (checkFld x)
-              else mkNameErr (dcErrMsg parent "record selector" rdr_name [ppr p])
-        ParentIs  p
-          -> if (p == parent)
-               then return (checkFld x)
-               else mkNameErr (dcErrMsg parent "data constructor" rdr_name [ppr p])
-        _ -> checkParent parent (gre_name x)
-    xs  -> checkAmbig overload_ok rdr_name parent xs
-    where
-
-        -- Convert into FieldLabel if necessary
-        checkFld :: GlobalRdrElt -> ChildLookupResult
-        checkFld GRE{gre_name, gre_par} =
-          case gre_par of
-            FldParent _ mfs -> FoundFLs  [(fldParentToFieldLabel gre_name mfs)]
-            _ -> FoundName gre_name
-
-        fldParentToFieldLabel :: Name -> Maybe FastString -> FieldLabel
-        fldParentToFieldLabel name mfs =
-          case mfs of
-            Nothing ->
-              let fs = occNameFS (nameOccName name)
-              in FieldLabel fs False name
-            Just fs -> FieldLabel fs True name
-
-        -- Check whether the occurences of the names are disambiguated by
-        -- the parent type constructor. Duplicate pattern synonyms
-        -- in scope always fail this check.
-        checkAmbig :: Bool
-                   -> RdrName
-                   -> Name -- parent
-                   -> [GlobalRdrElt]
-                   -> RnM ChildLookupResult
-        checkAmbig overload_ok rdr_name parent gres
-          -- Don't record ambiguous selector usage
-          | all isRecFldGRE gres && overload_ok
-                = case picked_gres of
-                    [] -> mkNameErr (dcErrMsg parent "record selector" rdr_name [])
-
-                    _  ->
-                      return $
-                        FoundFLs [fldParentToFieldLabel (gre_name gre) mfs
-                                 | gre <- gres
-                                 , let FldParent _ mfs = gre_par gre ]
-          | Just gre <- disambigChildren
-            = do
-                addUsedGRE True gre
-                return (checkFld gre)
-          | otherwise = do
-              addNameClashErrRn rdr_name gres
-              return (FoundName (gre_name (head gres)))
-          where
-          -- Return the single child with the matching parent if it exists
-          disambigChildren :: Maybe GlobalRdrElt
-          disambigChildren =
-            case picked_gres of
-              [] -> Nothing
-              [x] -> Just x
-              _  -> Nothing
-
-          picked_gres :: [GlobalRdrElt]
-          picked_gres
-              | isUnqual rdr_name = filter right_parent gres
-              | otherwise         = filter right_parent (pickGREs rdr_name gres)
-
-            -- This only picks out record selectors and data constructors.
-            -- Crucially, pattern synonyms have no parents so are ignored
-            -- by this check and can't be disambiguated by the type
-            -- constructor.
-          right_parent (GRE { gre_par = p })
-            | ParentIs cur_parent <- p               =
-                  parent == cur_parent
-            | FldParent { par_is = cur_parent } <- p =
-                  parent == cur_parent
-            | otherwise                          = False
+-- This check appears to be overlly complicated, Richard asked why it
+-- is not simply just `isAlgTyCon`. The answer for this is that
+-- a classTyCon is also an `AlgTyCon` which we explicitly want to disallow.
+-- (It is either a newtype or data depending on the number of methods)
+--
 
 -- | Given a resolved name in the children export list and a parent. Decide
 -- whether we are allowed to export the child with the parent.
--- INVARIANT: Only called with PatSyn things
-checkParent    :: Name   -- ^ Type constructor
-               -> Name   -- ^ A mixture of data constructors, pattern syonyms
-                         -- , class methods and record selectors.
+-- Invariant: gre_par == NoParent
+-- See note [Typing Pattern Synonym Exports]
+checkPatSynParent    :: Name   -- ^ Type constructor
+                     -> Name   -- ^ Either a
+                               --   a) Pattern Synonym Constructor
+                               --   b) A pattern synonym selector
                -> TcM ChildLookupResult
-checkParent n ns = do
-  ty_con <- tcLookupTyCon n
-  things <- tcLookupGlobal ns
-  let actual_res_ty =
-          mkTyConApp ty_con (mkTyVarTys (tyConTyVars ty_con))
+checkPatSynParent parent mpat_syn = do
+  parent_ty_con <- tcLookupTyCon parent
+  mpat_syn_thing <- tcLookupGlobal mpat_syn
+  let expected_res_ty =
+          mkTyConApp parent_ty_con (mkTyVarTys (tyConTyVars parent_ty_con))
 
-      handlePatSyn = tc_one_ps_export_with actual_res_ty ty_con
-  case things of
+      handlePatSyn errCtxt =
+        addErrCtxt errCtxt
+        . tc_one_ps_export_with expected_res_ty parent_ty_con
+  -- 1. Check that the Id was actually from a thing associated with patsyns
+  case mpat_syn_thing of
       AnId i
         | isId i               ->
         case idDetails i of
-          RecSelId { sel_tycon = RecSelPatSyn p } -> handlePatSyn (selErr i, p)
-          _ -> mkNameErr (dcErrMsg n (tyThingCategory things) ns [])
-      AConLike (PatSynCon p)    ->  handlePatSyn (psErr p, p)
-      _ -> mkNameErr (dcErrMsg n (tyThingCategory things) ns [])
+          RecSelId { sel_tycon = RecSelPatSyn p } -> handlePatSyn (selErr i) p
+          _ -> mkDcErrMsg parent mpat_syn []
+      AConLike (PatSynCon p)    ->  handlePatSyn (psErr p) p
+      _ -> mkDcErrMsg parent mpat_syn []
   where
 
     psErr = exportErrCtxt "pattern synonym"
@@ -643,33 +626,30 @@ checkParent n ns = do
 
     tc_one_ps_export_with :: TcTauType -- ^ TyCon type
                        -> TyCon       -- ^ Parent TyCon
-                       -> (SDoc, PatSyn)   -- ^ Corresponding bundled PatSyn
+                       -> PatSyn   -- ^ Corresponding bundled PatSyn
                                            -- and pretty printed origin
                        -> TcM ChildLookupResult
-    tc_one_ps_export_with actual_res_ty ty_con (errCtxt, pat_syn)
-      =
-      if (not $ isTyConWithSrcDataCons ty_con)
-        then mkNameErr assocClassErr
-        else do
-      let (_, _, _, _, _, res_ty) = patSynSig pat_syn
-          mtycon = tcSplitTyConApp_maybe res_ty
-          typeMismatchError :: SDoc
-          typeMismatchError =
-            text "Pattern synonyms can only be bundled with matching type constructors"
-                $$ text "Couldn't match expected type of"
-                <+> quotes (ppr actual_res_ty)
-                <+> text "with actual type of"
-                <+> quotes (ppr res_ty)
+    tc_one_ps_export_with expected_res_ty ty_con pat_syn
 
+      -- 2. See note [Types of TyCon]
+      | not $ isTyConWithSrcDataCons ty_con = mkNameErr assocClassErr
+      -- 3. Is the head a type variable?
+      | Nothing <- mtycon = return (FoundName mpat_syn)
+      -- 4. Ok. Check they are actually the same type constructor.
+      | Just p_ty_con <- mtycon, p_ty_con /= ty_con = mkNameErr typeMismatchError
+      -- 5. We passed!
+      | otherwise = return (FoundName mpat_syn)
 
-      addErrCtxt errCtxt $
-        case mtycon of
-            Nothing -> return (FoundName ns)
-            Just (p_ty_con, _) ->
-              -- See note [Typing Pattern Synonym Exports]
-              if (p_ty_con == ty_con)
-                then return (FoundName ns)
-                else mkNameErr typeMismatchError
+      where
+        (_, _, _, _, _, res_ty) = patSynSig pat_syn
+        mtycon = fst <$> tcSplitTyConApp_maybe res_ty
+        typeMismatchError :: SDoc
+        typeMismatchError =
+          text "Pattern synonyms can only be bundled with matching type constructors"
+              $$ text "Couldn't match expected type of"
+              <+> quotes (ppr expected_res_ty)
+              <+> text "with actual type of"
+              <+> quotes (ppr res_ty)
 
 
 
@@ -794,6 +774,17 @@ dcErrMsg ty_con what_is thing parents =
                       [] -> empty
                       [_] -> text "Parent:"
                       _  -> text "Parents:") <+> fsep (punctuate comma parents)
+
+mkDcErrMsg :: Name -> Name -> [Name] -> TcM ChildLookupResult
+mkDcErrMsg parent thing parents = do
+  ty_thing <- tcLookupGlobal thing
+  mkNameErr (dcErrMsg parent (tyThingCategory' ty_thing) thing (map ppr parents))
+  where
+    tyThingCategory' :: TyThing -> String
+    tyThingCategory' (AnId i)
+      | isRecordSelector i = "record selector"
+    tyThingCategory' i = tyThingCategory i
+
 
 exportClashErr :: GlobalRdrEnv -> Name -> Name -> IE RdrName -> IE RdrName
                -> MsgDoc
