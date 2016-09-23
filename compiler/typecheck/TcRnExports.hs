@@ -463,14 +463,16 @@ lookupExportChild parent rdr_name
   -- The remaining GREs are things that we *could* export here, note that
   -- this includes things which have `NoParent`. Those are sorted in
   -- `checkPatSynParent`.
+  traceRn (text "lookupExportChild original_gres:" <+> ppr original_gres)
   case picked_gres original_gres of
-    [] -> noMatchingParentErr original_gres
-    [g] ->
-      case getParent g of
-        Nothing -> checkPatSynParent parent (gre_name g)
-        _ -> checkFld g
-    -- Ambiguous occurence
-    gres -> mkNameClashErr gres
+    NoOccurence ->
+      noMatchingParentErr original_gres
+    UniqueOccurence g ->
+      checkPatSynParent parent (gre_name g)
+    DisambiguatedOccurence g ->
+      checkFld g
+    AmbiguousOccurence gres ->
+      mkNameClashErr gres
     where
         -- Convert into FieldLabel if necessary
         checkFld :: GlobalRdrElt -> RnM ChildLookupResult
@@ -524,15 +526,54 @@ lookupExportChild parent rdr_name
             FldParent { par_is = cur_parent } -> Just cur_parent
             NoParent -> Nothing
 
-        picked_gres :: [GlobalRdrElt] -> [GlobalRdrElt]
-        picked_gres = filter right_parent
+        picked_gres :: [GlobalRdrElt] -> DisambigInfo
+        picked_gres gres
+          | isUnqual rdr_name = mconcat (map right_parent gres)
+          | otherwise         = mconcat (map right_parent (pickGREs rdr_name gres))
 
-        right_parent :: GlobalRdrElt -> Bool
+
+        right_parent :: GlobalRdrElt -> DisambigInfo
         right_parent p
           | Just cur_parent <- getParent p
-            = parent == cur_parent
+            = if parent == cur_parent
+                then DisambiguatedOccurence p
+                else NoOccurence
           | otherwise
-            = True
+            = UniqueOccurence p
+
+-- This domain specific datatype is used to record why we decided it was
+-- possible that a GRE could be exported with a parent.
+data DisambigInfo
+       = NoOccurence
+          -- The GRE could never be exported. It has the wrong parent.
+       | UniqueOccurence GlobalRdrElt
+          -- The GRE has no parent. It could be a pattern synonym.
+       | DisambiguatedOccurence GlobalRdrElt
+          -- The parent of the GRE is the correct parent
+       | AmbiguousOccurence [GlobalRdrElt]
+          -- For example, two normal identifiers with the same name are in
+          -- scope. They will both be resolved to "UniqueOccurence" and the
+          -- monoid will combine them to this failing case.
+
+instance Monoid DisambigInfo where
+  mempty = NoOccurence
+  -- This is the key line: We prefer disambiguated occurences to other
+  -- names.
+  UniqueOccurence _ `mappend` DisambiguatedOccurence g' = DisambiguatedOccurence g'
+  DisambiguatedOccurence g' `mappend` UniqueOccurence _ = DisambiguatedOccurence g'
+
+
+  NoOccurence `mappend` m = m
+  m `mappend` NoOccurence = m
+  UniqueOccurence g `mappend` UniqueOccurence g' = AmbiguousOccurence [g, g']
+  UniqueOccurence g `mappend` AmbiguousOccurence gs = AmbiguousOccurence (g:gs)
+  DisambiguatedOccurence g `mappend` DisambiguatedOccurence g'  = AmbiguousOccurence [g, g']
+  DisambiguatedOccurence g `mappend` AmbiguousOccurence gs = AmbiguousOccurence (g:gs)
+  AmbiguousOccurence gs `mappend` UniqueOccurence g' = AmbiguousOccurence (g':gs)
+  AmbiguousOccurence gs `mappend` DisambiguatedOccurence g' = AmbiguousOccurence (g':gs)
+  AmbiguousOccurence gs `mappend` AmbiguousOccurence gs' = AmbiguousOccurence (gs ++ gs')
+
+
 
 
 --
