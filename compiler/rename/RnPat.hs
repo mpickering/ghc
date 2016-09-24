@@ -293,9 +293,16 @@ rnPats ctxt pats thing_inside
           --    check incrementally for duplicates;
           -- Nor can we check incrementally for shadowing, else we'll
           --    complain *twice* about duplicates e.g. f (x,x) = ...
-        ; addErrCtxt doc_pat $
-          checkDupAndShadowedNames envs_before $
-          collectPatsBinders pats'
+        ; traceRn (text "rnPats" <+> ppr envs_before)
+        -- Don't check for shadowing if we are renaming the RHS of
+        -- a pattern synonym declaration as we are introducing no new
+        -- binders. See #12615
+        ; case ctxt of
+            PatSyn -> return ()
+            _ ->
+              addErrCtxt doc_pat $
+              checkDupAndShadowedNames envs_before $
+              collectPatsBinders pats'
         ; thing_inside pats' } }
   where
     doc_pat = text "In" <+> pprMatchContext ctxt
