@@ -34,9 +34,7 @@ endif
 
 # TEST_HC_OPTS is passed to every invocation of TEST_HC 
 # in nested Makefiles
-TEST_HC_OPTS = -dcore-lint -dcmm-lint -dno-debug-output -no-user-$(GhcPackageDbFlag) -rtsopts $(EXTRA_HC_OPTS)
-
-TEST_HC_OPTS_INTERACTIVE = $(TEST_HC_OPTS) --interactive -v0 -ignore-dot-ghci -fno-ghci-history
+TEST_HC_OPTS = -dcore-lint -dcmm-lint -no-user-$(GhcPackageDbFlag) -rtsopts $(EXTRA_HC_OPTS)
 
 ifeq "$(MinGhcVersion711)" "YES"
 # Don't warn about missing specialisations. They can only occur with `-O`, but
@@ -44,6 +42,13 @@ ifeq "$(MinGhcVersion711)" "YES"
 TEST_HC_OPTS += -fno-warn-missed-specialisations
 TEST_HC_OPTS += -fshow-warning-groups 
 endif
+
+# Add the no-debug-output last as it is often convenient to copy the test invocation
+# removing this line.
+TEST_HC_OPTS += -dno-debug-output
+
+TEST_HC_OPTS_INTERACTIVE = $(TEST_HC_OPTS) --interactive -v0 -ignore-dot-ghci -fno-ghci-history
+
 
 RUNTEST_OPTS =
 
