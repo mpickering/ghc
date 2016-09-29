@@ -334,6 +334,18 @@ coreToStgExpr expr@(App _ _)
   where
     (f, args, ticks) = myCollectArgs expr
 
+coreToStgExpr e@(ConApp dc args)
+  = do (args', args_fvs, ticks') <- coreToStgArgs args
+       let res_ty = exprType e
+       let app = StgConApp dc args' (dropRuntimeRepArgs (fromMaybe [] (tyConAppArgs_maybe res_ty)))
+       let tapp = foldr StgTick app ticks'
+       let vars = getFVSet args_fvs
+       app `seq` args_fvs `seq` seqVarSet vars `seq` return (
+           tapp,
+           args_fvs,
+           vars
+        )
+
 coreToStgExpr expr@(Lam _ _)
   = let
         (args, body) = myCollectBinders expr

@@ -336,7 +336,11 @@ lvlExpr env expr@(_, AnnApp _ _) = do
       _otherwise -> do
          args' <- mapM (lvlMFE False env) args
          fun'  <- lvlExpr env fun
-         return (foldl App fun' args')
+         return (mkApps fun' args')
+
+lvlExpr env (_, AnnConApp dc args) = do
+    args' <- mapM (lvlMFE False env) args
+    return (ConApp dc args')
 
 -- We don't split adjacent lambdas.  That is, given
 --      \x y -> (x+1,y)

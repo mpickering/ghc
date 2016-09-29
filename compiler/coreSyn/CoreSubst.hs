@@ -377,34 +377,37 @@ subst_expr :: SDoc -> Subst -> CoreExpr -> CoreExpr
 subst_expr doc subst expr
   = go expr
   where
-    go (Var v)         = lookupIdSubst (doc $$ text "subst_expr") subst v
-    go (Type ty)       = Type (substTy subst ty)
-    go (Coercion co)   = Coercion (substCo subst co)
-    go (Lit lit)       = Lit lit
-    go (App fun arg)   = App (go fun) (go arg)
+    go (Var v)          = lookupIdSubst (doc $$ text "subst_expr") subst v
+    go (Type ty)        = Type (substTy subst ty)
+    go (Coercion co)    = Coercion (substCo subst co)
+    go (Lit lit)        = Lit lit
+    go (App fun arg)    = App (go fun) (go arg)
+    go (ConApp dc args) = ConApp dc (map go args)
     go (Tick tickish e) = mkTick (substTickish subst tickish) (go e)
-    go (Cast e co)     = Cast (go e) (substCo subst co)
+    go (Cast e co)      = Cast (go e) (substCo subst co)
        -- Do not optimise even identity coercions
        -- Reason: substitution applies to the LHS of RULES, and
        --         if you "optimise" an identity coercion, you may
        --         lose a binder. We optimise the LHS of rules at
        --         construction time
 
-    go (Lam bndr body) = Lam bndr' (subst_expr doc subst' body)
-                       where
-                         (subst', bndr') = substBndr subst bndr
+    go (Lam bndr body)  = Lam bndr' (subst_expr doc subst' body)
+      where
+       (subst', bndr') = substBndr subst bndr
 
-    go (Let bind body) = Let bind' (subst_expr doc subst' body)
-                       where
-                         (subst', bind') = substBind subst bind
+    go (Let bind body)  = Let bind' (subst_expr doc subst' body)
+      where
+       (subst', bind') = substBind subst bind
 
-    go (Case scrut bndr ty alts) = Case (go scrut) bndr' (substTy subst ty) (map (go_alt subst') alts)
-                                 where
-                                 (subst', bndr') = substBndr subst bndr
+    go (Case scrut bndr ty alts)
+        = Case (go scrut) bndr' (substTy subst ty) (map (go_alt subst') alts)
+      where
+        (subst', bndr') = substBndr subst bndr
 
-    go_alt subst (con, bndrs, rhs) = (con, bndrs', subst_expr doc subst' rhs)
-                                 where
-                                   (subst', bndrs') = substBndrs subst bndrs
+    go_alt subst (con, bndrs, rhs)
+        = (con, bndrs', subst_expr doc subst' rhs)
+      where
+        (subst', bndrs') = substBndrs subst bndrs
 
 -- | Apply a substitution to an entire 'CoreBind', additionally returning an updated 'Subst'
 -- that should be used by subsequent substitutions.
@@ -926,6 +929,7 @@ simple_opt_expr subst expr
 
     go (Var v)          = lookupIdSubst (text "simpleOptExpr") subst v
     go (App e1 e2)      = simple_app subst e1 [go e2]
+    go (ConApp dc args) = ConApp dc (map go args)
     go (Type ty)        = Type     (substTy subst ty)
     go (Coercion co)    = Coercion (optCoercion (getTCvSubst subst) co)
     go (Lit lit)        = Lit lit
@@ -1222,6 +1226,8 @@ exprIsConApp_maybe (in_scope, id_unf) expr
        | not (tickishIsCode t) = go subst expr cont
     go subst (Cast expr co1) (CC [] co2)
        = go subst expr (CC [] (subst_co subst co1 `mkTransCo` co2))
+    go subst (ConApp dc args) (CC [] co)
+       = dealWithCoercion co dc (map (subst_arg subst) args)
     go subst (App fun arg) (CC args co)
        = go subst fun (CC (subst_arg subst arg : args) co)
     go subst (Lam var body) (CC (arg:args) co)

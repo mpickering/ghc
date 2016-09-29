@@ -761,6 +761,17 @@ match renv subst (App f1 a1) (App f2 a2)
   = do  { subst' <- match renv subst f1 f2
         ; match renv subst' a1 a2 }
 
+match renv subst (ConApp dc1 args1) (ConApp dc2 args2)
+  | dc1 == dc2
+  = go subst args1 args2
+  where
+    go subst [] [] = Just subst
+    go subst (a1:args1) (a2:args2)
+      = do { subst' <- match renv subst a1 a2
+           ; go subst' args1 args2
+           }
+    go _ _ _ = Nothing -- should not happen
+
 match renv subst (Lam x1 e1) e2
   | Just (x2, e2, ts) <- exprIsLambda_maybe (rvInScopeEnv renv) e2
   = let renv' = renv { rv_lcl = rnBndr2 (rv_lcl renv) x1 x2
@@ -1152,6 +1163,8 @@ ruleCheck _   (Lit _)       = emptyBag
 ruleCheck _   (Type _)      = emptyBag
 ruleCheck _   (Coercion _)  = emptyBag
 ruleCheck env (App f a)     = ruleCheckApp env (App f a) []
+ruleCheck env (ConApp _ args) = unionManyBags (map (ruleCheck env) args)
+    -- ^ TODO #12618 check dc?
 ruleCheck env (Tick _ e)  = ruleCheck env e
 ruleCheck env (Cast e _)    = ruleCheck env e
 ruleCheck env (Let bd e)    = ruleCheckBind env bd `unionBags` ruleCheck env e

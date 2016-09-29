@@ -630,6 +630,7 @@ interestingArg env e = go env 0 e
     go _   _ (Coercion _)      = TrivArg
     go env n (App fn (Type _)) = go env n fn
     go env n (App fn _)        = go env (n+1) fn
+    go _   _ (ConApp _ _)      = ValueArg
     go env n (Tick _ a)        = go env n a
     go env n (Cast e _)        = go env n e
     go env n (Lam v e)

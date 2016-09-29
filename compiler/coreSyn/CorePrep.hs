@@ -517,6 +517,7 @@ cpeRhsE env (Lit (LitInteger i _))
 cpeRhsE _env expr@(Lit {}) = return (emptyFloats, expr)
 cpeRhsE env expr@(Var {})  = cpeApp env expr
 cpeRhsE env expr@(App {}) = cpeApp env expr
+cpeRhsE env (ConApp dc args) = cpeConApp env dc args
 
 cpeRhsE env (Let bind expr)
   = do { (env', new_binds) <- cpeBind NotTopLevel env bind
@@ -803,6 +804,28 @@ cpeApp top_env expr
       CpeTick tickish ->
         -- See [Floating Ticks in CorePrep]
         rebuild_app as fun' fun_ty (addFloat floats (FloatTick tickish)) ss
+
+
+cpeConApp :: CorePrepEnv -> DataCon -> [CoreExpr] -> UniqSM (Floats, CpeRhs)
+cpeConApp top_env dc all_args
+  = go (dataConRepType dc) [] all_args
+  where
+    go _ cpe_args []
+        = return (emptyFloats, ConApp dc (reverse cpe_args))
+
+    go fun_ty cpe_args (Type arg:args)
+        = go (piResultTy fun_ty arg) (Type arg:cpe_args) args
+
+    go fun_ty cpe_args (Coercion arg:args)
+        = go (funResultTy fun_ty) (Coercion arg:cpe_args) args
+
+    go fun_ty cpe_args (arg:args)
+        = do (fs, arg') <- cpeArg top_env topDmd arg arg_ty
+             (floats, app) <- go res_ty (arg':cpe_args) args
+             return (fs `appendFloats` floats, app)
+      where
+        (arg_ty, res_ty) =
+            expectJust "cpeConApp:go" $ splitFunTy_maybe fun_ty
 
 isLazyExpr :: CoreExpr -> Bool
 -- See Note [lazyId magic] in MkId

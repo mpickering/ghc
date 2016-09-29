@@ -1182,6 +1182,10 @@ scExpr' env (Cast e co)  = do (usg, e') <- scExpr env e
                               -- Important to use mkCast here
                               -- See Note [SpecConstr call patterns]
 scExpr' env e@(App _ _)  = scApp env (collectArgs e)
+scExpr' env (ConApp dc args) = -- TODO #12618: Can a datacon be in scSubstId?
+    do  { (arg_usgs, args') <- unzip <$> mapM (scExpr env) args
+        ; return (combineUsages arg_usgs, ConApp dc args')
+        }
 scExpr' env (Lam b e)    = do let (env', b') = extendBndr env b
                               (usg, e') <- scExpr env' e
                               return (usg, Lam b' e')

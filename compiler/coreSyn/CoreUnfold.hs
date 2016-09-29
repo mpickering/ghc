@@ -496,6 +496,11 @@ sizeExpr dflags bOMB_OUT_SIZE top_args expr
       | isTyCoArg arg = size_up fun
       | otherwise     = size_up arg  `addSizeNSD`
                         size_up_app fun [arg] (if isRealWorldExpr arg then 1 else 0)
+    size_up (ConApp dc args)
+        = foldr (addSizeNSD . size_up)
+                (conSize dc (length val_args))
+                val_args
+      where val_args = filter (not . isTyCoArg) args
 
     size_up (Lam b e)
       | isId b && not (isRealWorldId b) = lamScrutDiscount dflags (size_up e `addSizeN` 10)

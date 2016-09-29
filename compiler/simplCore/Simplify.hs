@@ -472,6 +472,11 @@ prepareRhs top_lvl env0 id rhs0
     go n_val_args env (Cast rhs co)
         = do { (is_exp, env', rhs') <- go n_val_args env rhs
              ; return (is_exp, env', Cast rhs' co) }
+    go n_val_args env (ConApp dc args)
+        = ASSERT( n_val_args == 0 )
+          do { (env', args') <- makeTrivials top_lvl env (getOccFS id) args
+             ; return (True, env', ConApp dc args')
+             }
     go n_val_args env (App fun (Type ty))
         = do { (is_exp, env', rhs') <- go n_val_args env fun
              ; return (is_exp, env', App rhs' (Type ty)) }
@@ -563,6 +568,15 @@ makeTrivialArg env (ValArg e) = do
     { (env', e') <- makeTrivial NotTopLevel env (fsLit "arg") e
     ; return (env', ValArg e') }
 makeTrivialArg env arg        = return (env, arg)  -- CastBy, TyArg
+
+makeTrivials :: TopLevelFlag -> SimplEnv
+            -> FastString  -- ^ a "friendly name" to build the new binder from
+            -> [OutExpr] -> SimplM (SimplEnv, [OutExpr])
+makeTrivials _       env _       [] = return (env, [])
+makeTrivials top_lvl env context (e:es) = do
+    (env', e')   <- makeTrivial top_lvl env context e
+    (env'', es') <- makeTrivials top_lvl env' context es
+    return (env'', e':es')
 
 makeTrivial :: TopLevelFlag -> SimplEnv
             -> FastString  -- ^ a "friendly name" to build the new binder from
@@ -884,6 +898,10 @@ simplExprF1 env (App fun arg) cont
                             , sc_cont    = cont }
       _       -> ApplyToVal { sc_arg = arg, sc_env = env
                             , sc_dup = NoDup, sc_cont = cont }
+
+simplExprF1 env (ConApp dc args) cont -- TODO #12618 is that all there is to do here?
+  = do args' <- mapM (simplExpr env) args
+       rebuild env (ConApp dc args') cont
 
 simplExprF1 env expr@(Lam {}) cont
   = simplLam env zapped_bndrs body cont

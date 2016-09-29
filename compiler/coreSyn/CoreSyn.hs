@@ -66,7 +66,7 @@ module CoreSyn (
         AnnExpr, AnnExpr'(..), AnnBind(..), AnnAlt,
 
         -- ** Operations on annotated expressions
-        collectAnnArgs, collectAnnArgsTicks,
+        isAnnTypeArg, collectAnnArgs, collectAnnArgsTicks,
 
         -- ** Operations on annotations
         deAnnotate, deAnnotate', deAnnAlt, collectAnnBndrs,
@@ -259,6 +259,7 @@ data Expr b
   = Var   Id
   | Lit   Literal
   | App   (Expr b) (Arg b)
+  | ConApp DataCon [Arg b]
   | Lam   b (Expr b)
   | Let   (Bind b) (Expr b)
   | Case  (Expr b) b Type [Alt b]       -- See #case_invariant#
@@ -1442,6 +1443,7 @@ deTagExpr (Lit l)                   = Lit l
 deTagExpr (Type ty)                 = Type ty
 deTagExpr (Coercion co)             = Coercion co
 deTagExpr (App e1 e2)               = App (deTagExpr e1) (deTagExpr e2)
+deTagExpr (ConApp dc es)            = ConApp dc (map deTagExpr es)
 deTagExpr (Lam (TB b _) e)          = Lam b (deTagExpr e)
 deTagExpr (Let bind body)           = Let (deTagBind bind) (deTagExpr body)
 deTagExpr (Case e (TB b _) ty alts) = Case (deTagExpr e) b ty (map deTagAlt alts)
@@ -1759,6 +1761,7 @@ data AnnExpr' bndr annot
   | AnnLit      Literal
   | AnnLam      bndr (AnnExpr bndr annot)
   | AnnApp      (AnnExpr bndr annot) (AnnExpr bndr annot)
+  | AnnConApp   DataCon [AnnExpr bndr annot]
   | AnnCase     (AnnExpr bndr annot) bndr Type [AnnAlt bndr annot]
   | AnnLet      (AnnBind bndr annot) (AnnExpr bndr annot)
   | AnnCast     (AnnExpr bndr annot) (annot, Coercion)
@@ -1794,6 +1797,11 @@ collectAnnArgsTicks tickishOk expr
                               = go e as (t:ts)
     go e                as ts = (e, as, reverse ts)
 
+
+isAnnTypeArg :: AnnExpr b ann -> Bool
+isAnnTypeArg (_, AnnType _) = True
+isAnnTypeArg _              = False
+
 deAnnotate :: AnnExpr bndr annot -> Expr bndr
 deAnnotate (_, e) = deAnnotate' e
 
@@ -1804,6 +1812,7 @@ deAnnotate' (AnnVar  v)           = Var v
 deAnnotate' (AnnLit  lit)         = Lit lit
 deAnnotate' (AnnLam  binder body) = Lam binder (deAnnotate body)
 deAnnotate' (AnnApp  fun arg)     = App (deAnnotate fun) (deAnnotate arg)
+deAnnotate' (AnnConApp dc args)   = ConApp dc (map deAnnotate args)
 deAnnotate' (AnnCast e (_,co))    = Cast (deAnnotate e) co
 deAnnotate' (AnnTick tick body)   = Tick tick (deAnnotate body)
 
