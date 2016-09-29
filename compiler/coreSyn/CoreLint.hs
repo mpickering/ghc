@@ -684,6 +684,7 @@ lintCoreExpr e@(App _ _)
     = do lf <- getLintFlags
          -- Check for a nested occurrence of the StaticPtr constructor.
          -- See Note [Checking StaticPtrs].
+         -- TODO #12618 remove here eventually
          case fun of
            Var b | lf_check_static_ptrs lf
                  , Just con <- isDataConId_maybe b
@@ -697,6 +698,18 @@ lintCoreExpr e@(App _ _)
             ; addLoc (AnExpr e) $ foldM lintCoreArg fun_ty args }
 
     (fun, args) = collectArgs e
+
+lintCoreExpr e@(ConApp dc args)
+    = do lf <- getLintFlags
+         -- Check for a nested occurrence of the StaticPtr constructor.
+         -- See Note [Checking StaticPtrs].
+         when (lf_check_static_ptrs lf && dataConName dc == staticPtrDataConName) $
+            failWithL $ text "Found StaticPtr nested in an expression: " <+>
+                        ppr e
+         when (length args /= dataConRepFullArity dc) $
+            failWithL $ hang (text "Un-saturated data con application") 2 (ppr e)
+         let dc_ty = dataConRepType dc
+         addLoc (AnExpr e) $ foldM lintCoreArg dc_ty args
 
 lintCoreExpr (Lam var expr)
   = addLoc (LambdaBodyOf var) $

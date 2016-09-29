@@ -1103,6 +1103,9 @@ tcIfaceExpr (IfaceLam (bndr, os) body)
 tcIfaceExpr (IfaceApp fun arg)
   = App <$> tcIfaceExpr fun <*> tcIfaceExpr arg
 
+tcIfaceExpr (IfaceConApp dcn arg)
+  = ConApp <$> tcIfaceDataCon dcn <*> mapM tcIfaceExpr arg
+
 tcIfaceExpr (IfaceECase scrut ty)
   = do { scrut' <- tcIfaceExpr scrut
        ; ty' <- tcIfaceType ty
