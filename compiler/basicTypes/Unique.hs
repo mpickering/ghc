@@ -48,6 +48,7 @@ module Unique (
         mkPreludeMiscIdUnique, mkPreludeDataConUnique,
         mkPreludeTyConUnique, mkPreludeClassUnique,
         mkPArrDataConUnique, mkCoVarUnique,
+        mkCoreConAppUnique,
 
         mkVarOccUnique, mkDataOccUnique, mkTvOccUnique, mkTcOccUnique,
         mkRegSingleUnique, mkRegPairUnique, mkRegClassUnique, mkRegSubUnique,
@@ -322,6 +323,8 @@ Allocation of unique supply characters:
         n       Native codegen
         r       Hsc name cache
         s       simplifier
+        c       typechecker
+        a       binders for case expressions in mkCoreConApp (desugarer)
 -}
 
 mkAlphaTyVarUnique     :: Int -> Unique
@@ -335,10 +338,12 @@ mkPrimOpIdUnique       :: Int -> Unique
 mkPreludeMiscIdUnique  :: Int -> Unique
 mkPArrDataConUnique    :: Int -> Unique
 mkCoVarUnique          :: Int -> Unique
+mkCoreConAppUnique     :: Int -> Unique
 
 mkAlphaTyVarUnique   i = mkUnique '1' i
 mkCoVarUnique        i = mkUnique 'g' i
 mkPreludeClassUnique i = mkUnique '2' i
+mkCoreConAppUnique   i = mkUnique 'a' i
 
 --------------------------------------------------
 -- Wired-in type constructor keys occupy *two* slots:

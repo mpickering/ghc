@@ -67,7 +67,7 @@ import TcType           ( mkSpecSigmaTy )
 import Type
 import Coercion         ( isCoVar )
 import TysPrim
-import DataCon          ( DataCon, dataConWorkId )
+import DataCon          ( DataCon, dataConRepFullArity, dataConWorkId )
 import IdInfo           ( vanillaIdInfo, setStrictnessInfo,
                           setArityInfo )
 import Demand
@@ -150,7 +150,18 @@ mkCoreApps orig_fun orig_args
 -- expressions to that of a data constructor expression. The leftmost expression
 -- in the list is applied first
 mkCoreConApps :: DataCon -> [CoreExpr] -> CoreExpr
-mkCoreConApps con args = mkCoreApps (Var (dataConWorkId con)) args
+mkCoreConApps con args
+    | length args >= dataConRepFullArity con
+    = let sat_app = mk_val_apps 0 res_ty (ConApp con) con_args
+      in  mkCoreApps sat_app extra_args
+  where
+    -- TODO #12618: Can there ever be more than dataConRepArity con arguments
+    -- in a type-safe program?
+    (con_args, extra_args) = splitAt (dataConRepFullArity con) args
+    res_ty = exprType (ConApp con args)
+mkCoreConApps con args
+    -- Unsaturated application. TODO #12618 Use wrapper.
+    = mkCoreApps (Var (dataConWorkId con)) args
 
 mk_val_app :: CoreExpr -> CoreExpr -> Type -> Type -> CoreExpr
 -- Build an application (e1 e2),
@@ -173,6 +184,26 @@ mk_val_app fun arg arg_ty res_ty
         -- have a free wild-id.  So the only thing that can go wrong
         -- is if you take apart this case expression, and pass a
         -- fragmet of it as the fun part of a 'mk_val_app'.
+
+mk_val_apps :: Int -> Type -> ([CoreExpr] -> CoreExpr) -> [CoreExpr] -> CoreExpr
+-- In the given list of expression, pick those that need a strict binding
+-- to ensure the let/app invariant, and wrap them accorindgly
+--   See Note [CoreSyn let/app invariant]
+mk_val_apps _ _ cont [] = cont []
+mk_val_apps n res_ty cont (Type ty:args)
+  = mk_val_apps n res_ty (cont . (Type ty:)) args
+mk_val_apps n res_ty cont (arg:args)
+  | not (needsCaseBinding arg_ty arg)
+  = mk_val_apps n res_ty (cont . (arg:)) args
+  | otherwise
+  = let body = mk_val_apps (n+1) res_ty (cont . (Var arg_id:)) args
+    in  Case arg arg_id res_ty [(DEFAULT, [], body)]
+  where
+    arg_ty = exprType arg  -- TODO # 12618 Do not use exprType here
+    arg_id = mkLocalIdOrCoVar (coreConAppUnique n) arg_ty
+        -- Lots of shadowing again. But that is ok, we have our own set of
+        -- uniques here, and they are only free inside this function
+
 
 -----------
 mkWildEvBinder :: PredType -> EvVar
