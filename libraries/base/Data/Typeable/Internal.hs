@@ -335,6 +335,8 @@ typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
 
 ----------------- Showing TypeReps --------------------
 
+-- This follows roughly the precedence structure described in Note [Precedence
+-- in types].
 instance Show (TypeRep (a :: k)) where
     showsPrec = showTypeable
 
