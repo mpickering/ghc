@@ -635,7 +635,7 @@ schemeT :: Word         -- Stack depth
         -> AnnExpr' Id DVarSet
         -> BcM BCInstrList
 
-schemeT d s p (AnnConApp dc args')
+schemeT d s p (AnnConApp dc all_args)
    | isUnboxedTupleCon dc
    = case args of
         [arg2,arg1] | isVAtom arg1 ->
@@ -644,11 +644,12 @@ schemeT d s p (AnnConApp dc args')
                   unboxedTupleReturn d s p arg1
         _other -> multiValException
    | otherwise
-   = do alloc_con <- mkConAppCode d s p dc (reverse args)
+   = do ASSERT( dataConRepFullArity dc == length all_args ) return ()
+        alloc_con <- mkConAppCode d s p dc (reverse args)
         return (alloc_con         `appOL`
                 mkSLIDE 1 (d - s) `snocOL`
                 ENTER)
-  where args = map snd $ dropWhile isAnnTypeArg args'
+  where args = map snd $ dropWhile isAnnTypeArg all_args
 schemeT d s p app
 
 --   | trace ("schemeT: env in = \n" ++ showSDocDebug (ppBCEnv p)) False
