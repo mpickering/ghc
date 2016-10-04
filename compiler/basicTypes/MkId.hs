@@ -480,8 +480,8 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
 
   | otherwise
   = do { wrap_args <- mapM newLocal wrap_arg_tys
-       ; wrap_body <- mk_rep_app (wrap_args `zip` dropList eq_spec unboxers)
-                                 initial_wrap_app
+       ; (rep_ids, unbox_fn) <- combine_unboxers (wrap_args `zip` dropList eq_spec unboxers)
+       ; let wrap_body = unbox_fn $ mkVarApps initial_wrap_app rep_ids
 
        ; let wrap_id = mkGlobalId (DataConWrapId data_con) wrap_name wrap_ty wrap_info
              wrap_info = noCafIdInfo
@@ -581,13 +581,14 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
            ; return (rep_ids1 ++ rep_ids2, NonRec src_var arg : binds) }
     go _ (_:_) [] = pprPanic "mk_boxer" (ppr data_con)
 
-    mk_rep_app :: [(Id,Unboxer)] -> CoreExpr -> UniqSM CoreExpr
-    mk_rep_app [] con_app
-      = return con_app
-    mk_rep_app ((wrap_arg, unboxer) : prs) con_app
+    combine_unboxers :: [(Id,Unboxer)] -> UniqSM ([Id],CoreExpr -> CoreExpr)
+    combine_unboxers []
+      = return ([],id)
+    combine_unboxers ((wrap_arg, unboxer) : other_unboxers)
       = do { (rep_ids, unbox_fn) <- unboxer wrap_arg
-           ; expr <- mk_rep_app prs (mkVarApps con_app rep_ids)
-           ; return (unbox_fn expr) }
+           ; (other_rep_ids, other_unbox_fn) <- combine_unboxers other_unboxers
+           ; return (rep_ids ++ other_rep_ids, unbox_fn . other_unbox_fn)
+           }
 
 {-
 Note [Bangs on imported data constructors]
