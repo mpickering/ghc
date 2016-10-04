@@ -161,7 +161,7 @@ mkCoreConApps con args
     res_ty = exprType (ConApp con args)
 mkCoreConApps con args
     -- Unsaturated application. TODO #12618 Use wrapper.
-    = WARN ( True, "mkCoreConApps: Unsaturated use." )
+    = WARN ( True, text "mkCoreConApps: Unsaturated use." $$ ppr con <+> ppr args )
       mkCoreApps (Var (dataConWorkId con)) args
 
 mk_val_app :: CoreExpr -> CoreExpr -> Type -> Type -> CoreExpr

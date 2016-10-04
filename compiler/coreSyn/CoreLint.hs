@@ -692,6 +692,11 @@ lintCoreExpr e@(App _ _)
                  -> do
               failWithL $ text "Found StaticPtr nested in an expression: " <+>
                           ppr e
+           Var b | Just con <- isDataConWorkId_maybe b
+                 , dataConRepFullArity con <= length args
+                 -> do
+              failWithL $ text "Found saturated use of data con worker (should use ConApp): " <+>
+                          ppr e
            _     -> go
   where
     go = do { fun_ty <- lintCoreExpr fun
