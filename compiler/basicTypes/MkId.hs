@@ -481,7 +481,7 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
   | otherwise
   = do { wrap_args <- mapM newLocal wrap_arg_tys
        ; (rep_ids, unbox_fn) <- combine_unboxers (wrap_args `zip` dropList eq_spec unboxers)
-       ; let wrap_body = unbox_fn $ mkVarApps initial_wrap_app rep_ids
+       ; let wrap_body = unbox_fn $ build_con_app rep_ids
 
        ; let wrap_id = mkGlobalId (DataConWrapId data_con) wrap_name wrap_ty wrap_info
              wrap_info = noCafIdInfo
@@ -557,10 +557,12 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
                     || isFamInstTyCon tycon  -- Cast result
                     || (not $ null eq_spec)) -- GADT
 
-    initial_wrap_app = Var (dataConWorkId data_con)
-                       `mkTyApps`  res_ty_args
-                       `mkVarApps` ex_tvs
-                       `mkCoApps`  map (mkReflCo Nominal . eqSpecType) eq_spec
+    build_con_app rep_ids = mkConApp data_con $ concat
+        [ map Type res_ty_args
+        , map (Type . mkTyVarTy) ex_tvs
+        , map (Coercion . mkReflCo Nominal . eqSpecType) eq_spec
+        , map Var rep_ids
+        ]
 
     mk_boxer :: [Boxer] -> DataConBoxer
     mk_boxer boxers = DCB (\ ty_args src_vars ->
@@ -734,9 +736,10 @@ dataConArgUnpack arg_ty
           ; return (rep_ids, unbox_fn) }
      , Boxer $ \ subst ->
        do { rep_ids <- mapM (newLocal . TcType.substTyUnchecked subst) rep_tys
-          ; return (rep_ids, Var (dataConWorkId con)
-                             `mkTyApps` (substTysUnchecked subst tc_args)
-                             `mkVarApps` rep_ids ) } ) )
+          ; return (rep_ids, ConApp con (
+                map Type (substTysUnchecked subst tc_args) ++
+                map Var rep_ids))
+          }))
   | otherwise
   = pprPanic "dataConArgUnpack" (ppr arg_ty)
     -- An interface file specified Unpacked, but we couldn't unpack it
