@@ -73,7 +73,7 @@ import Var
 import Type
 import TyCoRep
 import TyCon
-import DataCon ( dataConRepType )
+import DataCon ( dataConRepType, dataConWorkId )
 import CoAxiom
 import FamInstEnv
 import TysPrim( funTyConName )
@@ -260,8 +260,8 @@ expr_fvs (Tick t expr) fv_cand in_scope acc =
   (tickish_fvs t `unionFV` expr_fvs expr) fv_cand in_scope acc
 expr_fvs (App fun arg) fv_cand in_scope acc =
   (expr_fvs fun `unionFV` expr_fvs arg) fv_cand in_scope acc
-expr_fvs (ConApp _ args) fv_cand in_scope acc =
-  (mapUnionFV expr_fvs args) fv_cand in_scope acc
+expr_fvs (ConApp dc args) fv_cand in_scope acc =
+  (FV.unitFV (dataConWorkId dc) `unionFV` mapUnionFV expr_fvs args) fv_cand in_scope acc
 expr_fvs (Lam bndr body) fv_cand in_scope acc =
   addBndr bndr (expr_fvs body) fv_cand in_scope acc
 expr_fvs (Cast expr co) fv_cand in_scope acc =
