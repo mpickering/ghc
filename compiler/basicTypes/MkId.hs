@@ -552,10 +552,6 @@ mkDataConRep dflags fam_envs wrap_name mb_bangs data_con
     (rep_tys, rep_strs) = unzip (concat rep_tys_w_strs)
 
     wrapper_reqd = not (isNewTyCon tycon)  -- Newtypes have only a worker
-                && (any isBanged (ev_ibangs ++ arg_ibangs)
-                      -- Some forcing/unboxing (includes eq_spec)
-                    || isFamInstTyCon tycon  -- Cast result
-                    || (not $ null eq_spec)) -- GADT
 
     build_con_app rep_ids = mkConApp data_con $ concat
         [ map Type res_ty_args
