@@ -1193,7 +1193,7 @@ maybeUnfoldingTemplate :: Unfolding -> Maybe CoreExpr
 maybeUnfoldingTemplate (CoreUnfolding { uf_tmpl = expr })
   = Just expr
 maybeUnfoldingTemplate (DFunUnfolding { df_bndrs = bndrs, df_con = con, df_args = args })
-  = Just (mkLams bndrs (mkApps (Var (dataConWorkId con)) args))
+  = Just (mkLams bndrs (ConApp con args))
 maybeUnfoldingTemplate _
   = Nothing
 
@@ -1481,7 +1481,9 @@ mkConApp      :: DataCon -> [Arg b] -> Expr b
 mkApps    f args = foldl App                       f args
 mkCoApps  f args = foldl (\ e a -> App e (Coercion a)) f args
 mkVarApps f vars = foldl (\ e a -> App e (varToCoreExpr a)) f vars
-mkConApp con args = mkApps (Var (dataConWorkId con)) args
+mkConApp con args =
+    WARN ( dataConRepFullArity con /= length args, text "mkConApp: artiy mismatch" $$ ppr con )
+    ConApp con args
 
 mkTyApps  f args = foldl (\ e a -> App e (typeOrCoercion a)) f args
   where
@@ -1490,9 +1492,7 @@ mkTyApps  f args = foldl (\ e a -> App e (typeOrCoercion a)) f args
       | otherwise                        = Type ty
 
 mkConApp2 :: DataCon -> [Type] -> [Var] -> Expr b
-mkConApp2 con tys arg_ids = Var (dataConWorkId con)
-                            `mkApps` map Type tys
-                            `mkApps` map varToCoreExpr arg_ids
+mkConApp2 con tys arg_ids = mkConApp con (map Type tys ++ map varToCoreExpr arg_ids)
 
 
 -- | Create a machine integer literal expression of type @Int#@ from an @Integer@.
