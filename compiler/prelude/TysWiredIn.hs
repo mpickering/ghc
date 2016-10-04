@@ -70,7 +70,7 @@ module TysWiredIn (
         mkTupleTy, mkBoxedTupleTy,
         tupleTyCon, tupleDataCon, tupleTyConName,
         promotedTupleDataCon,
-        unitTyCon, unitDataCon, unitDataConId, unitTy, unitTyConKey,
+        unitTyCon, unitDataCon, unitTy, unitTyConKey,
         pairTyCon,
         unboxedUnitTyCon, unboxedUnitDataCon,
         cTupleTyConName, cTupleTyConNames, isCTupleTyConName,
@@ -823,9 +823,6 @@ unitTyConKey = getUnique unitTyCon
 
 unitDataCon :: DataCon
 unitDataCon   = head (tyConDataCons unitTyCon)
-
-unitDataConId :: Id
-unitDataConId = dataConWorkId unitDataCon
 
 pairTyCon :: TyCon
 pairTyCon = tupleTyCon Boxed 2
