@@ -25,7 +25,7 @@ import Name             ( Name, mkSystemVarName, isExternalName, getOccFS )
 import Coercion hiding  ( substCo, substCoVar )
 import OptCoercion      ( optCoercion )
 import FamInstEnv       ( topNormaliseType_maybe )
-import DataCon          ( DataCon, dataConWorkId, dataConRepStrictness
+import DataCon          ( DataCon, dataConRepStrictness
                         , isMarkedStrict, dataConRepArgTys ) --, dataConTyCon, dataConTag, fIRST_TAG )
 --import TyCon            ( isEnumerationTyCon ) -- temporalily commented out. See #8326
 import CoreMonad        ( Tick(..), SimplifierMode(..) )
@@ -2330,9 +2330,7 @@ knownCon env scrut dc dc_ty_args dc_args bndr bs rhs cont
       | otherwise           = do { dc_args <- mapM (simplVar env) bs
                                          -- dc_ty_args are aready OutTypes,
                                          -- but bs are InBndrs
-                                 ; let con_app = Var (dataConWorkId dc)
-                                                 `mkTyApps` dc_ty_args
-                                                 `mkApps`   dc_args
+                                 ; let con_app = ConApp dc (map Type dc_ty_args ++ dc_args)
                                  ; simplNonRecX env bndr con_app }
 
 -------------------
