@@ -472,11 +472,13 @@ unitDataConBoxer :: DataConBoxer
 unitDataConBoxer = DCB (\_ vs -> return (vs, []))
 
 mkSimpleDataConRep :: Name -> DataCon -> DataConRep
-mkSimpleDataConRep wrap_name dc = DCR { dcr_wrap_id = wrap_id
-                                      , dcr_boxer   = unitDataConBoxer
-                                      , dcr_arg_tys = arg_tys
-                                      , dcr_stricts = rep_strs
-                                      , dcr_bangs   = arg_ibangs }
+mkSimpleDataConRep _ dc | isNewTyCon (dataConTyCon dc) = NoDataConRep
+mkSimpleDataConRep wrap_name dc
+    = DCR { dcr_wrap_id = wrap_id
+          , dcr_boxer   = unitDataConBoxer
+          , dcr_arg_tys = arg_tys
+          , dcr_stricts = rep_strs
+          , dcr_bangs   = arg_ibangs }
   where
     wrap_ty = dataConRepType dc
     wrap_id = mkGlobalId (DataConWrapId dc) wrap_name wrap_ty wrap_info
