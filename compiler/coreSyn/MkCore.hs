@@ -67,7 +67,7 @@ import TcType           ( mkSpecSigmaTy )
 import Type
 import Coercion         ( isCoVar )
 import TysPrim
-import DataCon          ( DataCon, dataConRepFullArity, dataConWorkId )
+import DataCon          ( DataCon, dataConRepFullArity, dataConWrapId )
 import IdInfo           ( vanillaIdInfo, setStrictnessInfo,
                           setArityInfo )
 import Demand
@@ -162,7 +162,7 @@ mkCoreConApps con args
 mkCoreConApps con args
     -- Unsaturated application. TODO #12618 Use wrapper.
     = WARN ( True, text "mkCoreConApps: Unsaturated use." $$ ppr con <+> ppr args )
-      mkCoreApps (Var (dataConWorkId con)) args
+      mkCoreApps (Var (dataConWrapId con)) args
 
 mk_val_app :: CoreExpr -> CoreExpr -> Type -> Type -> CoreExpr
 -- Build an application (e1 e2),
