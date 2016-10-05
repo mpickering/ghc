@@ -54,8 +54,6 @@ import Outputable
 import Platform
 import FastString
 import Config
-import Name             ( NamedThing(..), nameSrcSpan )
-import SrcLoc           ( SrcSpan(..), realSrcLocSpan, mkRealSrcLoc )
 import Data.Bits
 import MonadUtils       ( mapAccumLM )
 import Data.List        ( mapAccumL )
@@ -168,21 +166,16 @@ type CpeRhs  = CoreExpr    -- Non-terminal 'rhs'
 
 corePrepPgm :: HscEnv -> Module -> ModLocation -> CoreProgram -> [TyCon]
             -> IO CoreProgram
-corePrepPgm hsc_env this_mod mod_loc binds data_tycons =
+corePrepPgm hsc_env this_mod _mod_loc binds _data_tycons =
     withTiming (pure dflags)
                (text "CorePrep"<+>brackets (ppr this_mod))
                (const ()) $ do
     us <- mkSplitUniqSupply 's'
     initialCorePrepEnv <- mkInitialCorePrepEnv dflags hsc_env
 
-    let implicit_binds = mkDataConWorkers dflags mod_loc data_tycons
-            -- NB: we must feed mkImplicitBinds through corePrep too
-            -- so that they are suitably cloned and eta-expanded
-
-        binds_out = initUs_ us $ do
+    let binds_out = initUs_ us $ do
                       floats1 <- corePrepTopBinds initialCorePrepEnv binds
-                      floats2 <- corePrepTopBinds initialCorePrepEnv implicit_binds
-                      return (deFloatTop (floats1 `appendFloats` floats2))
+                      return (deFloatTop floats1)
 
     endPassIO hsc_env alwaysQualify CorePrep binds_out []
     return binds_out
@@ -207,27 +200,6 @@ corePrepTopBinds initialCorePrepEnv binds
     go env (bind : binds) = do (env', bind') <- cpeBind TopLevel env bind
                                binds' <- go env' binds
                                return (bind' `appendFloats` binds')
-
-mkDataConWorkers :: DynFlags -> ModLocation -> [TyCon] -> [CoreBind]
--- See Note [Data constructor workers]
--- c.f. Note [Injecting implicit bindings] in TidyPgm
-mkDataConWorkers dflags mod_loc data_tycons
-  = [ NonRec id (tick_it (getName data_con) (Var id))
-                                -- The ice is thin here, but it works
-    | tycon <- data_tycons,     -- CorePrep will eta-expand it
-      data_con <- tyConDataCons tycon,
-      let id = dataConWorkId data_con
-    ]
- where
-   -- If we want to generate debug info, we put a source note on the
-   -- worker. This is useful, especially for heap profiling.
-   tick_it name
-     | debugLevel dflags == 0                = id
-     | RealSrcSpan span <- nameSrcSpan name  = tick span
-     | Just file <- ml_hs_file mod_loc       = tick (span1 file)
-     | otherwise                             = tick (span1 "???")
-     where tick span  = Tick (SourceNote span $ showSDoc dflags (ppr name))
-           span1 file = realSrcLocSpan $ mkRealSrcLoc (mkFastString file) 1 1
 
 {-
 Note [Floating out of top level bindings]
@@ -279,24 +251,6 @@ b) The top-level binding is marked NoCafRefs.  This really happens
 This is all very gruesome and horrible. It would be better to figure
 out CafInfo later, after CorePrep.  We'll do that in due course.
 Meanwhile this horrible hack works.
-
-
-Note [Data constructor workers]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Create any necessary "implicit" bindings for data con workers.  We
-create the rather strange (non-recursive!) binding
-
-        $wC = \x y -> $wC x y
-
-i.e. a curried constructor that allocates.  This means that we can
-treat the worker for a constructor like any other function in the rest
-of the compiler.  The point here is that CoreToStg will generate a
-StgConApp for the RHS, rather than a call to the worker (which would
-give a loop).  As Lennart says: the ice is thin here, but it works.
-
-Hmm.  Should we create bindings for dictionary constructors?  They are
-always fully applied, and the bindings are just there to support
-partial applications. But it's easier to let them through.
 
 
 Note [Dead code in CorePrep]
@@ -1304,9 +1258,6 @@ allLazyNested is_rec (Floats IfUnboxedOk _) = isNonRec is_rec
 -- We decided not to adopt this solution to keep the definition
 -- of 'exprIsTrivial' simple.
 --
--- There is ONE caveat however: for top-level bindings we have
--- to preserve the binding so that we float the (hacky) non-recursive
--- binding for data constructors; see Note [Data constructor workers].
 --
 -- Note [CorePrep inlines trivial CoreExpr not Id]
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
