@@ -489,22 +489,23 @@ pcDataConWithFixity :: Bool      -- ^ declared infix?
                     -> [Type]    -- ^ args
                     -> TyCon
                     -> DataCon
-pcDataConWithFixity infx n = pcDataConWithFixity' infx n (dataConWorkerUnique (nameUnique n))
+pcDataConWithFixity infx n = pcDataConWithFixity' infx n (dataConWorkerUnique (nameUnique n)) (dataConWrapperUnique (nameUnique n))
                                                   NoRRI
--- The Name's unique is the first of two free uniques;
+-- The Name's unique is the first of four free uniques;
 -- the first is used for the datacon itself,
 -- the second is used for the "worker name"
+-- the third is used for the "wrapper name"
 --
 -- To support this the mkPreludeDataConUnique function "allocates"
 -- one DataCon unique per pair of Ints.
 
-pcDataConWithFixity' :: Bool -> Name -> Unique -> RuntimeRepInfo
+pcDataConWithFixity' :: Bool -> Name -> Unique -> Unique -> RuntimeRepInfo
                      -> [TyVar] -> [TyVar]
                      -> [Type] -> TyCon -> DataCon
 -- The Name should be in the DataName name space; it's the name
 -- of the DataCon itself.
 
-pcDataConWithFixity' declared_infix dc_name wrk_key rri tyvars ex_tyvars arg_tys tycon
+pcDataConWithFixity' declared_infix dc_name wrk_key _wrp_key rri tyvars ex_tyvars arg_tys tycon
   = data_con
   where
     data_con = mkDataCon dc_name declared_infix prom_info
@@ -520,6 +521,8 @@ pcDataConWithFixity' declared_infix dc_name wrk_key rri tyvars ex_tyvars arg_tys
                 []      -- No stupid theta
                 (mkDataConWorkId wrk_name data_con)
                 NoDataConRep    -- Wired-in types are too simple to need wrappers
+                                -- TODO #12618 should be generating a wrapper
+                                -- here, but we cannot use Core here!
 
     no_bang = HsSrcBang Nothing NoSrcUnpack NoSrcStrict
 
@@ -535,7 +538,10 @@ pcDataConWithFixity' declared_infix dc_name wrk_key rri tyvars ex_tyvars arg_tys
 -- used for RuntimeRep and friends
 pcSpecialDataCon :: Name -> [Type] -> TyCon -> RuntimeRepInfo -> DataCon
 pcSpecialDataCon dc_name arg_tys tycon rri
-  = pcDataConWithFixity' False dc_name (dataConWorkerUnique (nameUnique dc_name)) rri
+  = pcDataConWithFixity' False dc_name
+                         (dataConWorkerUnique (nameUnique dc_name))
+                         (dataConWrapperUnique (nameUnique dc_name))
+                         rri
                          [] [] arg_tys tycon
 
 {-
