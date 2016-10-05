@@ -473,7 +473,7 @@ prepareRhs top_lvl env0 id rhs0
         = do { (is_exp, env', rhs') <- go n_val_args env rhs
              ; return (is_exp, env', Cast rhs' co) }
     go n_val_args env (ConApp dc args)
-        = ASSERT( n_val_args == 0 )
+        = ASSERT2( n_val_args == 0, ppr (ConApp dc args) <+> ppr n_val_args )
           do { (env', args') <- makeTrivials top_lvl env (getOccFS id) args
              ; return (True, env', ConApp dc args')
              }

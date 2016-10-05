@@ -695,8 +695,11 @@ lintCoreExpr e@(App _ _)
            Var b | Just con <- isDataConWorkId_maybe b
                  , dataConRepFullArity con <= length args
                  -> do
-              failWithL $ text "Found saturated use of data con worker (should use ConApp): " <+>
-                          ppr e
+              addErrL $ text "Found saturated use of data con worker (should use ConApp): " <+> ppr e
+              go
+           ConApp _ _ -> do
+              addErrL $ text "Found ConApp in argument position. Is that possible?" <+> ppr e $$ ppr args
+              go
            _     -> go
   where
     go = do { fun_ty <- lintCoreExpr fun
