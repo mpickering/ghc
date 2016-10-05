@@ -1820,6 +1820,8 @@ mkCase1 _dflags scrut case_bndr _ alts@((_,_,rhs1) : _)      -- Identity case
         -- See Note [RHS casts]
     check_eq (Lit lit)  (LitAlt lit') _    = lit == lit'
     check_eq (Var v) _ _  | v == case_bndr = True
+    check_eq (ConApp con [])  (DataAlt con') [] = con == con'
+                                             -- Optimisation only
     check_eq (Var v)    (DataAlt con) []   = v == dataConWorkId con
                                              -- Optimisation only
     check_eq (Tick t e) alt           args = tickishFloatable t &&
