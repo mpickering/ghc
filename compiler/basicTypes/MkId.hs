@@ -23,7 +23,8 @@ module MkId (
         wrapFamInstBody, unwrapFamInstScrut,
         wrapTypeUnbranchedFamInstBody, unwrapTypeUnbranchedFamInstScrut,
 
-        DataConBoxer(..), mkDataConRep, mkDataConWorkId, dataConWorkStrictSig,
+        DataConBoxer(..), mkDataConRep, mkSimpleDataConRep,
+        mkDataConWorkId, dataConWorkStrictSig,
 
         -- And some particular Ids; see below for why they are wired in
         wiredInIds, ghcPrimIds,
@@ -466,6 +467,44 @@ data Boxer = UnitBox | Boxer (TCvSubst -> UniqSM ([Var], CoreExpr))
 newtype DataConBoxer = DCB ([Type] -> [Var] -> UniqSM ([Var], [CoreBind]))
                        -- Bind these src-level vars, returning the
                        -- rep-level vars to bind in the pattern
+
+unitDataConBoxer :: DataConBoxer
+unitDataConBoxer = DCB (\_ vs -> return (vs, []))
+
+mkSimpleDataConRep :: Name -> DataCon -> DataConRep
+mkSimpleDataConRep wrap_name dc = DCR { dcr_wrap_id = wrap_id
+                                      , dcr_boxer   = unitDataConBoxer
+                                      , dcr_arg_tys = arg_tys
+                                      , dcr_stricts = rep_strs
+                                      , dcr_bangs   = arg_ibangs }
+  where
+    wrap_ty = dataConRepType dc
+    wrap_id = mkGlobalId (DataConWrapId dc) wrap_name wrap_ty wrap_info
+    (ty_vars, theta , orig_arg_tys, _) = dataConSig dc
+    arg_tys = theta ++ orig_arg_tys
+    wrap_args = [ mkSysLocalOrCoVar (fsLit "wa") (mkCoreConAppUnique i) ty
+           | (i,ty) <- zip [0..] arg_tys ]
+
+    wrap_info = noCafIdInfo
+                `setArityInfo`         wrap_arity
+                    -- It's important to specify the arity, so that partial
+                    -- applications are treated as values
+                `setInlinePragInfo`    alwaysInlinePragma
+                `setUnfoldingInfo`     wrap_unf
+                `setStrictnessInfo`    wrap_sig
+    wrap_arity = dataConRepArity dc
+    wrap_unf = mkInlineUnfolding (Just wrap_arity) wrap_rhs
+    wrap_sig = mkClosedStrictSig wrap_arg_dmds (dataConCPR dc)
+    wrap_arg_dmds = replicate wrap_arity topDmd
+    rep_strs = [ NotMarkedStrict | _ <- arg_tys ]
+    arg_ibangs = [ HsLazy | _ <- arg_tys ]
+
+    wrap_rhs = mkLams ty_vars $
+               mkLams wrap_args $
+               mkConApp dc $ concat
+                [ map (Type . mkTyVarTy) ty_vars
+                , map varToCoreExpr wrap_args
+                ]
 
 mkDataConRep :: DynFlags
              -> FamInstEnvs

@@ -122,7 +122,7 @@ module TysWiredIn (
 #include "HsVersions.h"
 #include "MachDeps.h"
 
-import {-# SOURCE #-} MkId( mkDataConWorkId, mkDictSelId )
+import {-# SOURCE #-} MkId( mkDataConWorkId, mkSimpleDataConRep, mkDictSelId )
 
 -- friends:
 import PrelNames
@@ -505,7 +505,7 @@ pcDataConWithFixity' :: Bool -> Name -> Unique -> Unique -> RuntimeRepInfo
 -- The Name should be in the DataName name space; it's the name
 -- of the DataCon itself.
 
-pcDataConWithFixity' declared_infix dc_name wrk_key _wrp_key rri tyvars ex_tyvars arg_tys tycon
+pcDataConWithFixity' declared_infix dc_name wrk_key wrp_key rri tyvars ex_tyvars arg_tys tycon
   = data_con
   where
     data_con = mkDataCon dc_name declared_infix prom_info
@@ -520,9 +520,7 @@ pcDataConWithFixity' declared_infix dc_name wrk_key _wrp_key rri tyvars ex_tyvar
                 tycon
                 []      -- No stupid theta
                 (mkDataConWorkId wrk_name data_con)
-                NoDataConRep    -- Wired-in types are too simple to need wrappers
-                                -- TODO #12618 should be generating a wrapper
-                                -- here, but we cannot use Core here!
+                (mkSimpleDataConRep wrp_name data_con)
 
     no_bang = HsSrcBang Nothing NoSrcUnpack NoSrcStrict
 
@@ -533,7 +531,12 @@ pcDataConWithFixity' declared_infix dc_name wrk_key _wrp_key rri tyvars ex_tyvar
     wrk_name = mkWiredInName modu wrk_occ wrk_key
                              (AnId (dataConWorkId data_con)) UserSyntax
 
+    wrp_occ  = mkDataConWrapperOcc dc_occ
+    wrp_name = mkWiredInName modu wrp_occ wrp_key
+                             (AnId (dataConWrapId data_con)) UserSyntax
+
     prom_info = mkPrelTyConRepName dc_name
+
 
 -- used for RuntimeRep and friends
 pcSpecialDataCon :: Name -> [Type] -> TyCon -> RuntimeRepInfo -> DataCon
