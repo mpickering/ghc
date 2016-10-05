@@ -1088,8 +1088,8 @@ tcIfaceExpr (IfaceTuple sort args)
                UnboxedTuple -> map (Type . getRuntimeRep "tcIfaceExpr") con_tys ++ some_con_args
                _            -> some_con_args
                         -- Put the missing type arguments back in
-             con_id   = dataConWorkId (tyConSingleDataCon tc)
-       ; return (mkApps (Var con_id) con_args) }
+             dc = tyConSingleDataCon tc
+       ; return (mkConApp dc con_args) }
   where
     arity = length args
 
