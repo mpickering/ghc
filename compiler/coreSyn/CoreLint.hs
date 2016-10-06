@@ -624,6 +624,7 @@ lintCoreExpr (Var var)
   = do  { checkL (isNonCoVarId var)
                  (text "Non term variable" <+> ppr var)
 
+        ; checkBadDataConWorker var
         ; checkDeadIdOcc var
         ; var' <- lookupIdInScope var
         ; return (idType var') }
@@ -895,6 +896,16 @@ checkDeadIdOcc id
   = do { in_case <- inCasePat
        ; checkL in_case
                 (text "Occurrence of a dead Id" <+> ppr id) }
+  | otherwise
+  = return ()
+
+checkBadDataConWorker :: Id -> LintM ()
+-- We do not want to see data con workers here, but for newtypes
+-- (It should either be a ConApp or a reference to the wrapper)
+checkBadDataConWorker id
+  | Just dc <- isDataConWorkId_maybe id
+  = checkL (isNewTyCon (dataConTyCon dc))
+           (text "data constructor worker found" <+> ppr id) 
   | otherwise
   = return ()
 
