@@ -6,7 +6,7 @@ module TcSimplify(
        simplifyAmbiguityCheck,
        simplifyDefault,
        simplifyTop, simplifyInteractive, solveEqualities,
-       simplifyWantedsTcM,
+       simplifyWantedsTcM, solveWantedsAndDrop,
        tcCheckSatisfiability,
 
        -- For Rules we need these
