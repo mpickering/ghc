@@ -82,7 +82,8 @@ import Literal          ( litIsTrivial )
 import Demand           ( StrictSig )
 import Name             ( getOccName, mkSystemVarName )
 import OccName          ( occNameString )
-import Type             ( isUnliftedType, Type, mkLamTypes )
+import Type             ( isUnliftedType, Type, mkLamTypes, typeKind )
+import Kind             ( isRuntimeRepPolymorphic )
 import BasicTypes       ( Arity, RecFlag(..) )
 import UniqSupply
 import Util
@@ -383,6 +384,7 @@ lvlCase env scrut_fvs scrut' case_bndr ty alts
   , exprOkForSpeculation scrut'   -- See Note [Check the output scrutinee for okForSpec]
   , not (isTopLvl dest_lvl)       -- Can't have top-level cases
   , not (floatTopLvlOnly env)     -- Can float anywhere
+  , not (isRuntimeRepPolymorphic (typeKind ty)) -- we can't float runtime-rep polymorphic things
   =     -- See Note [Floating cases]
         -- Always float the case if possible
         -- Unlike lets we don't insist that it escapes a value lambda
