@@ -831,8 +831,8 @@ trueValInt  dflags = Lit $ onei  dflags -- see Note [What's true and false]
 falseValInt dflags = Lit $ zeroi dflags
 
 trueValBool, falseValBool :: Expr CoreBndr
-trueValBool   = Var trueDataConId -- see Note [What's true and false]
-falseValBool  = Var falseDataConId
+trueValBool   = ConApp trueDataCon [] -- see Note [What's true and false]
+falseValBool  = ConApp falseDataCon []
 
 ltVal, eqVal, gtVal :: Expr CoreBndr
 ltVal = Var ltDataConId

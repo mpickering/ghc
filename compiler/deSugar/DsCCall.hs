@@ -331,8 +331,8 @@ resultWrapper result_ty
     return
      (Just intPrimTy, \e -> mkWildCase e intPrimTy
                                    boolTy
-                                   [(DEFAULT                    ,[],Var trueDataConId ),
-                                    (LitAlt (mkMachInt dflags 0),[],Var falseDataConId)])
+                                   [(DEFAULT                    ,[],ConApp trueDataCon []),
+                                    (LitAlt (mkMachInt dflags 0),[],ConApp falseDataCon [])])
 
   -- Newtypes
   | Just (co, rep_ty) <- topNormaliseNewType_maybe result_ty
