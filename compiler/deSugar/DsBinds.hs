@@ -1138,7 +1138,7 @@ dsEvTypeable ty ev
                       $ mkLams [mkWildValBinder proxyT] (Var repName)
 
        -- Package up the method as `Typeable` dictionary
-       ; return $ mkConApp typeable_data_con [Type kind, Type ty, method] }
+       ; return $ mkCoreConApps typeable_data_con [Type kind, Type ty, method] }
 
 
 ds_ev_typeable :: Type -> EvTypeable -> DsM CoreExpr

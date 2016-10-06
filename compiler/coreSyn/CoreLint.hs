@@ -715,7 +715,9 @@ lintCoreExpr e@(ConApp dc args)
             failWithL $ text "Found StaticPtr nested in an expression: " <+>
                         ppr e
          when (length args /= dataConRepFullArity dc) $
-            failWithL $ hang (text "Un-saturated data con application") 2 (ppr e)
+            addErrL $ hang (text "Un-saturated data con application") 2 (ppr e)
+         when (isNewTyCon (dataConTyCon dc)) $
+            addErrL $ hang (text "ConApp with newtype constructor") 2 (ppr e)
          let dc_ty = dataConRepType dc
          addLoc (AnExpr e) $ foldM lintCoreArg dc_ty args
 

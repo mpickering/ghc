@@ -67,7 +67,8 @@ import TcType           ( mkSpecSigmaTy )
 import Type
 import Coercion         ( isCoVar )
 import TysPrim
-import DataCon          ( DataCon, dataConRepFullArity, dataConWrapId )
+import DataCon          ( DataCon, dataConRepFullArity, dataConWrapId, dataConTyCon )
+import TyCon            ( isNewTyCon )
 import IdInfo           ( vanillaIdInfo, setStrictnessInfo,
                           setArityInfo )
 import Demand
@@ -152,17 +153,17 @@ mkCoreApps orig_fun orig_args
 mkCoreConApps :: DataCon -> [CoreExpr] -> CoreExpr
 mkCoreConApps con args
     | length args >= dataConRepFullArity con
+    , not (isNewTyCon (dataConTyCon con))
     = let sat_app = mk_val_apps 0 res_ty (ConApp con) con_args
       in  mkCoreApps sat_app extra_args
+    | otherwise
+    -- Unsaturated or newtype constructor application.
+    = mkCoreApps (Var (dataConWrapId con)) args
   where
     -- TODO #12618: Can there ever be more than dataConRepArity con arguments
     -- in a type-safe program?
     (con_args, extra_args) = splitAt (dataConRepFullArity con) args
     res_ty = exprType (ConApp con args)
-mkCoreConApps con args
-    -- Unsaturated application. TODO #12618 Use wrapper.
-    = WARN ( True, text "mkCoreConApps: Unsaturated use." $$ ppr con <+> ppr args )
-      mkCoreApps (Var (dataConWrapId con)) args
 
 mk_val_app :: CoreExpr -> CoreExpr -> Type -> Type -> CoreExpr
 -- Build an application (e1 e2),
