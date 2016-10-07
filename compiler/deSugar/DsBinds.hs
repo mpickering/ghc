@@ -1232,6 +1232,19 @@ ds_ev_typeable ty (EvTypeableTyApp ev1 ev2)
        ; return $ mkApps (mkTyApps (Var mkTrApp) [ k1, k2, t1, t2 ])
                          [ e1, e2 ] }
 
+ds_ev_typeable ty (EvTypeableTrFun ev1 ev2)
+  | Just (t1,t2) <- splitFunTy_maybe ty
+  = do { e1 <- getRep ev1 t1
+       ; e2 <- getRep ev2 t2
+       ; mkTrFun <- dsLookupGlobalId mkTrFunName
+                    -- mkTrFun :: forall r1 r2 (a :: TYPE r1) (b :: TYPE r2).
+                    --            TypeRep a -> TypeRep b -> TypeRep (a -> b)
+       ; let r1 = getRuntimeRep "ds_ev_typeable" t1
+             r2 = getRuntimeRep "ds_ev_typeable" t2
+       ; return $ mkApps (mkTyApps (Var mkTrFun) [r1, r2, t1, t2])
+                         [ e1, e2 ]
+       }
+
 ds_ev_typeable ty (EvTypeableTyLit ev)
   = do { fun  <- dsLookupGlobalId tr_fun
        ; dict <- dsEvTerm ev       -- Of type KnownNat/KnownSym

@@ -169,7 +169,6 @@ primTypeableTyCons :: NameEnv TyConRepName
 primTypeableTyCons = mkNameEnv
     [ (tYPETyConName, trTYPEName)
     , (tyConName runtimeRepTyCon, trRuntimeRepName)
-    , (funTyConName, trArrowName)
     ]
 
 mkPrimTc :: FastString -> Unique -> TyCon -> Name

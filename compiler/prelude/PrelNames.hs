@@ -227,6 +227,7 @@ basicKnownKeyNames
         typeRepIdName,
         mkTrConName,
         mkTrAppName,
+        mkTrFunName,
         typeSymbolTypeRepName, typeNatTypeRepName,
         trGhcPrimModuleName,
         -- Representations
@@ -234,7 +235,6 @@ basicKnownKeyNames
         trTYPE'PtrRepLiftedName,
         trRuntimeRepName,
         tr'PtrRepLiftedName,
-        trArrowName,
 
         -- Dynamic
         toDynName,
@@ -1187,6 +1187,7 @@ typeableClassName
   , typeRepTyConName
   , mkTrConName
   , mkTrAppName
+  , mkTrFunName
   , typeRepIdName
   , typeNatTypeRepName
   , typeSymbolTypeRepName
@@ -1197,6 +1198,7 @@ typeRepTyConName      = tcQual  tYPEABLE_INTERNAL (fsLit "TypeRep")        typeR
 typeRepIdName         = varQual tYPEABLE_INTERNAL (fsLit "typeRep#")       typeRepIdKey
 mkTrConName           = varQual tYPEABLE_INTERNAL (fsLit "mkTrCon")        mkTrConKey
 mkTrAppName           = varQual tYPEABLE_INTERNAL (fsLit "mkTrApp")        mkTrAppKey
+mkTrFunName           = varQual tYPEABLE_INTERNAL (fsLit "mkTrFun")        mkTrFunKey
 typeNatTypeRepName    = varQual tYPEABLE_INTERNAL (fsLit "typeNatTypeRep") typeNatTypeRepKey
 typeSymbolTypeRepName = varQual tYPEABLE_INTERNAL (fsLit "typeSymbolTypeRep") typeSymbolTypeRepKey
 -- this is the Typeable 'Module' for GHC.Prim (which has no code, so we place in GHC.Types)
@@ -1208,13 +1210,11 @@ trTYPEName
   , trTYPE'PtrRepLiftedName
   , trRuntimeRepName
   , tr'PtrRepLiftedName
-  , trArrowName
   :: Name
 trTYPEName              = varQual tYPEABLE_INTERNAL (fsLit "trTYPE")              trTYPEKey
 trTYPE'PtrRepLiftedName = varQual tYPEABLE_INTERNAL (fsLit "trTYPE'PtrRepLifted") trTYPE'PtrRepLiftedKey
 trRuntimeRepName        = varQual tYPEABLE_INTERNAL (fsLit "trRuntimeRep")        trRuntimeRepKey
 tr'PtrRepLiftedName     = varQual tYPEABLE_INTERNAL (fsLit "tr'PtrRepLifted")     tr'PtrRepLiftedKey
-trArrowName             = varQual tYPEABLE_INTERNAL (fsLit "trArrow")             trArrowKey
 
 -- Custom type errors
 errorMessageTypeErrorFamName
@@ -2214,6 +2214,7 @@ proxyHashKey = mkPreludeMiscIdUnique 502
 mkTyConKey
   , mkTrConKey
   , mkTrAppKey
+  , mkTrFunKey
   , typeNatTypeRepKey
   , typeSymbolTypeRepKey
   , typeRepIdKey
@@ -2224,19 +2225,18 @@ mkTrAppKey            = mkPreludeMiscIdUnique 505
 typeNatTypeRepKey     = mkPreludeMiscIdUnique 506
 typeSymbolTypeRepKey  = mkPreludeMiscIdUnique 507
 typeRepIdKey          = mkPreludeMiscIdUnique 508
+mkTrFunKey            = mkPreludeMiscIdUnique 509
 
 -- Representations for primitive types
 trTYPEKey
   ,trTYPE'PtrRepLiftedKey
   , trRuntimeRepKey
   , tr'PtrRepLiftedKey
-  , trArrowKey
   :: Unique
 trTYPEKey              = mkPreludeMiscIdUnique 510
 trTYPE'PtrRepLiftedKey = mkPreludeMiscIdUnique 511
 trRuntimeRepKey        = mkPreludeMiscIdUnique 512
 tr'PtrRepLiftedKey     = mkPreludeMiscIdUnique 513
-trArrowKey             = mkPreludeMiscIdUnique 514
 
 -- Dynamic
 toDynIdKey :: Unique

@@ -1454,6 +1454,10 @@ zonkEvTypeable env (EvTypeableTyApp t1 t2)
   = do { t1' <- zonkEvTerm env t1
        ; t2' <- zonkEvTerm env t2
        ; return (EvTypeableTyApp t1' t2') }
+zonkEvTypeable env (EvTypeableTrFun t1 t2)
+  = do { t1' <- zonkEvTerm env t1
+       ; t2' <- zonkEvTerm env t2
+       ; return (EvTypeableTrFun t1' t2') }
 zonkEvTypeable env (EvTypeableTyLit t1)
   = do { t1' <- zonkEvTerm env t1
        ; return (EvTypeableTyLit t1') }

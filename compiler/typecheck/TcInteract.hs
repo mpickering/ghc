@@ -26,7 +26,7 @@ import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
                    typeableClassName, coercibleTyConKey,
                    heqTyConKey, ipClassKey,
-                   trTYPEName, trTYPE'PtrRepLiftedName, trRuntimeRepName, trArrowName )
+                   trTYPEName, trTYPE'PtrRepLiftedName, trRuntimeRepName )
 import TysWiredIn ( typeNatKind, typeSymbolKind, heqDataCon,
                     coercibleDataCon, runtimeRepTy )
 import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon, tYPETyCon )
@@ -2166,10 +2166,10 @@ matchTypeable clas [k,t]  -- clas = Typeable
   | t `eqType` liftedTypeKind              = doPrimRep trTYPE'PtrRepLiftedName t
   | t `eqType` mkTyConTy tYPETyCon         = doPrimRep trTYPEName              t
   | t `eqType` runtimeRepTy                = doPrimRep trRuntimeRepName        t
-  | t `eqType` mkTyConTy funTyCon          = doPrimRep trArrowName             t
+  | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
+  | t `eqType` mkTyConTy funTyCon          = return NoInstance --doPrimRep trArrowName             t
   | Just (tc, ks) <- splitTyConApp_maybe t -- See Note [Typeable (T a b c)]
   , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc
-  | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
   | Just (f,kt)   <- splitAppTy_maybe t    = doTyApp    clas t f kt
 
 matchTypeable _ _ = return NoInstance
@@ -2177,17 +2177,9 @@ matchTypeable _ _ = return NoInstance
 -- | Representation for a type @ty@ of the form @arg -> ret@.
 doFunTy :: Class -> Type -> Type -> Type -> TcS LookupInstResult
 doFunTy clas ty arg_ty ret_ty
-  = do { arr_var <- tcLookupId trArrowName
-       ; let arrow_ty     = mkTyConTy funTyCon        -- (->)
-             arrow_arg_ty = mkAppTy arrow_ty arg_ty   -- (->) arg
-
-             preds = map (mk_typeable_pred clas) [arg_ty, ret_ty]
+  = do { let preds = map (mk_typeable_pred clas) [arg_ty, ret_ty]
              build_ev [arg_ev, ret_ev] =
-                 let -- Typeable (->)
-                     arr_ev       = EvTypeable arrow_ty $ EvTypeablePrimitive arr_var
-                 in EvTypeable ty $ EvTypeableTyApp
-                        (EvTypeable arrow_arg_ty $ EvTypeableTyApp arr_ev arg_ev)
-                        ret_ev
+                 EvTypeable ty $ EvTypeableTrFun arg_ev ret_ev
              build_ev _ = panic "TcInteract.doFunTy"
        ; return $ GenInst preds build_ev True
        }
