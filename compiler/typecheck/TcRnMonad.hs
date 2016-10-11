@@ -657,13 +657,24 @@ updTcRef ref fn = liftIO $ do { old <- readIORef ref
 
 -- Typechecker trace
 traceTc :: String -> SDoc -> TcRn ()
-traceTc herald doc =
-  traceOptTcRn Opt_D_dump_tc_trace (formatTraceMsg herald doc)
+traceTc =
+  guardedTraceOptTcRn Opt_D_dump_tc_trace
 
 -- Renamer Trace
 traceRn :: String -> SDoc -> TcRn ()
-traceRn herald doc =
-  traceOptTcRn Opt_D_dump_rn_trace (formatTraceMsg herald doc)
+traceRn =
+  guardedTraceOptTcRn Opt_D_dump_rn_trace
+
+-- | Do not display a trace if `-dno-debug-output` is on or `-dtrace-level=0`.
+guardedTraceOptTcRn :: DumpFlag -> String -> SDoc -> TcRn ()
+guardedTraceOptTcRn flag herald doc = do
+  dflags <- getDynFlags
+  when ( traceLevel dflags >= 1
+         && not opt_NoDebugOutput)
+       ( traceOptTcRn flag (formatTraceMsg herald doc) )
+
+formatTraceMsg :: String -> SDoc -> SDoc
+formatTraceMsg herald doc = hang (text herald) 2 doc
 
 -- | Output a doc if the given 'DumpFlag' is set.
 --
@@ -675,14 +686,10 @@ traceRn herald doc =
 traceOptTcRn :: DumpFlag -> SDoc -> TcRn ()
 traceOptTcRn flag doc
   = do { dflags <- getDynFlags
-       ; when (dopt flag dflags
-              && traceLevel dflags >= 1
-              && not opt_NoDebugOutput)
+       ; when (dopt flag dflags)
               (traceTcRn flag doc)
        }
 
-formatTraceMsg :: String -> SDoc -> SDoc
-formatTraceMsg herald doc = hang (text herald) 2 doc
 
 traceTcRn :: DumpFlag -> SDoc -> TcRn ()
 -- ^ Unconditionally dump some trace output
