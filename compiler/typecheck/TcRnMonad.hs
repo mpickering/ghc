@@ -41,7 +41,6 @@ module TcRnMonad(
   traceTc, traceRn, traceOptTcRn, traceTcRn,
   getPrintUnqualified,
   printForUserTcRn,
-  debugDumpTcRn,
   traceIf, traceHiDiffs, traceOptIf,
   debugTc,
 
@@ -655,18 +654,16 @@ updTcRef ref fn = liftIO $ do { old <- readIORef ref
 ************************************************************************
 -}
 
+
+-- Typechecker trace
 traceTc :: String -> SDoc -> TcRn ()
-traceTc herald doc = traceTcN 1 (hang (text herald) 2 doc)
+traceTc herald doc =
+  traceOptTcRn Opt_D_dump_tc_trace (formatTraceMsg herald doc)
 
--- | Typechecker trace
-traceTcN :: Int -> SDoc -> TcRn ()
-traceTcN level doc
-    = do dflags <- getDynFlags
-         when (level <= traceLevel dflags && not opt_NoDebugOutput) $
-             traceOptTcRn Opt_D_dump_tc_trace doc
-
-traceRn :: SDoc -> TcRn ()
-traceRn = traceOptTcRn Opt_D_dump_rn_trace -- Renamer Trace
+-- Renamer Trace
+traceRn :: String -> SDoc -> TcRn ()
+traceRn herald doc =
+  traceOptTcRn Opt_D_dump_rn_trace (formatTraceMsg herald doc)
 
 -- | Output a doc if the given 'DumpFlag' is set.
 --
@@ -678,8 +675,14 @@ traceRn = traceOptTcRn Opt_D_dump_rn_trace -- Renamer Trace
 traceOptTcRn :: DumpFlag -> SDoc -> TcRn ()
 traceOptTcRn flag doc
   = do { dflags <- getDynFlags
-       ; when (dopt flag dflags) (traceTcRn flag doc)
-    }
+       ; when (dopt flag dflags
+              && traceLevel dflags >= 1
+              && not opt_NoDebugOutput)
+              (traceTcRn flag doc)
+       }
+
+formatTraceMsg :: String -> SDoc -> SDoc
+formatTraceMsg herald doc = hang (text herald) 2 doc
 
 traceTcRn :: DumpFlag -> SDoc -> TcRn ()
 -- ^ Unconditionally dump some trace output
@@ -711,11 +714,6 @@ printForUserTcRn doc
   = do { dflags <- getDynFlags
        ; printer <- getPrintUnqualified dflags
        ; liftIO (printOutputForUser dflags printer doc) }
-
--- | Typechecker debug
-debugDumpTcRn :: SDoc -> TcRn ()
-debugDumpTcRn doc = unless opt_NoDebugOutput $
-                    traceOptTcRn Opt_D_dump_tc doc
 
 {-
 traceIf and traceHiDiffs work in the TcRnIf monad, where no RdrEnv is
@@ -1554,7 +1552,7 @@ getTopLevelSpliceLocs
 keepAlive :: Name -> TcRn ()     -- Record the name in the keep-alive set
 keepAlive name
   = do { env <- getGblEnv
-       ; traceRn (text "keep alive" <+> ppr name)
+       ; traceRn "keep alive" (ppr name)
        ; updTcRef (tcg_keep env) (`extendNameSet` name) }
 
 getStage :: TcM ThStage
