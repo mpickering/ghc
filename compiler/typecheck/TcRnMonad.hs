@@ -179,7 +179,7 @@ import Data.Set ( Set )
 import qualified Data.Set as Set
 
 -- For RULES
-import GHC.Base ( unpackCString# )
+import GHC.Base ( unpackFoldrCString#, build)
 import GHC.Ptr  ( Ptr(..) )
 
 #ifdef GHCI
@@ -677,11 +677,12 @@ traceRn' herald doc =
   guardedTraceOptTcRn Opt_D_dump_rn_trace (formatTraceMsg herald doc)
 
 {-# RULES
-  "traceRn/str" forall a b. traceRn (unpackCString# a) b = traceRn' (ptext (Ptr a)) b
+  "traceRn/str" forall a b. traceRn (build (unpackFoldrCString# a)) b
+    = traceRn' (ptext (Ptr a)) b
  #-}
 
-{-# NOINLINE[0] traceRn #-}
-{-# NOINLINE[0] traceRn' #-}
+{-# NOINLINE[1] traceRn #-}
+{-# NOINLINE[1] traceRn' #-}
 
 -- | Do not display a trace if `-dno-debug-output` is on or `-dtrace-level=0`.
 guardedTraceOptTcRn :: DumpFlag -> SDoc -> TcRn ()
