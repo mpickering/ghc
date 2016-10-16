@@ -678,11 +678,11 @@ traceRn' herald doc =
 
 {-# RULES
   "traceRn/str" forall a b. traceRn (build (unpackFoldrCString# a)) b
-    = traceRn' (ptext (Ptr a)) b
+    = guardedTraceOptTcRn Opt_D_dump_rn_trace (hang (ptext (Ptr a)) 2 b)
  #-}
 
-{-# NOINLINE[1] traceRn #-}
-{-# NOINLINE[1] traceRn' #-}
+{-# INLINE[1] traceRn #-}
+{-# INLINE[1] traceRn' #-}
 
 -- | Do not display a trace if `-dno-debug-output` is on or `-dtrace-level=0`.
 guardedTraceOptTcRn :: DumpFlag -> SDoc -> TcRn ()
