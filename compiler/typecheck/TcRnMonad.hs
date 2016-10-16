@@ -6,6 +6,7 @@ Functions for working with the typechecker environment (setters, getters...).
 -}
 
 {-# LANGUAGE CPP, ExplicitForAll, FlexibleInstances #-}
+{-# LANGUAGE MagicHash #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module TcRnMonad(
@@ -176,6 +177,10 @@ import Data.IORef
 import Control.Monad
 import Data.Set ( Set )
 import qualified Data.Set as Set
+
+-- For RULES
+import GHC.Base ( unpackCString# )
+import GHC.Ptr  ( Ptr(..) )
 
 #ifdef GHCI
 import {-# SOURCE #-} TcSplice ( runRemoteModFinalizers )
