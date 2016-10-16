@@ -658,16 +658,25 @@ updTcRef ref fn = liftIO $ do { old <- readIORef ref
 -- Typechecker trace
 traceTc :: String -> SDoc -> TcRn ()
 traceTc herald doc =
-  guardedTraceOptTcRn Opt_D_dump_tc_trace (formatTraceMsg herald doc)
+  guardedTraceOptTcRn Opt_D_dump_tc_trace (formatTraceMsg (text herald) doc)
 
 {-# INLINE traceTc #-}
 
 -- Renamer Trace
 traceRn :: String -> SDoc -> TcRn ()
 traceRn herald doc =
+  guardedTraceOptTcRn Opt_D_dump_rn_trace (formatTraceMsg (text herald) doc)
+
+traceRn' :: SDoc -> SDoc -> TcRn ()
+traceRn' herald doc =
   guardedTraceOptTcRn Opt_D_dump_rn_trace (formatTraceMsg herald doc)
 
-{-# INLINE traceRn #-}
+{-# RULES
+  "traceRn/str" forall a b. traceRn (unpackCString# a) b = traceRn' (ptext (Ptr a)) b
+ #-}
+
+{-# NOINLINE[0] traceRn #-}
+{-# NOINLINE[0] traceRn' #-}
 
 -- | Do not display a trace if `-dno-debug-output` is on or `-dtrace-level=0`.
 guardedTraceOptTcRn :: DumpFlag -> SDoc -> TcRn ()
@@ -677,8 +686,8 @@ guardedTraceOptTcRn flag doc = do
          && not opt_NoDebugOutput)
        ( traceOptTcRn flag doc )
 
-formatTraceMsg :: String -> SDoc -> SDoc
-formatTraceMsg herald doc = hang (text herald) 2 doc
+formatTraceMsg :: SDoc -> SDoc -> SDoc
+formatTraceMsg herald doc = hang herald 2 doc
 
 {-# INLINE formatTraceMsg #-}
 
