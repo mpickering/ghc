@@ -678,7 +678,6 @@ traceRn herald doc =
  #-}
 
 {-# INLINE[1] traceRn #-}
-{-# INLINE[1] traceRn' #-}
 
 -- | Do not display a trace if `-dno-debug-output` is on or `-dtrace-level=0`.
 guardedTraceOptTcRn :: DumpFlag -> SDoc -> TcRn ()
