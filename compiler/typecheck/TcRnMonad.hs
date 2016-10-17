@@ -672,10 +672,6 @@ traceRn :: String -> SDoc -> TcRn ()
 traceRn herald doc =
   guardedTraceOptTcRn Opt_D_dump_rn_trace (formatTraceMsg (text herald) doc)
 
-traceRn' :: SDoc -> SDoc -> TcRn ()
-traceRn' herald doc =
-  guardedTraceOptTcRn Opt_D_dump_rn_trace (formatTraceMsg herald doc)
-
 {-# RULES
   "traceRn/str" forall a b. traceRn (build (unpackFoldrCString# a)) b
     = guardedTraceOptTcRn Opt_D_dump_rn_trace (hang (ptext (Ptr a)) 2 b)
