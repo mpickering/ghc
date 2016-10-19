@@ -30,31 +30,6 @@
 #include "linker/M32Alloc.h"
 #include "PathUtils.h"
 
-#if !defined(mingw32_HOST_OS)
-#include "posix/Signals.h"
-#endif
-
-// get protos for is*()
-#include <ctype.h>
-
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-
-#include <inttypes.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <assert.h>
-
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
-
-#if defined(HAVE_DLFCN_H)
-#include <dlfcn.h>
-#endif
-
 /* PowerPC and ARM have relative branch instructions with only 24 bit
  * displacements and therefore need jump islands contiguous with each object
  * code module.
@@ -575,8 +550,9 @@ static HsBool ghciLookupSymbolInfo(HashTable *table,
         *result = NULL;
         return HS_BOOL_FALSE;
     }
-    if (pinfo->weak)
+    if (pinfo->weak) {
         IF_DEBUG(linker, debugBelch("lookupSymbolInfo: promoting %s\n", key));
+    }
     /* Once it's looked up, it can no longer be overridden */
     pinfo->weak = HS_BOOL_FALSE;
 

@@ -6,28 +6,67 @@
 #include "sm/Storage.h"
 #include "sm/OSMem.h"
 #include "RtsUtils.h"
-#include "PathUtils.h"
 #include "LinkerInternals.h"
 #include "linker/M32Alloc.h"
 
 #include <ctype.h>
 
-static HsInt loadArchive_ (pathchar *path)
-{
-    ObjectCode* oc;
-    char *image;
-    int memberSize;
-    FILE *f;
-    int n;
-    size_t thisFileNameSize;
-    char *fileName;
-    size_t fileNameSize;
-    int isObject, isGnuIndex, isThin, isImportLib;
-    char tmp[20];
-    char *gnuFileIndex;
-    int gnuFileIndexSize;
+#define FAIL(...) do {\
+   errorBelch("loadArchive: "__VA_ARGS__); \
+   goto fail;\
+} while (0)
+
+#define DEBUG_LOG(...) IF_DEBUG(linker, debugBelch("loadArchive: " __VA_ARGS__))
+static StgBool checkBSDFilename(char** fileName,
+        size_t* thisFileNameSize, int* memberSize, size_t* fileNameSize,
+        FILE* f, pathchar* path);
+static StgBool checkBSDFilename(char** fileName,
+        size_t* thisFileNameSize, int* memberSize, size_t* fileNameSize,
+        FILE* f, pathchar* path) {
+    size_t n = 0;
+    *fileName[16] = '\0';
+    if (isdigit(fileName[3])) {
+        for (n = 4; isdigit(fileName[n]); n++)
+            ;
+
+        *fileName[n] = '\0';
+        *thisFileNameSize = atoi(*fileName + 3);
+        *memberSize -= *thisFileNameSize;
+        if (*thisFileNameSize >= *fileNameSize) {
+            /* Double it to avoid potentially continually
+             increasing it by 1 */
+            *fileNameSize = *thisFileNameSize * 2;
+            *fileName = stgReallocBytes(*fileName, *fileNameSize,
+                    "loadArchive(fileName)");
+        }
+        n = fread(*fileName, 1, *thisFileNameSize, f);
+        if (n != *thisFileNameSize) {
+            errorBelch("Failed reading filename from `%s'", path);
+            return rtsFalse;
+        }
+        *fileName[*thisFileNameSize] = 0;
+        /* On OS X at least, thisFileNameSize is the size of the
+         fileName field, not the length of the fileName
+         itself. */
+        *thisFileNameSize = strlen(*fileName);
+    } else {
+        errorBelch(
+                "BSD-variant filename size not found while reading filename from `%s'",
+                path);
+        return rtsFalse;
+    }
+    return rtsTrue;
+}
+
 #if defined(darwin_HOST_OS)
-    int i;
+/* Read 4 bytes and convert to host byte order */
+static uint32_t read4Bytes(const char buf[static sizeof(uint32_t)]) {
+	uint32_t target;
+	memcpy(&target, buf, sizeof target);
+	return ntohl(target);
+}
+
+static StgBool loadFatArchive(char tmp[static 20], FILE* f, pathchar* path) {
     uint32_t nfat_arch, nfat_offset, cputype, cpusubtype;
 #if defined(i386_HOST_ARCH)
     const uint32_t mycputype = CPU_TYPE_X86;
@@ -44,15 +83,199 @@ static HsInt loadArchive_ (pathchar *path)
 #else
 #error Unknown Darwin architecture
 #endif
+
+    nfat_arch = read4Bytes(tmp + 4));
+    DEBUG_LOG("found a fat archive containing %d architectures\n", nfat_arch);
+    nfat_offset = 0;
+    for (uint32_t i = 0; i < nfat_arch; i++) {
+        /* search for the right arch */
+        int n = fread(tmp, 1, 12, f);
+        if (n != 12) {
+            errorBelch("Failed reading arch from `%s'", path);
+            return rtsFalse;
+        }
+        cputype = read4Bytes(tmp);
+        cpusubtype = read4Bytes(tmp + 4);
+        if (cputype == mycputype && cpusubtype == mycpusubtype) {
+            DEBUG_LOG("found my archive in a fat archive\n");
+            nfat_offset = read4Bytes(tmp + 8);
+            break;
+        }
+    }
+    if (nfat_offset == 0) {
+        errorBelch("searched %d architectures, but no host arch found",
+                    (int )nfat_arch);
+        return rtsFalse;
+    } else {
+    	/* Seek to the correct architecture */
+        int n = fseek(f, nfat_offset, SEEK_SET);
+        if (n != 0) {
+            errorBelch("Failed to seek to arch in `%s'", path);
+            return rtsFalse;
+        }
+
+        /* Read the header */
+        n = fread(tmp, 1, 8, f);
+        if (n != 8) {
+            errorBelch("Failed reading header from `%s'", path);
+            return rtsFalse;
+        }
+
+        /* Check the magic number */
+        if (strncmp(tmp, "!<arch>\n", 8) != 0) {
+            errorBelch("couldn't find archive in `%s' at offset %d", path,
+                        nfat_offset);
+            return rtsFalse;
+        }
+    }
+    return rtsTrue;
+}
 #endif
+
+static StgBool readThinArchiveMember(int n, int memberSize, pathchar* path,
+        char* fileName, char* image) {
+    StgBool has_succeeded = rtsFalse;
+    FILE* member = NULL;
+    pathchar *pathCopy, *dirName, *memberPath, *objFileName;
+    memberPath = NULL;
+    /* Allocate and setup the dirname of the archive.  We'll need
+     this to locate the thin member */
+    pathCopy = pathdup(path); // Convert the char* to a pathchar*
+    dirName = pathdir(pathCopy);
+    /* Append the relative member name to the dirname.  This should be
+     be the full path to the actual thin member. */
+    int memberLen = pathlen(dirName) + 1 + strlen(fileName) + 1;
+    memberPath = stgMallocBytes(pathsize * memberLen, "loadArchive(file)");
+    objFileName = mkPath(fileName);
+    pathprintf(memberPath, memberLen, WSTR("%" PATH_FMT "%" PATH_FMT), dirName,
+            objFileName);
+    stgFree(objFileName);
+    stgFree(dirName);
+    member = pathopen(memberPath, WSTR("rb"));
+    if (!member) {
+        errorBelch("loadObj: can't read thin archive `%s'", memberPath);
+        goto inner_fail;
+    }
+    n = fread(image, 1, memberSize, member);
+    if (n != memberSize) {
+        errorBelch("loadArchive: error whilst reading `%s'", fileName);
+        goto inner_fail;
+    }
+    has_succeeded = rtsTrue;
+
+inner_fail:
+    fclose(member);
+    member = NULL;
+    stgFree(memberPath);
+    memberPath = NULL;
+    stgFree(pathCopy);
+    pathCopy = NULL;
+    return has_succeeded;
+}
+static StgBool checkFatArchive(char magic[static 4], FILE* f, pathchar* path) {
+	StgBool success;
+	success = rtsFalse;
+#ifdef darwin_HOST_OS
+	/* Not a standard archive, look for a fat archive magic number: */
+	if (read4Bytes(magic) == FAT_MAGIC)
+		success = loadFatArchive(tmp, f, path);
+	else
+		errorBelch("loadArchive: Neither an archive, nor a fat archive: `%s'",
+				*path);
+#else
+	(void)magic;
+        (void)f;
+	errorBelch("loadArchive: Not an archive: `%s'", path);
+#endif
+	return success;
+}
+
+/**
+ * Look up the filename in the GNU-variant index file pointed to by
+ * gnuFileIndex.
+ * @param fileName_ a pointer to a pointer to the file name to be looked up.
+ * The file name must have been allocated with `StgMallocBytes`, and will
+ * be reallocated on return; the old value is now _invalid_.
+ * @param gnuFileIndexSize The size of the index.
+ */
+static StgBool
+lookupGNUArchiveIndex(int gnuFileIndexSize, char **fileName_,
+		char* gnuFileIndex, pathchar* path, size_t* thisFileNameSize,
+		size_t* fileNameSize) {
+    int n;
+	char *fileName = *fileName_;
+	if (isdigit(fileName[1])) {
+		int i;
+		for (n = 2; isdigit(fileName[n]); n++)
+			;
+
+		fileName[n] = '\0';
+		n = atoi(fileName + 1);
+		if (gnuFileIndex == NULL) {
+			errorBelch("loadArchive: GNU-variant filename "
+					"without an index while reading from `%s'",
+					path);
+			return rtsFalse;
+		}
+		if (n < 0 || n > gnuFileIndexSize) {
+			errorBelch("loadArchive: GNU-variant filename "
+					"offset %d out of range [0..%d] "
+					"while reading filename from `%s'",
+					n, gnuFileIndexSize, path);
+			return rtsFalse;
+		}
+		if (n != 0 && gnuFileIndex[n - 1] != '\n') {
+			errorBelch("loadArchive: GNU-variant filename offset "
+					"%d invalid (range [0..%d]) while reading "
+					"filename from `%s'",
+					n, gnuFileIndexSize, path);
+			return rtsFalse;
+		}
+		for (i = n; gnuFileIndex[i] != '\n'; i++)
+			;
+
+		*thisFileNameSize = i - n - 1;
+		if (*thisFileNameSize >= *fileNameSize) {
+			/* Double it to avoid potentially continually
+			 increasing it by 1 */
+			*fileNameSize = *thisFileNameSize * 2;
+			*fileName_ = fileName = stgReallocBytes(fileName, *fileNameSize,
+					"loadArchive(fileName)");
+		}
+		memcpy(fileName, gnuFileIndex + n, *thisFileNameSize);
+		fileName[*thisFileNameSize] = '\0';
+	} else if (fileName[1] == ' ') {
+		fileName[0] = '\0';
+		*thisFileNameSize = 0;
+	} else {
+		errorBelch("GNU-variant filename offset not found "
+				"while reading filename from `%s'",
+				path);
+		return rtsFalse;
+	}
+
+	return rtsTrue;
+}
+
+static HsInt loadArchive_ (pathchar *path)
+{
+    ObjectCode* oc = NULL;
+    char *image = NULL;
+    HsInt retcode = 0;
+    int memberSize;
+    FILE *f = NULL;
+    int n;
+    size_t thisFileNameSize;
+    char *fileName;
+    size_t fileNameSize;
+    int isObject, isGnuIndex, isThin, isImportLib;
+    char tmp[20];
+    char *gnuFileIndex;
+    int gnuFileIndexSize;
     int misalignment = 0;
 
-    /* TODO: don't call barf() on error, instead return an error code, freeing
-     * all resources correctly.  This function is pretty complex, so it needs
-     * to be refactored to make this practical. */
-
-    IF_DEBUG(linker, debugBelch("loadArchive: start\n"));
-    IF_DEBUG(linker, debugBelch("loadArchive: Loading archive `%" PATH_FMT" '\n", path));
+    DEBUG_LOG("start\n");
+    DEBUG_LOG("Loading archive `%" PATH_FMT" '\n", path);
 
     /* Check that we haven't already loaded this archive.
        Ignore requests to load multiple times */
@@ -73,14 +296,14 @@ static HsInt loadArchive_ (pathchar *path)
 
     f = pathopen(path, WSTR("rb"));
     if (!f)
-        barf("loadObj: can't read `%" PATH_FMT "'", path);
+        FAIL("loadObj: can't read `%" PATH_FMT "'", path);
 
     /* Check if this is an archive by looking for the magic "!<arch>\n"
-     * string.  Usually, if this fails, we barf and quit.  On Darwin however,
-     * we may have a fat archive, which contains archives for more than
-     * one architecture.  Fat archives start with the magic number 0xcafebabe,
-     * always stored big endian.  If we find a fat_header, we scan through
-     * the fat_arch structs, searching through for one for our host
+     * string.  Usually, if this fails, we belch an error and return.  On
+     * Darwin however, we may have a fat archive, which contains archives for
+     * more than one architecture.  Fat archives start with the magic number
+     * 0xcafebabe, always stored big endian.  If we find a fat_header, we scan
+     * through the fat_arch structs, searching through for one for our host
      * architecture.  If a matching struct is found, we read the offset
      * of our archive data (nfat_offset) and seek forward nfat_offset bytes
      * from the start of the file.
@@ -95,8 +318,9 @@ static HsInt loadArchive_ (pathchar *path)
      */
 
     n = fread ( tmp, 1, 8, f );
-    if (n != 8)
-        barf("loadArchive: Failed reading header from `%" PATH_FMT "'", path);
+    if (n != 8) {
+        FAIL("Failed reading header from `%" PATH_FMT "'", path);
+    }
     if (strncmp(tmp, "!<arch>\n", 8) == 0) {}
     /* Check if this is a thin archive by looking for the magic string "!<thin>\n"
      *
@@ -116,132 +340,68 @@ static HsInt loadArchive_ (pathchar *path)
     else if (strncmp(tmp, "!<thin>\n", 8) == 0) {
         isThin = 1;
     }
-#if defined(darwin_HOST_OS)
-    /* Not a standard archive, look for a fat archive magic number: */
-    else if (ntohl(*(uint32_t *)tmp) == FAT_MAGIC) {
-        nfat_arch = ntohl(*(uint32_t *)(tmp + 4));
-        IF_DEBUG(linker, debugBelch("loadArchive: found a fat archive containing %d architectures\n", nfat_arch));
-        nfat_offset = 0;
-
-        for (i = 0; i < (int)nfat_arch; i++) {
-            /* search for the right arch */
-            n = fread( tmp, 1, 20, f );
-            if (n != 8)
-                barf("loadArchive: Failed reading arch from `%s'", path);
-            cputype = ntohl(*(uint32_t *)tmp);
-            cpusubtype = ntohl(*(uint32_t *)(tmp + 4));
-
-            if (cputype == mycputype && cpusubtype == mycpusubtype) {
-                IF_DEBUG(linker, debugBelch("loadArchive: found my archive in a fat archive\n"));
-                nfat_offset = ntohl(*(uint32_t *)(tmp + 8));
-                break;
-            }
-        }
-
-        if (nfat_offset == 0) {
-           barf ("loadArchive: searched %d architectures, but no host arch found", (int)nfat_arch);
-        }
-        else {
-            n = fseek( f, nfat_offset, SEEK_SET );
-            if (n != 0)
-                barf("loadArchive: Failed to seek to arch in `%s'", path);
-            n = fread ( tmp, 1, 8, f );
-            if (n != 8)
-                barf("loadArchive: Failed reading header from `%s'", path);
-            if (strncmp(tmp, "!<arch>\n", 8) != 0) {
-                barf("loadArchive: couldn't find archive in `%s' at offset %d", path, nfat_offset);
-            }
-        }
-    }
     else {
-        barf("loadArchive: Neither an archive, nor a fat archive: `%s'", path);
+		StgBool success = checkFatArchive(tmp, f, path);
+        if (!success)
+        	goto fail;
     }
-#else
-    else {
-        barf("loadArchive: Not an archive: `%" PATH_FMT "'", path);
-    }
-#endif
-
-    IF_DEBUG(linker, debugBelch("loadArchive: loading archive contents\n"));
+    DEBUG_LOG("loading archive contents\n");
 
     while (1) {
-        IF_DEBUG(linker, debugBelch("loadArchive: reading at %ld\n", ftell(f)));
+        DEBUG_LOG("reading at %ld\n", ftell(f));
         n = fread ( fileName, 1, 16, f );
         if (n != 16) {
             if (feof(f)) {
-                IF_DEBUG(linker, debugBelch("loadArchive: EOF while reading from '%" PATH_FMT "'\n", path));
+                DEBUG_LOG("EOF while reading from '%" PATH_FMT "'\n", path);
                 break;
             }
             else {
-                barf("loadArchive: Failed reading file name from `%" PATH_FMT "'", path);
+                FAIL("Failed reading file name from `%" PATH_FMT "'", path);
             }
         }
 
 #if defined(darwin_HOST_OS)
         if (strncmp(fileName, "!<arch>\n", 8) == 0) {
-            IF_DEBUG(linker, debugBelch("loadArchive: found the start of another archive, breaking\n"));
+            DEBUG_LOG("found the start of another archive, breaking\n");
             break;
         }
 #endif
 
         n = fread ( tmp, 1, 12, f );
         if (n != 12)
-            barf("loadArchive: Failed reading mod time from `%" PATH_FMT "'", path);
+            FAIL("Failed reading mod time from `%" PATH_FMT "'", path);
         n = fread ( tmp, 1, 6, f );
         if (n != 6)
-            barf("loadArchive: Failed reading owner from `%" PATH_FMT "'", path);
+            FAIL("Failed reading owner from `%" PATH_FMT "'", path);
         n = fread ( tmp, 1, 6, f );
         if (n != 6)
-            barf("loadArchive: Failed reading group from `%" PATH_FMT "'", path);
+            FAIL("Failed reading group from `%" PATH_FMT "'", path);
         n = fread ( tmp, 1, 8, f );
         if (n != 8)
-            barf("loadArchive: Failed reading mode from `%" PATH_FMT "'", path);
+            FAIL("Failed reading mode from `%" PATH_FMT "'", path);
         n = fread ( tmp, 1, 10, f );
         if (n != 10)
-            barf("loadArchive: Failed reading size from `%" PATH_FMT "'", path);
+            FAIL("Failed reading size from `%" PATH_FMT "'", path);
         tmp[10] = '\0';
         for (n = 0; isdigit(tmp[n]); n++);
         tmp[n] = '\0';
         memberSize = atoi(tmp);
 
-        IF_DEBUG(linker, debugBelch("loadArchive: size of this archive member is %d\n", memberSize));
+        DEBUG_LOG("size of this archive member is %d\n", memberSize);
         n = fread ( tmp, 1, 2, f );
         if (n != 2)
-            barf("loadArchive: Failed reading magic from `%" PATH_FMT "'", path);
+            FAIL("Failed reading magic from `%" PATH_FMT "'", path);
         if (strncmp(tmp, "\x60\x0A", 2) != 0)
-            barf("loadArchive: Failed reading magic from `%" PATH_FMT "' at %ld. Got %c%c",
+            FAIL("Failed reading magic from `%" PATH_FMT "' at %ld. Got %c%c",
                  path, ftell(f), tmp[0], tmp[1]);
 
         isGnuIndex = 0;
         /* Check for BSD-variant large filenames */
         if (0 == strncmp(fileName, "#1/", 3)) {
-            fileName[16] = '\0';
-            if (isdigit(fileName[3])) {
-                for (n = 4; isdigit(fileName[n]); n++);
-                fileName[n] = '\0';
-                thisFileNameSize = atoi(fileName + 3);
-                memberSize -= thisFileNameSize;
-                if (thisFileNameSize >= fileNameSize) {
-                    /* Double it to avoid potentially continually
-                       increasing it by 1 */
-                    fileNameSize = thisFileNameSize * 2;
-                    fileName = stgReallocBytes(fileName, fileNameSize, "loadArchive(fileName)");
-                }
-                n = fread ( fileName, 1, thisFileNameSize, f );
-                if (n != (int)thisFileNameSize) {
-                    barf("loadArchive: Failed reading filename from `%" PATH_FMT "'",
-                         path);
-                }
-                fileName[thisFileNameSize] = 0;
-
-                /* On OS X at least, thisFileNameSize is the size of the
-                   fileName field, not the length of the fileName
-                   itself. */
-                thisFileNameSize = strlen(fileName);
-            }
-            else {
-                barf("loadArchive: BSD-variant filename size not found while reading filename from `%s'", path);
-            }
+            StgBool success = checkBSDFilename(&fileName, &thisFileNameSize,
+                    &memberSize, &fileNameSize, f, path);
+            if (!success)
+                goto fail;
         }
         /* Check for GNU file index file */
         else if (0 == strncmp(fileName, "//", 2)) {
@@ -251,40 +411,9 @@ static HsInt loadArchive_ (pathchar *path)
         }
         /* Check for a file in the GNU file index */
         else if (fileName[0] == '/') {
-            if (isdigit(fileName[1])) {
-                int i;
-
-                for (n = 2; isdigit(fileName[n]); n++);
-                fileName[n] = '\0';
-                n = atoi(fileName + 1);
-
-                if (gnuFileIndex == NULL) {
-                    barf("loadArchive: GNU-variant filename without an index while reading from `%s'", path);
-                }
-                if (n < 0 || n > gnuFileIndexSize) {
-                    barf("loadArchive: GNU-variant filename offset %d out of range [0..%d] while reading filename from `%s'", n, gnuFileIndexSize, path);
-                }
-                if (n != 0 && gnuFileIndex[n - 1] != '\n') {
-                    barf("loadArchive: GNU-variant filename offset %d invalid (range [0..%d]) while reading filename from `%s'", n, gnuFileIndexSize, path);
-                }
-                for (i = n; gnuFileIndex[i] != '\n'; i++);
-                thisFileNameSize = i - n - 1;
-                if (thisFileNameSize >= fileNameSize) {
-                    /* Double it to avoid potentially continually
-                       increasing it by 1 */
-                    fileNameSize = thisFileNameSize * 2;
-                    fileName = stgReallocBytes(fileName, fileNameSize, "loadArchive(fileName)");
-                }
-                memcpy(fileName, gnuFileIndex + n, thisFileNameSize);
-                fileName[thisFileNameSize] = '\0';
-            }
-            else if (fileName[1] == ' ') {
-                fileName[0] = '\0';
-                thisFileNameSize = 0;
-            }
-            else {
-                barf("loadArchive: GNU-variant filename offset not found while reading filename from `%s'", path);
-            }
+			if (!lookupGNUArchiveIndex(gnuFileIndexSize, &fileName,
+					gnuFileIndex, path, &thisFileNameSize, &fileNameSize))
+				goto fail;
         }
         /* Finally, the case where the filename field actually contains
            the filename */
@@ -316,8 +445,7 @@ static HsInt loadArchive_ (pathchar *path)
             }
         }
 
-        IF_DEBUG(linker,
-                 debugBelch("loadArchive: Found member file `%s'\n", fileName));
+        DEBUG_LOG("Found member file `%s'\n", fileName);
 
         isObject = (thisFileNameSize >= 2 && strncmp(fileName + thisFileNameSize - 2, ".o"  , 2) == 0)
                 || (thisFileNameSize >= 4 && strncmp(fileName + thisFileNameSize - 4, ".p_o", 4) == 0);
@@ -346,13 +474,13 @@ static HsInt loadArchive_ (pathchar *path)
         isImportLib = isImportLib || endsWithPath(path, WSTR(".dll.a"));
 #endif // windows
 
-        IF_DEBUG(linker, debugBelch("loadArchive: \tthisFileNameSize = %d\n", (int)thisFileNameSize));
-        IF_DEBUG(linker, debugBelch("loadArchive: \tisObject = %d\n", isObject));
+        DEBUG_LOG("\tthisFileNameSize = %d\n", (int)thisFileNameSize);
+        DEBUG_LOG("\tisObject = %d\n", isObject);
 
         if (isObject) {
             char *archiveMemberName;
 
-            IF_DEBUG(linker, debugBelch("loadArchive: Member is an object file...loading...\n"));
+            DEBUG_LOG("Member is an object file...loading...\n");
 
 #if defined(mingw32_HOST_OS)
             // TODO: We would like to use allocateExec here, but allocateExec
@@ -374,41 +502,16 @@ static HsInt loadArchive_ (pathchar *path)
             image = stgMallocBytes(memberSize, "loadArchive(image)");
 #endif
             if (isThin) {
-                FILE *member;
-                pathchar *pathCopy, *dirName, *memberPath, *objFileName;
-
-                /* Allocate and setup the dirname of the archive.  We'll need
-                    this to locate the thin member */
-                pathCopy = pathdup(path); // Convert the char* to a pathchar*
-                dirName  = pathdir(pathCopy);
-
-                /* Append the relative member name to the dirname.  This should be
-                   be the full path to the actual thin member. */
-                int memberLen = pathlen(dirName) + 1 + strlen(fileName) + 1;
-                memberPath    = stgMallocBytes(pathsize * memberLen, "loadArchive(file)");
-                objFileName   = mkPath(fileName);
-                pathprintf(memberPath, memberLen, WSTR("%" PATH_FMT "%" PATH_FMT), dirName, objFileName);
-                stgFree(objFileName);
-                stgFree(dirName);
-
-                member = pathopen(memberPath, WSTR("rb"));
-                if (!member)
-                    barf("loadObj: can't read thin archive `%" PATH_FMT "'", memberPath);
-
-                n = fread ( image, 1, memberSize, member );
-                if (n != memberSize) {
-                    barf("loadArchive: error whilst reading `%s'", fileName);
+                if (!readThinArchiveMember(n, memberSize, path,
+                        fileName, image)) {
+                    goto fail;
                 }
-
-                fclose(member);
-                stgFree(memberPath);
-                stgFree(pathCopy);
             }
             else
             {
                 n = fread ( image, 1, memberSize, f );
                 if (n != memberSize) {
-                    barf("loadArchive: error whilst reading `%" PATH_FMT "'", path);
+                    FAIL("error whilst reading `%" PATH_FMT "'", path);
                 }
             }
 
@@ -445,9 +548,10 @@ static HsInt loadArchive_ (pathchar *path)
         }
         else if (isGnuIndex) {
             if (gnuFileIndex != NULL) {
-                barf("loadArchive: GNU-variant index found, but already have an index, while reading filename from `%s'", path);
+                FAIL("GNU-variant index found, but already have an index, \
+while reading filename from `%s'", path);
             }
-            IF_DEBUG(linker, debugBelch("loadArchive: Found GNU-variant file index\n"));
+            DEBUG_LOG("Found GNU-variant file index\n");
 #if RTS_LINKER_USE_MMAP
             gnuFileIndex = mmapForLinker(memberSize + 1, MAP_ANONYMOUS, -1, 0);
 #else
@@ -455,7 +559,7 @@ static HsInt loadArchive_ (pathchar *path)
 #endif
             n = fread ( gnuFileIndex, 1, memberSize, f );
             if (n != memberSize) {
-                barf("loadArchive: error whilst reading `%" PATH_FMT "'", path);
+                FAIL("error whilst reading `%" PATH_FMT "'", path);
             }
             gnuFileIndex[memberSize] = '/';
             gnuFileIndexSize = memberSize;
@@ -463,48 +567,52 @@ static HsInt loadArchive_ (pathchar *path)
         else if (isImportLib) {
 #if defined(OBJFORMAT_PEi386)
             if (checkAndLoadImportLibrary(path, fileName, f)) {
-                IF_DEBUG(linker, debugBelch("loadArchive: Member is an import file section... Corresponding DLL has been loaded...\n"));
+                DEBUG_LOG("Member is an import file section... \
+Corresponding DLL has been loaded...\n");
             }
             else {
-                IF_DEBUG(linker, debugBelch("loadArchive: Member is not a valid import file section... Skipping...\n"));
+                DEBUG_LOG("Member is not a valid import file section... Skipping...\n");
                 n = fseek(f, memberSize, SEEK_CUR);
                 if (n != 0)
-                    barf("loadArchive: error whilst seeking by %d in `%" PATH_FMT "'",
+                    FAIL("error whilst seeking by %d in `%" PATH_FMT "'",
                     memberSize, path);
             }
 #endif
         }
         else {
-            IF_DEBUG(linker, debugBelch("loadArchive: '%s' does not appear to be an object file\n", fileName));
+            DEBUG_LOG("'%s' does not appear to be an object file\n", fileName);
             if (!isThin || thisFileNameSize == 0) {
                 n = fseek(f, memberSize, SEEK_CUR);
                 if (n != 0)
-                    barf("loadArchive: error whilst seeking by %d in `%" PATH_FMT "'",
+                    FAIL("loadArchive: error whilst seeking by %d in `%" PATH_FMT "'",
                          memberSize, path);
             }
         }
 
         /* .ar files are 2-byte aligned */
         if (!(isThin && thisFileNameSize > 0) && memberSize % 2) {
-            IF_DEBUG(linker, debugBelch("loadArchive: trying to read one pad byte\n"));
+            DEBUG_LOG("trying to read one pad byte\n");
             n = fread ( tmp, 1, 1, f );
             if (n != 1) {
                 if (feof(f)) {
-                    IF_DEBUG(linker, debugBelch("loadArchive: found EOF while reading one pad byte\n"));
+                    DEBUG_LOG("found EOF while reading one pad byte\n");
                     break;
                 }
                 else {
-                    barf("loadArchive: Failed reading padding from `%" PATH_FMT "'", path);
+                    FAIL("Failed reading padding from `%" PATH_FMT "'", path);
                 }
             }
-            IF_DEBUG(linker, debugBelch("loadArchive: successfully read one pad byte\n"));
+            DEBUG_LOG("successfully read one pad byte\n");
         }
-        IF_DEBUG(linker, debugBelch("loadArchive: reached end of archive loading while loop\n"));
+        DEBUG_LOG("reached end of archive loading while loop\n");
     }
+    retcode = 1;
+fail:
+    if (f != NULL)
+        fclose(f);
 
-    fclose(f);
-
-    stgFree(fileName);
+    if (fileName != NULL)
+        stgFree(fileName);
     if (gnuFileIndex != NULL) {
 #if RTS_LINKER_USE_MMAP
         munmap(gnuFileIndex, gnuFileIndexSize + 1);
@@ -516,8 +624,8 @@ static HsInt loadArchive_ (pathchar *path)
     if (RTS_LINKER_USE_MMAP)
         m32_allocator_flush();
 
-    IF_DEBUG(linker, debugBelch("loadArchive: done\n"));
-    return 1;
+    DEBUG_LOG("done\n");
+    return retcode;
 }
 
 HsInt loadArchive (pathchar *path)

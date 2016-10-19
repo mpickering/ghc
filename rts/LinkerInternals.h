@@ -12,6 +12,8 @@
 #include "Rts.h"
 #include "Hash.h"
 
+#include "BeginPrivate.h"
+
 /* See Linker.c Note [runtime-linker-phases] */
 typedef enum {
     OBJECT_LOADED,
@@ -304,8 +306,37 @@ getting, here. */
 HsInt isAlreadyLoaded( pathchar *path );
 HsInt loadOc( ObjectCode* oc );
 ObjectCode* mkOc( pathchar *path, char *image, int imageSize,
-                  rtsBool mapped, char *archiveMemberName,
-                  int misalignment
-                  );
+                         rtsBool mapped, char *archiveMemberName,
+                         int misalignment
+                       );
+
+#include "EndPrivate.h"
+
+#if !defined(mingw32_HOST_OS)
+#include "posix/Signals.h"
+#endif
+
+// get protos for is*()
+#include <ctype.h>
+
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+
+#include <inttypes.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <assert.h>
+#include <libgen.h>
+
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
+
+#if defined(HAVE_DLFCN_H)
+#include <dlfcn.h>
+#endif
+
 
 #endif /* LINKERINTERNALS_H */
