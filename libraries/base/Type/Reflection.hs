@@ -17,7 +17,6 @@ module Type.Reflection
     , I.TypeRep
     , I.typeOf
     , pattern I.TRApp, pattern I.TRCon, pattern I.TRFun
-    , I.decomposeFun
     , I.typeRepFingerprint
     , I.typeRepTyCon
     , I.typeRepKind

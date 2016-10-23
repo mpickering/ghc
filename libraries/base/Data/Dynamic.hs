@@ -4,6 +4,7 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -135,8 +136,11 @@ fromDynamic (Dynamic t v)
 -- (f::(a->b)) `dynApply` (x::a) = (f a)::b
 dynApply :: Dynamic -> Dynamic -> Maybe Dynamic
 dynApply (Dynamic (TRFun ta tr) f) (Dynamic ta' x)
-  | Just HRefl <- ta `eqTypeRep` ta'              = Just (Dynamic tr (f x))
-dynApply _                         _              = Nothing
+  | Just HRefl <- ta `eqTypeRep` ta'
+  , Just HRefl <- typeRepKind tr `eqTypeRep` typeRep @Type
+  = Just (Dynamic tr (f x))
+dynApply _ _
+  = Nothing
 
 dynApp :: Dynamic -> Dynamic -> Dynamic
 dynApp f x = case dynApply f x of
