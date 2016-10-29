@@ -441,6 +441,7 @@ are the most common patterns, rewritten as regular expressions for clarity:
  '{-# OVERLAPPABLE'       { L _ (IToverlappable_prag _) }
  '{-# OVERLAPS'           { L _ (IToverlaps_prag _) }
  '{-# INCOHERENT'         { L _ (ITincoherent_prag _) }
+ '{-# COMPLETE'           { L _ (ITcomplete_prag _)   }
  '#-}'                    { L _ ITclose_prag }
 
  '..'           { L _ ITdotdot }                        -- reserved symbols
@@ -2247,6 +2248,9 @@ sigdecl :: { LHsDecl RdrName }
                      [mj AnnInfix $1,mj AnnVal $2] }
 
         | pattern_synonym_sig   { sLL $1 $> . SigD . unLoc $ $1 }
+
+        | '{-# COMPLETE' name_boolformula_opt '#-}'
+                {  sLL $1 $> (SigD (CompleteMatchSig undefined $2)) }
 
         -- This rule is for both INLINE and INLINABLE pragmas
         | '{-# INLINE' activation qvar '#-}'

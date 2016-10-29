@@ -848,6 +848,7 @@ data Sig name
   | SCCFunSig  SourceText      -- Note [Pragma source text] in BasicTypes
                (Located name)  -- Function name
                (Maybe StringLiteral)
+  | CompleteMatchSig SourceText (LBooleanFormula (Located name))
 
 deriving instance (DataId name) => Data (Sig name)
 
@@ -943,6 +944,7 @@ hsSigDoc (SpecInstSig {})       = text "SPECIALISE instance pragma"
 hsSigDoc (FixSig {})            = text "fixity declaration"
 hsSigDoc (MinimalSig {})        = text "MINIMAL pragma"
 hsSigDoc (SCCFunSig {})         = text "SCC pragma"
+hsSigDoc (CompleteMatchSig {})       = text "COMPLETE pragma"
 
 {-
 Check if signatures overlap; this is used when checking for duplicate
@@ -978,6 +980,8 @@ ppr_sig (PatSynSig names sig_ty)
   = text "pattern" <+> pprVarSig (map unLoc names) (ppr sig_ty)
 ppr_sig (SCCFunSig src fn mlabel)
   = pragSrcBrackets src "{-# SCC" (ppr fn <+> maybe empty ppr mlabel )
+ppr_sig (CompleteMatchSig src bf)
+  = pragSrcBrackets src "{-# COMPLETE" (ppr (fmap unLoc (unLoc bf)))
 
 instance OutputableBndr name => Outputable (FixitySig name) where
   ppr (FixitySig names fixity) = sep [ppr fixity, pprops]
