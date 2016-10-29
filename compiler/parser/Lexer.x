@@ -636,6 +636,7 @@ data Token
   | ITunpack_prag       SourceText
   | ITnounpack_prag     SourceText
   | ITann_prag          SourceText
+  | ITcomplete_prag     SourceText
   | ITclose_prag
   | IToptions_prag String
   | ITinclude_prag String
@@ -2736,7 +2737,9 @@ oneWordPrags = Map.fromList([
            ("overlappable", strtoken (\s -> IToverlappable_prag s)),
            ("overlapping", strtoken (\s -> IToverlapping_prag s)),
            ("incoherent", strtoken (\s -> ITincoherent_prag s)),
-           ("ctype", strtoken (\s -> ITctype s))])
+           ("ctype", strtoken (\s -> ITctype s)),
+           ("complete", strtoken (\s -> ITcomplete_prag s))
+           ])
 
 twoWordPrags = Map.fromList([
      ("inline conlike", strtoken (\s -> (ITinline_prag s Inline ConLike))),
