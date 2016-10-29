@@ -46,6 +46,7 @@
 #define MACHREGS_sparc    sparc_HOST_ARCH
 #define MACHREGS_arm      arm_HOST_ARCH
 #define MACHREGS_aarch64  aarch64_HOST_ARCH
+#define MACHREGS_riscv64  riscv64_HOST_ARCH
 #define MACHREGS_darwin   darwin_HOST_OS
 
 #endif

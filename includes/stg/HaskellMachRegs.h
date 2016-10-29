@@ -40,6 +40,7 @@
 #define MACHREGS_sparc    sparc_TARGET_ARCH
 #define MACHREGS_arm      arm_TARGET_ARCH
 #define MACHREGS_aarch64  aarch64_TARGET_ARCH
+#define MACHREGS_riscv64  riscv64_TARGET_ARCH
 #define MACHREGS_darwin   darwin_TARGET_OS
 
 #endif
