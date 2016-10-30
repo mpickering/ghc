@@ -176,7 +176,12 @@ instance Monoid PartialResult where
 -- * Redundant clauses
 -- * Not-covered clauses
 -- * Clauses with inaccessible RHS
-type PmResult = ([Located [LPat Id]], Uncovered, [Located [LPat Id]])
+data PmResult =
+  PmResult {
+    pmresultRedundant :: [Located [LPat Id]]
+    , pmresultUncovered :: Uncovered
+    , pmresultInaccessible :: [Located [LPat Id]]
+    }
 
 {-
 %************************************************************************
@@ -205,9 +210,9 @@ checkSingle' locn var p = do
   tracePm "checkSingle: missing" (vcat (map pprValVecDebug missing))
   PartialResult cs us ds <- runMany (pmcheckI clause []) missing -- no guards
   return $ case (cs,ds) of
-    (Covered,  _    )        -> ([], us, []) -- useful
-    (NotCovered, NotDiverged) -> ( m, us, []) -- redundant
-    (NotCovered, Diverged )   -> ([], us,  m) -- inaccessible rhs
+    (Covered,  _    )         -> PmResult [] us [] -- useful
+    (NotCovered, NotDiverged) -> PmResult m us []  -- redundant
+    (NotCovered, Diverged )   -> PmResult [] us m  -- inaccessible rhs
   where m = [L locn [L locn p]]
 
 -- | Check a matchgroup (case, functions, etc.)
@@ -227,13 +232,13 @@ checkMatches dflags ctxt vars matches = do
 -- | Check a matchgroup (case, functions, etc.)
 checkMatches' :: [Id] -> [LMatch Id (LHsExpr Id)] -> DsM PmResult
 checkMatches' vars matches
-  | null matches = return ([], [], [])
+  | null matches = return $ PmResult [] [] []
   | otherwise = do
       resetPmIterDs -- set the iter-no to zero
       missing    <- mkInitialUncovered vars
       tracePm "checkMatches: missing" (vcat (map pprValVecDebug missing))
       (rs,us,ds) <- go matches missing
-      return (map hsLMatchToLPats rs, us, map hsLMatchToLPats ds)
+      return $ PmResult (map hsLMatchToLPats rs) us (map hsLMatchToLPats ds)
   where
     go []     missing = return ([], missing, [])
     go (m:ms) missing = do
@@ -1346,7 +1351,10 @@ dsPmWarn dflags ctx@(DsMatchContext kind loc) pm_result
       when exists_u $
         putSrcSpanDs loc (warnDs flag_u_reason (pprEqns uncovered))
   where
-    (redundant, uncovered, inaccessible) = pm_result
+    PmResult
+      { pmresultRedundant = redundant
+      , pmresultUncovered = uncovered
+      , pmresultInaccessible = inaccessible } = pm_result
 
     flag_i = wopt Opt_WarnOverlappingPatterns dflags
     flag_u = exhaustive dflags kind
