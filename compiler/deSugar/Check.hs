@@ -159,7 +159,7 @@ data PartialResult = PartialResult {
 
 instance Outputable PartialResult where
   ppr (PartialResult c vsa d) = text "PartialResult" <+> ppr c
-                                  <+> ppr d $+$ (ppr vsa)
+                                  <+> ppr d <+> ppr vsa
 
 instance Monoid PartialResult where
   mempty = PartialResult mempty [] mempty
@@ -240,6 +240,8 @@ checkMatches' vars matches
       (rs,us,ds) <- go matches missing
       return $ PmResult (map hsLMatchToLPats rs) us (map hsLMatchToLPats ds)
   where
+    go :: [LMatch Id (LHsExpr Id)] -> Uncovered
+       -> DsM ([LMatch Id (LHsExpr Id)] , Uncovered , [LMatch Id (LHsExpr Id)])
     go []     missing = return ([], missing, [])
     go (m:ms) missing = do
       tracePm "checMatches': go" (ppr m $$ ppr missing)
