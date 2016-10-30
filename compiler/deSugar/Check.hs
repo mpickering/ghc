@@ -122,7 +122,54 @@ type Uncovered = ValSetAbs
 --  C = True             ==> Useful clause (no warning)
 --  C = False, D = True  ==> Clause with inaccessible RHS
 --  C = False, D = False ==> Redundant clause
-type Triple = (Bool, Uncovered, Bool)
+
+data Covered = Covered | NotCovered
+  deriving Show
+
+instance Outputable Covered where
+  ppr (Covered) = text "Covered"
+  ppr (NotCovered) = text "NotCovered"
+
+-- Like the or monoid for booleans
+-- Covered = True, Uncovered = False
+instance Monoid Covered where
+  mempty = NotCovered
+  Covered `mappend` _ = Covered
+  _ `mappend` Covered = Covered
+  NotCovered `mappend` NotCovered = NotCovered
+
+data Diverged = Diverged | NotDiverged
+  deriving Show
+
+instance Outputable Diverged where
+  ppr Diverged = text "Diverged"
+  ppr NotDiverged = text "NotDiverged"
+
+instance Monoid Diverged where
+  mempty = NotDiverged
+  Diverged `mappend` _ = Diverged
+  _ `mappend` Diverged = Diverged
+  NotDiverged `mappend` NotDiverged = NotDiverged
+
+data PartialResult = PartialResult {
+                      presultCovered :: Covered
+                      , presultUncovered :: Uncovered
+                      , presultDivergent :: Diverged
+                      }
+
+instance Outputable PartialResult where
+  ppr (PartialResult c vsa d) = text "PartialResult" <+> ppr c
+                                  <+> ppr d $+$ (ppr vsa)
+
+instance Monoid PartialResult where
+  mempty = PartialResult mempty [] mempty
+  (PartialResult cs1 vsa1 ds1)
+    `mappend` (PartialResult cs2 vsa2 ds2)
+      = PartialResult (cs1 `mappend` cs2)
+                      (vsa1 `mappend` vsa2)
+                      (ds1 `mappend` ds2)
+
+-- newtype ChoiceOf a = ChoiceOf [a]
 
 -- | Pattern check result
 --
@@ -156,11 +203,11 @@ checkSingle' locn var p = do
   clause    <- translatePat fam_insts p
   missing   <- mkInitialUncovered [var]
   tracePm "checkSingle: missing" (vcat (map pprValVecDebug missing))
-  (cs,us,ds) <- runMany (pmcheckI clause []) missing -- no guards
+  PartialResult cs us ds <- runMany (pmcheckI clause []) missing -- no guards
   return $ case (cs,ds) of
-    (True,  _    ) -> ([], us, []) -- useful
-    (False, False) -> ( m, us, []) -- redundant
-    (False, True ) -> ([], us,  m) -- inaccessible rhs
+    (Covered,  _    )        -> ([], us, []) -- useful
+    (NotCovered, NotDiverged) -> ( m, us, []) -- redundant
+    (NotCovered, Diverged )   -> ([], us,  m) -- inaccessible rhs
   where m = [L locn [L locn p]]
 
 -- | Check a matchgroup (case, functions, etc.)
@@ -193,12 +240,14 @@ checkMatches' vars matches
       tracePm "checMatches': go" (ppr m $$ ppr missing)
       fam_insts          <- dsGetFamInstEnvs
       (clause, guards)   <- translateMatch fam_insts m
-      (cs, missing', ds) <- runMany (pmcheckI clause guards) missing
+      r@(PartialResult cs missing' ds)
+        <- runMany (pmcheckI clause guards) missing
+      tracePm "checMatches': go: res" (ppr r)
       (rs, final_u, is)  <- go ms missing'
       return $ case (cs, ds) of
-        (True,  _    ) -> (  rs, final_u,   is) -- useful
-        (False, False) -> (m:rs, final_u,   is) -- redundant
-        (False, True ) -> (  rs, final_u, m:is) -- inaccessible
+        (Covered,  _    )        -> (  rs, final_u,   is) -- useful
+        (NotCovered, NotDiverged) -> (m:rs, final_u,   is) -- redundant
+        (NotCovered, Diverged )   -> (  rs, final_u, m:is) -- inaccessible
 
     hsLMatchToLPats :: LMatch id body -> Located [LPat id]
     hsLMatchToLPats (L l (Match _ pats _ _)) = L l pats
@@ -861,7 +910,7 @@ Main functions are:
   are checked, if they are inconsistent, the set is empty, otherwise, the
   set contains only a vector of variables with the constraints in scope.
 
-* pmcheck :: PatVec -> [PatVec] -> ValVec -> PmM Triple
+* pmcheck :: PatVec -> [PatVec] -> ValVec -> PmM PartialResult
 
   Checks redundancy, coverage and inaccessibility, using auxilary functions
   `pmcheckGuards` and `pmcheckHd`. Mainly handles the guard case which is
@@ -869,12 +918,12 @@ Main functions are:
   whole clause is checked, or `pmcheckHd` when the pattern vector does not
   start with a guard.
 
-* pmcheckGuards :: [PatVec] -> ValVec -> PmM Triple
+* pmcheckGuards :: [PatVec] -> ValVec -> PmM PartialResult
 
   Processes the guards.
 
 * pmcheckHd :: Pattern -> PatVec -> [PatVec]
-          -> ValAbs -> ValVec -> PmM Triple
+          -> ValAbs -> ValVec -> PmM PartialResult
 
   Worker: This function implements functions `covered`, `uncovered` and
   `divergent` from the paper at once. Slightly different from the paper because
@@ -886,9 +935,12 @@ Main functions are:
 -- | Lift a pattern matching action from a single value vector abstration to a
 -- value set abstraction, but calling it on every vector and the combining the
 -- results.
-runMany :: (ValVec -> PmM Triple) -> (Uncovered -> PmM Triple)
-runMany pm us = mapAndUnzip3M pm us >>= \(css, uss, dss) ->
-                  return (or css, concat uss, or dss)
+runMany :: (ValVec -> PmM PartialResult) -> (Uncovered -> PmM PartialResult)
+runMany _ [] = return $ PartialResult mempty mempty mempty
+runMany pm (m:ms) = do
+  (PartialResult c v d) <- pm m
+  (PartialResult cs vs ds) <- runMany pm ms
+  return (PartialResult (c `mappend` cs) (v `mappend` vs) (d `mappend` ds))
 {-# INLINE runMany #-}
 
 -- | Generate the initial uncovered set. It initializes the
@@ -908,24 +960,26 @@ mkInitialUncovered vars = do
 
 -- | Increase the counter for elapsed algorithm iterations, check that the
 -- limit is not exceeded and call `pmcheck`
-pmcheckI :: PatVec -> [PatVec] -> ValVec -> PmM Triple
+pmcheckI :: PatVec -> [PatVec] -> ValVec -> PmM PartialResult
 pmcheckI ps guards vva = do
   n <- incrCheckPmIterDs
   tracePm "pmCheck" (ppr n <> colon <+> pprPatVec ps
                         $$ hang (text "guards:") 2 (vcat (map pprPatVec guards))
                         $$ pprValVecDebug vva)
-  pmcheck ps guards vva
+  res <- pmcheck ps guards vva
+  tracePm "pmCheckResult:" (ppr res)
+  return res
 {-# INLINE pmcheckI #-}
 
 -- | Increase the counter for elapsed algorithm iterations, check that the
 -- limit is not exceeded and call `pmcheckGuards`
-pmcheckGuardsI :: [PatVec] -> ValVec -> PmM Triple
+pmcheckGuardsI :: [PatVec] -> ValVec -> PmM PartialResult
 pmcheckGuardsI gvs vva = incrCheckPmIterDs >> pmcheckGuards gvs vva
 {-# INLINE pmcheckGuardsI #-}
 
 -- | Increase the counter for elapsed algorithm iterations, check that the
 -- limit is not exceeded and call `pmcheckHd`
-pmcheckHdI :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec -> PmM Triple
+pmcheckHdI :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec -> PmM PartialResult
 pmcheckHdI p ps guards va vva = do
   n <- incrCheckPmIterDs
   tracePm "pmCheckHdI" (ppr n <> colon <+> pprPmPatDebug p
@@ -934,15 +988,17 @@ pmcheckHdI p ps guards va vva = do
                         $$ pprPmPatDebug va
                         $$ pprValVecDebug vva)
 
-  pmcheckHd p ps guards va vva
+  res <- pmcheckHd p ps guards va vva
+  tracePm "pmCheckHdI: res" (ppr res)
+  return res
 {-# INLINE pmcheckHdI #-}
 
 -- | Matching function: Check simultaneously a clause (takes separately the
 -- patterns and the list of guards) for exhaustiveness, redundancy and
 -- inaccessibility.
-pmcheck :: PatVec -> [PatVec] -> ValVec -> PmM Triple
+pmcheck :: PatVec -> [PatVec] -> ValVec -> PmM PartialResult
 pmcheck [] guards vva@(ValVec [] _)
-  | null guards = return (True, [], False)
+  | null guards = return $ mempty { presultCovered = Covered }
   | otherwise   = pmcheckGuardsI guards vva
 
 -- Guard
@@ -965,41 +1021,44 @@ pmcheck (p:ps) guards (ValVec (va:vva) delta)
   = pmcheckHdI p ps guards va (ValVec vva delta)
 
 -- | Check the list of guards
-pmcheckGuards :: [PatVec] -> ValVec -> PmM Triple
-pmcheckGuards []       vva = return (False, [vva], False)
+pmcheckGuards :: [PatVec] -> ValVec -> PmM PartialResult
+pmcheckGuards []       vva = return (usimple [vva])
 pmcheckGuards (gv:gvs) vva = do
-  (cs,  vsa,  ds ) <- pmcheckI gv [] vva
-  (css, vsas, dss) <- runMany (pmcheckGuardsI gvs) vsa
-  return (cs || css, vsas, ds || dss)
+  (PartialResult cs vsa ds) <- pmcheckI gv [] vva
+  (PartialResult css vsas dss) <- runMany (pmcheckGuardsI gvs) vsa
+  return $ PartialResult (cs `mappend` css) vsas (ds `mappend` dss)
 
 -- | Worker function: Implements all cases described in the paper for all three
 -- functions (`covered`, `uncovered` and `divergent`) apart from the `Guard`
 -- cases which are handled by `pmcheck`
-pmcheckHd :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec -> PmM Triple
+pmcheckHd :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec -> PmM PartialResult
 
 -- Var
 pmcheckHd (PmVar x) ps guards va (ValVec vva delta)
   | Just tm_state <- solveOneEq (delta_tm_cs delta)
                                 (PmExprVar (idName x), vaToPmExpr va)
   = ucon va <$> pmcheckI ps guards (ValVec vva (delta {delta_tm_cs = tm_state}))
-  | otherwise = return (False, [], False)
+  | otherwise = return mempty
 
 -- ConCon
 pmcheckHd ( p@(PmCon {pm_con_con = c1, pm_con_args = args1})) ps guards
           (va@(PmCon {pm_con_con = c2, pm_con_args = args2})) (ValVec vva delta)
-  | c1 /= c2  = return (False, [ValVec (va:vva) delta], False)
+  | c1 /= c2  =
+    return (usimple [ValVec (va:vva) delta])
   | otherwise = kcon c1 (pm_con_arg_tys p) (pm_con_tvs p) (pm_con_dicts p)
                 <$> pmcheckI (args1 ++ ps) guards (ValVec (args2 ++ vva) delta)
 
 -- LitLit
-pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva = case eqPmLit l1 l2 of
-  True  -> ucon va <$> pmcheckI ps guards vva
-  False -> return $ ucon va (False, [vva], False)
+pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva =
+  case eqPmLit l1 l2 of
+    True  -> ucon va <$> pmcheckI ps guards vva
+    False -> return $ ucon va (usimple [vva])
 
 -- ConVar
 pmcheckHd (p@(PmCon { pm_con_con = con })) ps guards
           (PmVar x) (ValVec vva delta) = do
   cons_cs  <- mapM (mkOneConFull x) (allConstructors con)
+
   inst_vsa <- flip concatMapM cons_cs $ \(va, tm_ct, ty_cs) -> do
     let ty_state = ty_cs `unionBags` delta_ty_cs delta -- not actually a state
     sat_ty <- if isEmptyBag ty_cs then return True
@@ -1018,13 +1077,13 @@ pmcheckHd (p@(PmLit l)) ps guards (PmVar x) (ValVec vva delta)
         case solveOneEq (delta_tm_cs delta) (mkPosEq x l) of
           Just tm_state -> pmcheckHdI p ps guards (PmLit l) $
                              ValVec vva (delta {delta_tm_cs = tm_state})
-          Nothing       -> return (False, [], False)
+          Nothing       -> return mempty
   where
     us | Just tm_state <- solveOneEq (delta_tm_cs delta) (mkNegEq x l)
        = [ValVec (PmNLit x [l] : vva) (delta { delta_tm_cs = tm_state })]
        | otherwise = []
 
-    non_matched = (False, us, False)
+    non_matched = usimple us
 
 -- LitNLit
 pmcheckHd (p@(PmLit l)) ps guards
@@ -1044,7 +1103,7 @@ pmcheckHd (p@(PmLit l)) ps guards
        = [ValVec (PmNLit x (l:lits) : vva) (delta { delta_tm_cs = tm_state })]
        | otherwise = []
 
-    non_matched = (False, us, False)
+    non_matched = usimple us
 
 -- ----------------------------------------------------------------------------
 -- The following three can happen only in cases like #322 where constructors
@@ -1077,54 +1136,66 @@ pmcheckHd (PmGrd {}) _ _ _ _ = panic "pmcheckHd: Guard"
 -- ----------------------------------------------------------------------------
 -- * Utilities for main checking
 
+updateVsa :: (ValSetAbs -> ValSetAbs) -> (PartialResult -> PartialResult)
+updateVsa f p@(PartialResult { presultUncovered = old })
+  = p { presultUncovered = f old }
+
+
+-- | Initialise with default values for covering and divergent information.
+usimple :: ValSetAbs -> PartialResult
+usimple vsa = mempty { presultUncovered = vsa }
+
 -- | Take the tail of all value vector abstractions in the uncovered set
-utail :: Triple -> Triple
-utail (cs, vsa, ds) = (cs, vsa', ds)
-  where vsa' = [ ValVec vva delta | ValVec (_:vva) delta <- vsa ]
+utail :: PartialResult -> PartialResult
+utail = updateVsa upd
+  where upd vsa = [ ValVec vva delta | ValVec (_:vva) delta <- vsa ]
 
 -- | Prepend a value abstraction to all value vector abstractions in the
 -- uncovered set
-ucon :: ValAbs -> Triple -> Triple
-ucon va (cs, vsa, ds) = (cs, vsa', ds)
-  where vsa' = [ ValVec (va:vva) delta | ValVec vva delta <- vsa ]
+ucon :: ValAbs -> PartialResult -> PartialResult
+ucon va = updateVsa upd
+  where
+    upd vsa = [ ValVec (va:vva) delta | ValVec vva delta <- vsa ]
 
 -- | Given a data constructor of arity `a` and an uncovered set containing
 -- value vector abstractions of length `(a+n)`, pass the first `n` value
 -- abstractions to the constructor (Hence, the resulting value vector
 -- abstractions will have length `n+1`)
-kcon :: DataCon -> [Type] -> [TyVar] -> [EvVar] -> Triple -> Triple
-kcon con arg_tys ex_tvs dicts (cs, vsa, ds)
-  = (cs, [ ValVec (va:vva) delta
-         | ValVec vva' delta <- vsa
-         , let (args, vva) = splitAt n vva'
-         , let va = PmCon { pm_con_con     = con
-                          , pm_con_arg_tys = arg_tys
-                          , pm_con_tvs     = ex_tvs
-                          , pm_con_dicts   = dicts
-                          , pm_con_args    = args } ]
-       , ds)
-  where n = dataConSourceArity con
+kcon :: DataCon -> [Type] -> [TyVar] -> [EvVar]
+     -> PartialResult -> PartialResult
+kcon con arg_tys ex_tvs dicts
+  = let n = dataConSourceArity con
+        upd vsa =
+          [ ValVec (va:vva) delta
+          | ValVec vva' delta <- vsa
+          , let (args, vva) = splitAt n vva'
+          , let va = PmCon { pm_con_con     = con
+                            , pm_con_arg_tys = arg_tys
+                            , pm_con_tvs     = ex_tvs
+                            , pm_con_dicts   = dicts
+                            , pm_con_args    = args } ]
+    in updateVsa upd
 
 -- | Get the union of two covered, uncovered and divergent value set
 -- abstractions. Since the covered and divergent sets are represented by a
 -- boolean, union means computing the logical or (at least one of the two is
 -- non-empty).
-mkUnion :: Triple -> Triple -> Triple
-mkUnion (cs1, vsa1, ds1) (cs2, vsa2, ds2)
-  = (cs1 || cs2, vsa1 ++ vsa2, ds1 || ds2)
+
+mkUnion :: PartialResult -> PartialResult -> PartialResult
+mkUnion = mappend
 
 -- | Add a value vector abstraction to a value set abstraction (uncovered).
-mkCons :: ValVec -> Triple -> Triple
-mkCons vva (cs, vsa, ds) = (cs, vva:vsa, ds)
+mkCons :: ValVec -> PartialResult -> PartialResult
+mkCons vva = updateVsa (vva:)
 
 -- | Set the divergent set to not empty
-forces :: Triple -> Triple
-forces (cs, us, _) = (cs, us, True)
+forces :: PartialResult -> PartialResult
+forces pres = pres { presultDivergent = Diverged }
 
 -- | Set the divergent set to non-empty if the flag is `True`
-force_if :: Bool -> Triple -> Triple
-force_if True  (cs,us,_) = (cs,us,True)
-force_if False triple    = triple
+force_if :: Bool -> PartialResult -> PartialResult
+force_if True  pres = forces pres
+force_if False pres = pres
 
 -- ----------------------------------------------------------------------------
 -- * Propagation of term constraints inwards when checking nested matches
