@@ -62,6 +62,7 @@ import TcValidity (checkValidType)
 import Unique (getUnique)
 import UniqFM
 import qualified GHC.LanguageExtensions as LangExt
+import ConLike
 
 import Control.Monad
 
@@ -185,12 +186,27 @@ tcTopBinds binds sigs
                ; return (gbl, lcl) }
         ; specs <- tcImpPrags sigs   -- SPECIALISE prags for imported Ids
 
-        ; let { tcg_env' = tcg_env { tcg_imp_specs = specs ++ tcg_imp_specs tcg_env }
+        ; complete_matches <- setEnvs (tcg_env, tcl_env) $ tcCompleteMatches sigs
+        ; traceTc "complete_matches" (ppr binds $$ ppr sigs)
+        ; traceTc "complete_matches" (ppr complete_matches)
+
+        ; let { tcg_env' = tcg_env { tcg_imp_specs = specs ++ tcg_imp_specs tcg_env
+                                   , tcg_complete_matches
+                                      = complete_matches
+                                          ++ tcg_complete_matches tcg_env }
                            `addTypecheckedBinds` map snd binds' }
 
         ; return (tcg_env', tcl_env) }
         -- The top level bindings are flattened into a giant
         -- implicitly-mutually-recursive LHsBinds
+
+tcCompleteMatches :: [LSig Name] -> TcM [[ConLike]]
+tcCompleteMatches sigs =
+  let
+      doOne (L _ (CompleteMatchSig _ lns))
+        = Just <$> mapM (addLocM tcLookupConLike) (unLoc lns)
+      doOne _ = return Nothing
+  in  mapMaybeM doOne sigs
 
 tcRecSelBinds :: HsValBinds Name -> TcM TcGblEnv
 tcRecSelBinds (ValBindsOut binds sigs)
