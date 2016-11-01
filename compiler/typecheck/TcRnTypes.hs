@@ -369,6 +369,7 @@ data DsGblEnv
                                                 -- exported entities of 'Data.Array.Parallel' iff
                                                 -- '-XParallelArrays' was given; otherwise, empty
         , ds_parr_bi :: PArrBuiltin             -- desugarar names for '-XParallelArrays'
+        , ds_complete_matches :: [[ConLike ]]   -- Addition complete pattern matches
         }
 
 instance ContainsModule DsGblEnv where
@@ -644,9 +645,10 @@ data TcGblEnv
         tcg_top_loc :: RealSrcSpan,
         -- ^ The RealSrcSpan this module came from
 
-        tcg_static_wc :: TcRef WantedConstraints
-        -- ^ Wanted constraints of static forms.
+        tcg_static_wc :: TcRef WantedConstraints,
+          -- ^ Wanted constraints of static forms.
         -- See Note [Constraints in static forms].
+        tcg_complete_matches :: [[ConLike]]
     }
 
 -- NB: topModIdentity, not topModSemantic!
