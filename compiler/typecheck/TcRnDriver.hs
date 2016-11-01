@@ -251,7 +251,7 @@ tcRnModuleTcRnM hsc_env hsc_src
         tcg_env <- tcRnExports explicit_mod_hdr export_ies tcg_env ;
         traceRn "rn4b: after exports" empty ;
 
-                -- Check that main is exported (must be after rnExports)
+                -- Check that main is exported (must be after tcRnExports)
         checkMainExported tcg_env ;
 
         -- Compare the hi-boot iface (if any) with the real thing
@@ -1296,6 +1296,7 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
                 -- Vectorisation declarations
         vects <- tcVectDecls vect_decls ;
 
+
                 -- Wrap up
         traceTc "Tc7a" empty ;
         let { all_binds = inst_binds     `unionBags`
@@ -1307,6 +1308,7 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
 
             ; sig_names = mkNameSet (collectHsValBinders hs_val_binds)
                           `minusNameSet` getTypeSigNames val_sigs
+
 
                 -- Extend the GblEnv with the (as yet un-zonked)
                 -- bindings, rules, foreign decls

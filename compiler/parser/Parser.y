@@ -2249,7 +2249,7 @@ sigdecl :: { LHsDecl RdrName }
 
         | pattern_synonym_sig   { sLL $1 $> . SigD . unLoc $ $1 }
 
-        | '{-# COMPLETE' name_boolformula_opt '#-}'
+        | '{-# COMPLETE' con_list '#-}'
                 {  sLL $1 $> (SigD (CompleteMatchSig undefined $2)) }
 
         -- This rule is for both INLINE and INLINABLE pragmas
