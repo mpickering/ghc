@@ -50,7 +50,7 @@ import Coercion
 import TcEvidence
 import IOEnv
 
-import ListT (ListT(..), Step(..), fold)
+import ListT (ListT(..), Step(..), fold, select)
 import qualified ListT as L (empty)
 
 {-
@@ -863,6 +863,20 @@ coercePmPat (PmGrd {}) = [] -- drop the guards
 allConstructors :: DataCon -> [DataCon]
 allConstructors = tyConDataCons . dataConTyCon
 
+{-
+allCompleteGroups :: DataCon -> [[DataCon]]
+allCompleteGroups dc = [allConstructors dc]
+-}
+
+allCompleteGroups :: DataCon -> PmM [DataCon]
+allCompleteGroups _ = do
+  cms <- liftD dsGetCompleteMatches
+  tracePm "allCompletedGroups" (ppr cms)
+  fmap (map getDataCon) $ select =<< liftD dsGetCompleteMatches
+  where
+    getDataCon (RealDataCon c) = c
+    getDataCon _ = panic "getDataCon"
+
 -- -----------------------------------------------------------------------
 -- * Types and constraints
 
@@ -1076,7 +1090,9 @@ pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva =
 -- ConVar
 pmcheckHd (p@(PmCon { pm_con_con = con })) ps guards
           (PmVar x) (ValVec vva delta) = do
-  cons_cs  <- mapM (liftD . mkOneConFull x) (allConstructors con)
+  complete_group  <- allCompleteGroups con
+
+  cons_cs <- mapM (liftD . mkOneConFull x) complete_group
 
   inst_vsa <- flip concatMapM cons_cs $ \(va, tm_ct, ty_cs) -> do
     let ty_state = ty_cs `unionBags` delta_ty_cs delta -- not actually a state
