@@ -296,7 +296,9 @@ deSugar hsc_env
                             tcg_tcs          = tcs,
                             tcg_insts        = insts,
                             tcg_fam_insts    = fam_insts,
-                            tcg_hpc          = other_hpc_info})
+                            tcg_hpc          = other_hpc_info,
+                            tcg_complete_matches = complete_matches
+                            })
 
   = do { let dflags = hsc_dflags hsc_env
              print_unqual = mkPrintUnqualified dflags rdr_env
@@ -313,8 +315,8 @@ deSugar hsc_env
                               then addTicksToBinds hsc_env mod mod_loc
                                        export_set (typeEnvTyCons type_env) binds
                               else return (binds, hpcInfo, Nothing)
-
-        ; (msgs, mb_res) <- initDs hsc_env mod rdr_env type_env fam_inst_env $
+        ; pprTrace "complete_matches" (ppr complete_matches) (return ())
+        ; (msgs, mb_res) <- initDs hsc_env mod rdr_env type_env fam_inst_env complete_matches  $
                        do { ds_ev_binds <- dsEvBinds ev_binds
                           ; core_prs <- dsTopLHsBinds binds_cvr
                           ; (spec_prs, spec_rules) <- dsImpSpecs imp_specs
@@ -451,7 +453,7 @@ deSugarExpr hsc_env tc_expr
 
          -- Do desugaring
        ; (msgs, mb_core_expr) <- initDs hsc_env (icInteractiveModule icntxt) rdr_env
-                                        type_env fam_inst_env $
+                                        type_env fam_inst_env [] $
                                  dsLExpr tc_expr
 
        ; case mb_core_expr of
