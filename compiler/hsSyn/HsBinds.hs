@@ -844,7 +844,7 @@ data Sig name
   | SCCFunSig  SourceText      -- Note [Pragma source text] in BasicTypes
                (Located name)  -- Function name
                (Maybe StringLiteral)
-  | CompleteMatchSig SourceText (LBooleanFormula (Located name))
+  | CompleteMatchSig SourceText (Located [Located name])
 
 deriving instance (DataId name) => Data (Sig name)
 
@@ -913,6 +913,7 @@ isPragLSig (L _ (SpecSig {}))   = True
 isPragLSig (L _ (InlineSig {})) = True
 isPragLSig (L _ (SCCFunSig {})) = True
 isPragLSig _                    = False
+--TODO: Add complete match sig here?
 
 isInlineLSig :: LSig name -> Bool
 -- Identifies inline pragmas
@@ -926,6 +927,10 @@ isMinimalLSig _                     = False
 isSCCFunSig :: LSig name -> Bool
 isSCCFunSig (L _ (SCCFunSig {})) = True
 isSCCFunSig _                    = False
+
+isCompleteMatchSig :: LSig name -> Bool
+isCompleteMatchSig (L _ (CompleteMatchSig {} )) = True
+isCompleteMatchSig _                            = False
 
 hsSigDoc :: Sig name -> SDoc
 hsSigDoc (TypeSig {})           = text "type signature"
@@ -970,8 +975,9 @@ ppr_sig (SCCFunSig _ fn Nothing)
   = pragBrackets (text "SCC" <+> ppr fn)
 ppr_sig (SCCFunSig _ fn (Just str))
   = pragBrackets (text "SCC" <+> ppr fn <+> ppr (sl_st str))
-ppr_sig (CompleteMatchSig _ bf)
-  = pragBrackets (text "COMPLETE" <+> ppr (fmap unLoc (unLoc bf)))
+ppr_sig (CompleteMatchSig _ cs)
+  = pragBrackets (text "COMPLETE" <+> hsep (punctuate comma
+                                              (map ppr (unLoc cs))))
 
 instance OutputableBndr name => Outputable (FixitySig name) where
   ppr (FixitySig names fixity) = sep [ppr fixity, pprops]
