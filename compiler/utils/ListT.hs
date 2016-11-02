@@ -347,14 +347,14 @@ runListT (ListT m) = do
 
 > fold (+) 0 id :: Num a => ListT m a -> m a
 -}
-fold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> ListT m a -> m b
-fold step begin done l = go begin l
+fold :: Monad m => (b -> a -> b) -> b -> ListT m a -> m b
+fold step begin l = go begin l
   where
     go !x (ListT m) = do
         s <- m
         case s of
             Cons a l' -> go (step x a) l'
-            Nil       -> return (done x)
+            Nil       -> return x
 
 {-| Use this to fold a `ListT` into a single value.  This is designed to be
     used with the @foldl@ library:
