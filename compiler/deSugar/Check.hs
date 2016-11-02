@@ -103,12 +103,6 @@ getResult ls = do
              ( EQ , r ) -> if r then Just new else old
              ( LT , _ ) -> old
 
-myRunListT :: PmM a -> DsM [a]
-myRunListT pm = fold pm go (return [])
-  where
-    go a mas =
-      mas >>= \as -> return (a:as)
-
 data PatTy = PAT | VA -- Used only as a kind, to index PmPat
 
 -- The *arity* of a PatVec [p1,..,pn] is
