@@ -427,22 +427,13 @@ translatePat fam_insts pat = case pat of
       -- See Note [Guards and Approximation]
     | otherwise -> mkCanFailPmPat pat_ty
 
-  ConPatOut { pat_con = L _ (PatSynCon _) } ->
-    -- Pattern synonyms have a "matcher"
-    -- (see Note [Pattern synonym representation] in PatSyn.hs
-    -- We should be able to transform (P x y)
-    -- to   v (Just (x, y) <- matchP v (\x y -> Just (x,y)) Nothing
-    -- That is, a combination of a variable pattern and a guard
-    -- But there are complications with GADTs etc, and this isn't done yet
-    mkCanFailPmPat (hsPatType pat)
-
-  ConPatOut { pat_con     = L _ (RealDataCon con)
+  ConPatOut { pat_con     = L _ con
             , pat_arg_tys = arg_tys
             , pat_tvs     = ex_tvs
             , pat_dicts   = dicts
             , pat_args    = ps } -> do
-    args <- translateConPatVec fam_insts arg_tys ex_tvs (RealDataCon con) ps
-    return [PmCon { pm_con_con     = RealDataCon con
+    args <- translateConPatVec fam_insts arg_tys ex_tvs con ps
+    return [PmCon { pm_con_con     = con
                   , pm_con_arg_tys = arg_tys
                   , pm_con_tvs     = ex_tvs
                   , pm_con_dicts   = dicts
@@ -899,8 +890,8 @@ singleConstructor cl =
     xs -> any ((==1) . length) xs
 -}
 
-allCompleteGroups :: ConLike -> PmM [ConLike]
-allCompleteGroups cl = do
+allCompleteGroups :: ConLike -> [Type] -> PmM [ConLike]
+allCompleteGroups cl _arg_tys = do
   let fam = case cl of
            RealDataCon dc -> [map RealDataCon (tyConDataCons (dataConTyCon dc))]
            PatSynCon _    -> []
@@ -908,8 +899,19 @@ allCompleteGroups cl = do
   from_pragma <- liftD dsGetCompleteMatches
 
   cms <- liftD dsGetCompleteMatches
-  tracePm "allCompletedGroups" (ppr cms)
-  select (fam ++ from_pragma)
+  tracePm "allCompletedGroups" (ppr (fam ++ cms))
+  let possible = fam ++ filter (cl `elem`) from_pragma
+
+  final_groups <- case possible of
+                 -- Only when there a patsyn with no COMPLETE pragma
+                 -- make a fake pattern to not scream when there are no
+                 -- matches. Otherwise what do we do?
+                 [] -> return []
+                  --(:[]) <$> mkCanFailPmPat (conLikeResTy cl arg_tys)
+                 _ -> return possible
+
+  tracePm "allCompleteGroups" (ppr final_groups)
+  select final_groups
 
 -- -----------------------------------------------------------------------
 -- * Types and constraints
@@ -1122,9 +1124,10 @@ pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva =
     False -> return $ ucon va (usimple [vva])
 
 -- ConVar
-pmcheckHd (p@(PmCon { pm_con_con = con })) ps guards
+pmcheckHd (p@(PmCon { pm_con_con = con, pm_con_arg_tys = arg_tys  }))
+          ps guards
           (PmVar x) (ValVec vva delta) = do
-  complete_group  <- allCompleteGroups con
+  complete_group  <- allCompleteGroups con arg_tys
 
   cons_cs <- mapM (liftD . mkOneConFull x) complete_group
 
