@@ -438,12 +438,16 @@ translatePat fam_insts pat = case pat of
             , pat_tvs     = ex_tvs
             , pat_dicts   = dicts
             , pat_args    = ps } -> do
-    args <- translateConPatVec fam_insts arg_tys ex_tvs con ps
-    return [PmCon { pm_con_con     = con
-                  , pm_con_arg_tys = arg_tys
-                  , pm_con_tvs     = ex_tvs
-                  , pm_con_dicts   = dicts
-                  , pm_con_args    = args }]
+    groups <- allCompleteGroups con
+    case groups of
+      [] -> mkCanFailPmPat (conLikeResTy con arg_tys)
+      _  -> do
+        args <- translateConPatVec fam_insts arg_tys ex_tvs con ps
+        return [PmCon { pm_con_con     = con
+                      , pm_con_arg_tys = arg_tys
+                      , pm_con_tvs     = ex_tvs
+                      , pm_con_dicts   = dicts
+                      , pm_con_args    = args }]
 
   NPat (L _ ol) mb_neg _eq ty -> translateNPat fam_insts ol mb_neg ty
 
@@ -896,28 +900,19 @@ singleConstructor cl =
     xs -> any ((==1) . length) xs
 -}
 
-allCompleteGroups :: ConLike -> [Type] -> PmM [ConLike]
-allCompleteGroups cl _arg_tys = do
+allCompleteGroups :: ConLike -> DsM [[ConLike]]
+allCompleteGroups cl = do
   let fam = case cl of
            RealDataCon dc -> [map RealDataCon (tyConDataCons (dataConTyCon dc))]
            PatSynCon _    -> []
 
-  from_pragma <- liftD dsGetCompleteMatches
+  from_pragma <- dsGetCompleteMatches
 
-  cms <- liftD dsGetCompleteMatches
-  tracePm "allCompletedGroups" (ppr (fam ++ cms))
-  let possible = fam ++ filter (cl `elem`) from_pragma
-
-  final_groups <- case possible of
-                 -- Only when there a patsyn with no COMPLETE pragma
-                 -- make a fake pattern to not scream when there are no
-                 -- matches. Otherwise what do we do?
-                 [] -> return []
-                  --(:[]) <$> mkCanFailPmPat (conLikeResTy cl arg_tys)
-                 _ -> return possible
-
-  tracePm "allCompleteGroups" (ppr final_groups)
-  select final_groups
+  cms <- dsGetCompleteMatches
+  tracePmD "allCompletedGroups" (ppr (fam ++ cms))
+  let final_groups = fam ++ filter (cl `elem`) from_pragma
+  tracePmD "allCompleteGroups" (ppr final_groups)
+  return final_groups
 
 -- -----------------------------------------------------------------------
 -- * Types and constraints
@@ -1130,10 +1125,10 @@ pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva =
     False -> return $ ucon va (usimple [vva])
 
 -- ConVar
-pmcheckHd (p@(PmCon { pm_con_con = con, pm_con_arg_tys = arg_tys  }))
+pmcheckHd (p@(PmCon { pm_con_con = con }))
           ps guards
           (PmVar x) (ValVec vva delta) = do
-  complete_group  <- allCompleteGroups con arg_tys
+  complete_group <- select =<< liftD (allCompleteGroups con)
 
   cons_cs <- mapM (liftD . mkOneConFull x) complete_group
 
