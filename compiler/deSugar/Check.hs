@@ -82,8 +82,31 @@ liftD a = ListT (do
                 x <- a
                 return (Cons x L.empty))
 
+{-
 myRunListT :: PmM a -> DsM [a]
 myRunListT = fold (flip (:)) [] id
+-}
+
+
+-- Pick the first match complete covered match or otherwise the "best" match
+getResult :: PmM PmResult -> DsM PmResult
+getResult ls = do
+  s <- next ls
+  case s of
+    Nil -> panic "getResult is empty"
+    Cons a lt -> fold go a lt
+  where
+    -- Careful not to force unecessary results
+    go :: PmResult -> PmResult -> PmResult
+    go old@(PmResult rs us _) new
+      | null us && null rs = old
+      | otherwise =
+        let PmResult rs' us' _ = new
+        in case (compare (length us) (length us'), length rs > length rs') of
+             ( GT , _ ) -> new
+             ( EQ , r ) -> if r then new else old
+             ( LT , _ ) -> old
+
 
 data PatTy = PAT | VA -- Used only as a kind, to index PmPat
 
@@ -206,7 +229,7 @@ data PmResult =
 checkSingle :: DynFlags -> DsMatchContext -> Id -> Pat Id -> DsM ()
 checkSingle dflags ctxt@(DsMatchContext _ locn) var p = do
   tracePmD "checkSingle" (vcat [ppr ctxt, ppr var, ppr p])
-  mb_pm_res <- tryM (head <$> myRunListT (checkSingle' locn var p))
+  mb_pm_res <- tryM (getResult (checkSingle' locn var p))
   case mb_pm_res of
     Left  _   -> warnPmIters dflags ctxt
     Right res -> dsPmWarn dflags ctxt res
@@ -235,7 +258,7 @@ checkMatches dflags ctxt vars matches = do
                                , text "Matches:"])
                                2
                                (vcat (map ppr matches)))
-  mb_pm_res <- tryM (head <$> myRunListT (checkMatches' vars matches))
+  mb_pm_res <- tryM (getResult (checkMatches' vars matches))
   case mb_pm_res of
     Left  _   -> warnPmIters dflags ctxt
     Right res -> dsPmWarn dflags ctxt res
