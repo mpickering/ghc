@@ -59,6 +59,15 @@ e17 = id
 e18 :: Proxy (a - 0) -> Proxy a
 e18 = id
 
+te1 :: Proxy (AppendSymbol "" x) -> Proxy x
+te1 = id
+
+te2 :: Proxy (AppendSymbol x "") -> Proxy x
+te2 = id
+
+te3 :: Proxy (AppendSymbol "type" "level") -> Proxy "typelevel"
+te3 = id
+
 --------------------------------------------------------------------------------
 -- Test interactions with inerts
 
@@ -85,3 +94,9 @@ ti8 _ _ = ()
 
 ti9 :: Proxy (y - x) -> Proxy x -> ()
 ti9 _ _ = ()
+
+tti1 :: Proxy (AppendSymbol y x) -> Proxy x -> ()
+tti1 _ _ = ()
+
+tti2 :: Proxy (AppendSymbol y "test") -> ()
+tti2 _ = ()
