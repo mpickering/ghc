@@ -1,8 +1,8 @@
 
-T3621.hs:23:43:
-    No instance for (MonadState state (State s))
-      arising from the 'deriving' clause of a data type declaration
-    Possible fix:
-      use a standalone 'deriving instance' declaration,
-        so you can specify the instance context yourself
-    When deriving the instance for (MonadState state (WrappedState s))
+T3621.hs:23:43: error:
+    Duplicate instance declarations:
+      instance MonadState state (WrappedState s)
+        -- Defined at T3621.hs:23:43
+      instance MonadState state (State s) =>
+               MonadState state (WrappedState s)
+        -- Defined at T3621.hs:26:1
