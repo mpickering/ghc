@@ -52,6 +52,7 @@ module RdrName (
         -- * GlobalRdrElts
         gresFromAvails, gresFromAvail, localGREsFromAvail, availFromGRE,
         greUsedRdrName, greRdrNames, greSrcSpan, greQualModName,
+        gresToAvailInfo,
 
         -- ** Global 'RdrName' mapping elements: 'GlobalRdrElt', 'Provenance', 'ImportSpec'
         GlobalRdrElt(..), isLocalGRE, isRecFldGRE, greLabel,
@@ -77,9 +78,10 @@ import Unique
 import UniqFM
 import Util
 import StaticFlags( opt_PprStyle_Debug )
+import NameEnv
 
 import Data.Data
-import Data.List( sortBy )
+import Data.List( sortBy, foldl' )
 
 {-
 ************************************************************************
@@ -687,15 +689,54 @@ mkParent _ (Avail _)           = NoParent
 mkParent n (AvailTC m _ _) | n == m    = NoParent
                          | otherwise = ParentIs m
 
+greParentName :: GlobalRdrElt -> Maybe Name
+greParentName gre = case gre_par gre of
+                      NoParent -> Nothing
+                      ParentIs n -> Just n
+                      FldParent n _ -> Just n
+
+gresToAvailInfo :: [GlobalRdrElt] -> [AvailInfo]
+gresToAvailInfo gres
+  = nameEnvElts avail_env
+  where
+    avail_env :: NameEnv AvailInfo -- keyed by the parent
+    avail_env = foldl' add emptyNameEnv gres
+
+    add :: NameEnv AvailInfo -> GlobalRdrElt -> NameEnv AvailInfo
+    add env gre = extendNameEnv_Acc comb new env
+                    (fromMaybe (gre_name gre)
+                               (greParentName gre)) gre
+
+      where
+        checkParent :: Name -> [Name] -> Name -> [Name]
+        checkParent _ [] k = [k]
+        checkParent p (n:ns) k = if p == n then n:k:ns else k:n:ns
+
+        comb :: GlobalRdrElt -> AvailInfo -> AvailInfo
+        comb _ (Avail n) = Avail n -- Duplicated name
+        comb gre (AvailTC m ns fls) =
+          let n = gre_name gre
+          in case gre_par gre of
+              NoParent -> AvailTC m (n:ns) fls -- Not sure this ever happens
+              ParentIs {} -> AvailTC m (checkParent m ns n) fls
+              FldParent _ mb_lbl ->  AvailTC m ns (mkFieldLabel n mb_lbl : fls)
+
+
+        new :: GlobalRdrElt -> AvailInfo
+        new =  availFromGRE
+
 availFromGRE :: GlobalRdrElt -> AvailInfo
 availFromGRE (GRE { gre_name = me, gre_par = parent })
   = case parent of
       ParentIs p                  -> AvailTC p [me] []
       NoParent   | isTyConName me -> AvailTC me [me] []
                  | otherwise      -> avail   me
-      FldParent p mb_lbl -> AvailTC p [] [fld]
+      FldParent p mb_lbl -> AvailTC p [] [mkFieldLabel me mb_lbl]
         where
-         fld = case mb_lbl of
+
+mkFieldLabel :: Name -> Maybe FastString -> FieldLabel
+mkFieldLabel me mb_lbl =
+          case mb_lbl of
                  Nothing  -> FieldLabel { flLabel = occNameFS (nameOccName me)
                                         , flIsOverloaded = False
                                         , flSelector = me }
