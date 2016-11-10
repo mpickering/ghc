@@ -720,7 +720,7 @@ gresToAvailInfo gres
           let n = gre_name gre
           in case gre_par gre of
               NoParent -> AvailTC m (n:ns) fls -- Not sure this ever happens
-              ParentIs {} -> AvailTC m (checkParent m ns n) fls
+              ParentIs {} -> AvailTC m (insertChildIntoChildren m ns n) fls
               FldParent _ mb_lbl ->  AvailTC m ns (mkFieldLabel n mb_lbl : fls)
 
 availFromGRE :: GlobalRdrElt -> AvailInfo
