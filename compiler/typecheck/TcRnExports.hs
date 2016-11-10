@@ -173,12 +173,11 @@ exports_from_avail Nothing rdr_env _imports _this_mod
     -- Even though we don't check whether this is actually a data family
     -- only data families can locally define subordinate things (`ns` here)
     -- without locally defining (and instead importing) the parent (`n`)
-    fix_faminst (AvailTC n ns flds)
-      =
+    fix_faminst (AvailTC n ns flds) =
       let new_ns =
             case ns of
               [] -> [n]
-              (p:ps) -> if p == n then p:ps else n:p:ps
+              (p:ps) -> if p == n then ns else n:ns
       in AvailTC n new_ns flds
 
     fix_faminst avail = avail
