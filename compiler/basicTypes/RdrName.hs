@@ -703,14 +703,16 @@ gresToAvailInfo gres
     avail_env = foldl' add emptyNameEnv gres
 
     add :: NameEnv AvailInfo -> GlobalRdrElt -> NameEnv AvailInfo
-    add env gre = extendNameEnv_Acc comb new env
+    add env gre = extendNameEnv_Acc comb availFromGRE env
                     (fromMaybe (gre_name gre)
                                (greParentName gre)) gre
 
       where
-        checkParent :: Name -> [Name] -> Name -> [Name]
-        checkParent _ [] k = [k]
-        checkParent p (n:ns) k = if p == n then n:k:ns else k:n:ns
+        -- We want to insert the child `k` into a list of children but
+        -- need to maintain the invariant that the parent is first.
+        insertChildIntoChildren :: Name -> [Name] -> Name -> [Name]
+        insertChildIntoChildren _ [] k = [k]
+        insertChildIntoChildren p (n:ns) k = if p == n then n:k:ns else k:n:ns
 
         comb :: GlobalRdrElt -> AvailInfo -> AvailInfo
         comb _ (Avail n) = Avail n -- Duplicated name
@@ -720,10 +722,6 @@ gresToAvailInfo gres
               NoParent -> AvailTC m (n:ns) fls -- Not sure this ever happens
               ParentIs {} -> AvailTC m (checkParent m ns n) fls
               FldParent _ mb_lbl ->  AvailTC m ns (mkFieldLabel n mb_lbl : fls)
-
-
-        new :: GlobalRdrElt -> AvailInfo
-        new =  availFromGRE
 
 availFromGRE :: GlobalRdrElt -> AvailInfo
 availFromGRE (GRE { gre_name = me, gre_par = parent })
