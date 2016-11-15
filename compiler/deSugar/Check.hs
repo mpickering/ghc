@@ -873,20 +873,9 @@ coercePmPat (PmCon { pm_con_con = con, pm_con_arg_tys = arg_tys
 coercePmPat (PmGrd {}) = [] -- drop the guards
 
 singleConstructor :: ConLike -> Bool
-singleConstructor (RealDataCon dc) = length (tyConDataCons (dataConTyCon dc)) == 1
+singleConstructor (RealDataCon dc)
+  = length (tyConDataCons (dataConTyCon dc)) == 1
 singleConstructor _ = False
-
-{-
-allCompleteGroups :: DataCon -> [[DataCon]]
-allCompleteGroups dc = [allConstructors dc]
--}
-{-
-singleConstructor :: ConLike -> Bool
-singleConstructor cl =
-  case allCompleteGroups cl of
-    [] -> False
-    xs -> any ((==1) . length) xs
--}
 
 allCompleteGroups :: ConLike -> DsM [[ConLike]]
 allCompleteGroups cl = do
@@ -896,8 +885,6 @@ allCompleteGroups cl = do
 
   from_pragma <- dsGetCompleteMatches
 
-  cms <- dsGetCompleteMatches
-  tracePmD "allCompletedGroups" (ppr (fam ++ cms))
   let final_groups = fam ++ filter (cl `elem`) from_pragma
   tracePmD "allCompleteGroups" (ppr final_groups)
   return final_groups
