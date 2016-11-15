@@ -50,8 +50,7 @@ import Coercion
 import TcEvidence
 import IOEnv
 
-import ListT (ListT(..), Step(..), fold, select)
-import qualified ListT as L (empty)
+import ListT (ListT(..), fold, select)
 
 {-
 This module checks pattern matches for:
@@ -78,33 +77,30 @@ The algorithm is based on the paper:
 type PmM a = ListT DsM a
 
 liftD :: DsM a -> PmM a
-liftD a = ListT (do
-                x <- a
-                return (Cons x L.empty))
-
-{-
-myRunListT :: PmM a -> DsM [a]
-myRunListT = fold (flip (:)) [] id
--}
-
+liftD m = ListT $ \sk fk -> m >>= \a -> sk a fk
 
 -- Pick the first match complete covered match or otherwise the "best" match
 getResult :: PmM PmResult -> DsM PmResult
 getResult ls = do
-  s <- next ls
-  case s of
-    Nil -> panic "getResult is empty"
-    Cons a lt -> fold go a lt
+  res <- fold ls goM (pure Nothing)
+  case res of
+    Nothing -> panic "getResult is empty"
+    Just a -> return a
   where
+    goM :: PmResult -> DsM (Maybe PmResult) -> DsM (Maybe PmResult)
+    goM mpm dpm = do
+      pmr <- dpm
+      return $ go pmr mpm
     -- Careful not to force unecessary results
-    go :: PmResult -> PmResult -> PmResult
-    go old@(PmResult rs us _) new
+    go :: Maybe PmResult -> PmResult -> Maybe PmResult
+    go Nothing rs = Just rs
+    go old@(Just (PmResult rs us _)) new
       | null us && null rs = old
       | otherwise =
         let PmResult rs' us' _ = new
         in case (compare (length us) (length us'), length rs > length rs') of
-             ( GT , _ ) -> new
-             ( EQ , r ) -> if r then new else old
+             ( GT , _ ) -> Just new
+             ( EQ , r ) -> if r then Just new else old
              ( LT , _ ) -> old
 
 
