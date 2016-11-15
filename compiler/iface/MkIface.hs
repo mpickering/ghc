@@ -210,7 +210,7 @@ mkIface_ hsc_env maybe_old_fingerprint
                       md_vect_info = vect_info,
                       md_types     = type_env,
                       md_exports   = exports,
-                      md_complete_prags = complete_sigs }
+                      md_complete_sigs = complete_sigs }
 -- NB:  notice that mkIface does not look at the bindings
 --      only at the TypeEnv.  The previous Tidy phase has
 --      put exactly the info into the TypeEnv that we want
