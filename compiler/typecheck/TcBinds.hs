@@ -37,7 +37,7 @@ import FamInstEnv( normaliseType )
 import FamInst( tcGetFamInstEnvs )
 import TyCon
 import TcType
-import Type( mkStrLitTy, tidyOpenType, mkTyVarBinder )
+import Type( mkStrLitTy, tidyOpenType, mkTyVarBinder, splitTyConApp_maybe)
 import TysPrim
 import TysWiredIn( cTupleTyConName )
 import Id
@@ -186,7 +186,7 @@ tcTopBinds binds sigs
                ; return (gbl, lcl) }
         ; specs <- tcImpPrags sigs   -- SPECIALISE prags for imported Ids
 
-        ; complete_matches <- setEnvs (tcg_env, tcl_env) $ tcCompleteMatches sigs
+        ; complete_matches <- setEnvs (tcg_env, tcl_env) $ tcCompleteSigs sigs
         ; traceTc "complete_matches" (ppr binds $$ ppr sigs)
         ; traceTc "complete_matches" (ppr complete_matches)
 
@@ -200,12 +200,29 @@ tcTopBinds binds sigs
         -- The top level bindings are flattened into a giant
         -- implicitly-mutually-recursive LHsBinds
 
-tcCompleteMatches :: [LSig Name] -> TcM [[ConLike]]
-tcCompleteMatches sigs =
+data CompleteSigType = AcceptAny | Fixed TyCon
+
+tcCompleteSigs  :: [LSig Name] -> TcM [[ConLike]]
+tcCompleteSigs sigs =
   let
       doOne (L _ (CompleteMatchSig _ lns))
-        = Just <$> mapM (addLocM tcLookupConLike) (unLoc lns)
+        = Just . snd <$> foldM checkCLType (AcceptAny, []) (unLoc lns)
       doOne _ = return Nothing
+
+      checkCLType :: (CompleteSigType, [ConLike]) -> Located Name
+                  -> TcM (CompleteSigType, [ConLike])
+      checkCLType (cst, cs) n = do
+        cl <- addLocM tcLookupConLike n
+        let   (_,_,_,_,_,_, res_ty) = conLikeFullSig cl
+              res_ty_con = fst <$> splitTyConApp_maybe res_ty
+        case (cst, res_ty_con) of
+          (AcceptAny, Nothing) -> return (AcceptAny, cl:cs)
+          (AcceptAny, Just tc) -> return (Fixed tc, cl:cs)
+          (Fixed tc, Nothing)  -> return (Fixed tc, cl:cs)
+          (Fixed tc, Just tc') ->
+            if tc == tc'
+              then return (Fixed tc, cl:cs)
+              else failWithTc (text "error")
   in  mapMaybeM doOne sigs
 
 tcRecSelBinds :: HsValBinds Name -> TcM TcGblEnv
