@@ -625,7 +625,7 @@ lookupIfaceByModule _dflags hpt pit mod
 -- of its own, but it doesn't seem worth the bother.
 
 hptCompleteSigs :: HscEnv -> [[ConLike]]
-hptCompleteSigs = hptAllThings  (md_complete_prags . hm_details)
+hptCompleteSigs = hptAllThings  (md_complete_sigs . hm_details)
 
 -- | Find all the instance declarations (of classes and families) from
 -- the Home Package Table filtered by the provided predicate function.
@@ -1167,7 +1167,7 @@ data ModDetails
         md_anns      :: ![Annotation],  -- ^ Annotations present in this module: currently
                                         -- they only annotate things also declared in this module
         md_vect_info :: !VectInfo,       -- ^ Module vectorisation information
-        md_complete_prags :: [[ConLike]] -- ^ Complete match pragmas for this module
+        md_complete_sigs :: [[ConLike]] -- ^ Complete match pragmas for this module
      }
 
 -- | Constructs an empty ModDetails
@@ -1180,7 +1180,7 @@ emptyModDetails
                  md_fam_insts = [],
                  md_anns      = [],
                  md_vect_info = noVectInfo,
-                 md_complete_prags = [] }
+                 md_complete_sigs = [] }
 
 -- | Records the modules directly imported by a module for extracting e.g.
 -- usage information, and also to give better error message
