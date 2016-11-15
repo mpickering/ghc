@@ -205,7 +205,8 @@ mkIface_ hsc_env maybe_old_fingerprint
                       md_anns      = anns,
                       md_vect_info = vect_info,
                       md_types     = type_env,
-                      md_exports   = exports }
+                      md_exports   = exports,
+                      md_complete_prags = complete_sigs }
 -- NB:  notice that mkIface does not look at the bindings
 --      only at the TypeEnv.  The previous Tidy phase has
 --      put exactly the info into the TypeEnv that we want
@@ -240,6 +241,7 @@ mkIface_ hsc_env maybe_old_fingerprint
         iface_vect_info = flattenVectInfo vect_info
         trust_info  = setSafeMode safe_mode
         annotations = map mkIfaceAnnotation anns
+        icomplete_sigs = map mkIfaceCompleteSig complete_sigs
 
         intermediate_iface = ModIface {
               mi_module      = this_mod,
@@ -284,7 +286,9 @@ mkIface_ hsc_env maybe_old_fingerprint
 
               -- And build the cached values
               mi_warn_fn     = mkIfaceWarnCache warns,
-              mi_fix_fn      = mkIfaceFixCache fixities }
+              mi_fix_fn      = mkIfaceFixCache fixities,
+
+              mi_complete_sigs = icomplete_sigs }
 
     (new_iface, no_change_at_all)
           <- {-# SCC "versioninfo" #-}
@@ -996,6 +1000,13 @@ mkOrphMap get_key decls
 *                                                                      *
 ************************************************************************
 -}
+
+mkIfaceCompleteSig :: [ConLike] -> [Either IfaceDecl IfExtName]
+mkIfaceCompleteSig = map doOne
+  where
+    doOne :: ConLike -> Either IfaceDecl IfExtName
+    doOne (RealDataCon dc) = Right (dataConName dc)
+    doOne (PatSynCon   ps) = Left (patSynToIfaceDecl ps)
 
 
 mkIfaceAnnotation :: Annotation -> IfaceAnnotation
