@@ -950,8 +950,9 @@ renameSig ctxt sig@(SCCFunSig st v s)
   = do  { new_v <- lookupSigOccRn ctxt sig v
         ; return (SCCFunSig st new_v s, emptyFVs) }
 
-renameSig ctxt sig@(CompleteMatchSig s (L l bf))
-  = do new_bf <- traverse (lookupSigOccRn ctxt sig) bf
+-- COMPLETE Sigs can refer to imported IDs
+renameSig _ctxt (CompleteMatchSig s (L l bf))
+  = do new_bf <- traverse (lookupLocatedOccRn) bf
        return (CompleteMatchSig s (L l new_bf), emptyFVs)
 
 ppr_sig_bndrs :: [Located RdrName] -> SDoc
