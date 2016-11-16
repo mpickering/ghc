@@ -1,4 +1,7 @@
-{-# LANGUAGE UndecidableInstances, Rank2Types, FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 -------------------------------------------------------------------------
 -- |
@@ -66,8 +69,3 @@ instance Monad (ListT m) where
 instance MonadPlus (ListT m) where
     mzero = ListT $ \_ fk -> fk
     m1 `mplus` m2 = ListT $ \sk fk -> unListT m1 sk (unListT m2 sk fk)
-
-{-
-instance MonadTrans ListT where
-    lift m = ListT $ \sk fk -> m >>= \a -> sk a fk
--}
