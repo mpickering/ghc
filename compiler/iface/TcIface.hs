@@ -983,6 +983,7 @@ tcIfaceCompleteSig = mapM tcIfaceConLike
 
 tcIfaceConLike :: Either IfaceDecl IfExtName -> IfL ConLike
 tcIfaceConLike (Left ips) = do
+  -- This is definitely an IfacePatSyn so the boolean doesn't matter
   res <- tcIfaceDecl False ips
   case res of
     (AConLike c) -> return c
