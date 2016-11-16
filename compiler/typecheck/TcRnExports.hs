@@ -178,7 +178,7 @@ exports_from_avail Nothing rdr_env _imports _this_mod
       let new_ns =
             case ns of
               [] -> [n]
-              (p:ps) -> if p == n then p:ps else n:p:ps
+              (p:_) -> if p == n then p:ps else n:p:ps
       in AvailTC n new_ns flds
 
     fix_faminst avail = avail
