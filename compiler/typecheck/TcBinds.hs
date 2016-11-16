@@ -190,7 +190,8 @@ tcTopBinds binds sigs
         ; traceTc "complete_matches" (ppr binds $$ ppr sigs)
         ; traceTc "complete_matches" (ppr complete_matches)
 
-        ; let { tcg_env' = tcg_env { tcg_imp_specs = specs ++ tcg_imp_specs tcg_env
+        ; let { tcg_env' = tcg_env { tcg_imp_specs
+                                      = specs ++ tcg_imp_specs tcg_env
                                    , tcg_complete_matches
                                       = complete_matches
                                           ++ tcg_complete_matches tcg_env }
