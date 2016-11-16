@@ -200,6 +200,15 @@ tcTopBinds binds sigs
         -- The top level bindings are flattened into a giant
         -- implicitly-mutually-recursive LHsBinds
 
+
+-- Note: [Typechecking Complete Matches]
+-- Much like when a user bundled a pattern synonym, the result types of
+-- all the constructors in the match pragma must be consistent.
+--
+-- If we allowed pragmas with inconsistent types then it would be
+-- impossible to ever match every constructor in the list and so
+-- the pragma would be useless.
+
 data CompleteSigType = AcceptAny | Fixed TyCon
 
 tcCompleteSigs  :: [LSig Name] -> TcM [[ConLike]]
@@ -208,7 +217,7 @@ tcCompleteSigs sigs =
       doOne (L _ (CompleteMatchSig _ lns))
         = Just . snd <$> foldM checkCLType (AcceptAny, []) (unLoc lns)
       doOne _ = return Nothing
-
+      -- See note [Typechecking Complete Matches]
       checkCLType :: (CompleteSigType, [ConLike]) -> Located Name
                   -> TcM (CompleteSigType, [ConLike])
       checkCLType (cst, cs) n = do
