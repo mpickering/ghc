@@ -155,21 +155,20 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
    -- (F) Rename Value declarations right-hand sides
    traceRn "Start rnmono" empty ;
    let { val_bndr_set = mkNameSet id_bndrs `unionNameSet` mkNameSet pat_syn_bndrs } ;
-   let { all_bndrs = tc_bndrs `unionNameSet` val_bndr_set } ;
    is_boot <- tcIsHsBootOrSig ;
-   traceRn "val_bndr_set" (ppr val_bndr_set) ;
    (rn_val_decls, bind_dus) <- if is_boot
     -- For an hs-boot, use tc_bndrs (which collects how we're renamed
     -- signatures), since val_bndr_set is empty (there are no x = ...
     -- bindings in an hs-boot.)
     then rnTopBindsBoot tc_bndrs new_lhs
-    else rnValBindsRHS (TopSigCtxt all_bndrs) new_lhs ;
+    else rnValBindsRHS (TopSigCtxt val_bndr_set) new_lhs ;
    traceRn "finish rnmono" (ppr rn_val_decls) ;
 
    -- (G) Rename Fixity and deprecations
 
    -- Rename fixity declarations and error if we try to
    -- fix something from another module (duplicates were checked in (A))
+   let { all_bndrs = tc_bndrs `unionNameSet` val_bndr_set } ;
    rn_fix_decls <- rnSrcFixityDecls all_bndrs fix_decls ;
 
    -- Rename deprec decls;
