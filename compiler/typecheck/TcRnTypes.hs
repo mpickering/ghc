@@ -371,7 +371,8 @@ data DsGblEnv
                                                 -- exported entities of 'Data.Array.Parallel' iff
                                                 -- '-XParallelArrays' was given; otherwise, empty
         , ds_parr_bi :: PArrBuiltin             -- desugarar names for '-XParallelArrays'
-        , ds_complete_matches :: [[ConLike ]]   -- Addition complete pattern matches
+        , ds_complete_matches :: [[ConLike]]
+           -- Additional complete pattern matches
         }
 
 instance ContainsModule DsGblEnv where

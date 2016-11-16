@@ -1167,7 +1167,8 @@ data ModDetails
         md_anns      :: ![Annotation],  -- ^ Annotations present in this module: currently
                                         -- they only annotate things also declared in this module
         md_vect_info :: !VectInfo,       -- ^ Module vectorisation information
-        md_complete_sigs :: [[ConLike]] -- ^ Complete match pragmas for this module
+        md_complete_sigs :: [[ConLike]]
+          -- ^ Complete match pragmas for this module
      }
 
 -- | Constructs an empty ModDetails
