@@ -87,7 +87,9 @@ type PmM a = ListT DsM a
 liftD :: DsM a -> PmM a
 liftD m = ListT $ \sk fk -> m >>= \a -> sk a fk
 
--- Pick the first match complete covered match or otherwise the "best" match
+-- Pick the first match complete covered match or otherwise the "best" match.
+-- The best match is the one with the least uncovered clauses, ties broken
+-- by the number of redundant clauses.
 getResult :: PmM PmResult -> DsM PmResult
 getResult ls = do
   res <- fold ls goM (pure Nothing)
