@@ -1024,7 +1024,8 @@ pmcheckGuardsI gvs vva = liftD incrCheckPmIterDs >> pmcheckGuards gvs vva
 
 -- | Increase the counter for elapsed algorithm iterations, check that the
 -- limit is not exceeded and call `pmcheckHd`
-pmcheckHdI :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec -> PmM PartialResult
+pmcheckHdI :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec i
+           -> PmM PartialResult
 pmcheckHdI p ps guards va vva = do
   n <- liftD incrCheckPmIterDs
   tracePm "pmCheckHdI" (ppr n <> colon <+> pprPmPatDebug p
@@ -1076,7 +1077,8 @@ pmcheckGuards (gv:gvs) vva = do
 -- | Worker function: Implements all cases described in the paper for all three
 -- functions (`covered`, `uncovered` and `divergent`) apart from the `Guard`
 -- cases which are handled by `pmcheck`
-pmcheckHd :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec -> PmM PartialResult
+pmcheckHd :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec
+          -> PmM PartialResult
 
 -- Var
 pmcheckHd (PmVar x) ps guards va (ValVec vva delta)
