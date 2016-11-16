@@ -2195,7 +2195,10 @@ sigdecl :: { LHsDecl RdrName }
         | pattern_synonym_sig   { sLL $1 $> . SigD . unLoc $ $1 }
 
         | '{-# COMPLETE' con_list '#-}'
-                {  sLL $1 $> (SigD (CompleteMatchSig undefined $2)) }
+                {% ams
+                    (sLL $1
+                      $> (SigD (CompleteMatchSig (getCOMPLETE_PRAGs $1) $2)))
+                    [ mo $1, mc $3] }
 
         -- This rule is for both INLINE and INLINABLE pragmas
         | '{-# INLINE' activation qvar '#-}'
@@ -3343,6 +3346,7 @@ getTH_ID_TY_SPLICE (L _ (ITidTyEscape x)) = x
 getINLINE       (L _ (ITinline_prag _ inl conl)) = (inl,conl)
 getSPEC_INLINE  (L _ (ITspec_inline_prag _ True))  = (Inline,  FunLike)
 getSPEC_INLINE  (L _ (ITspec_inline_prag _ False)) = (NoInline,FunLike)
+getCOMPLETE_PRAGs (L _ (ITcomplete_prag x)) = x
 
 getDOCNEXT (L _ (ITdocCommentNext x)) = x
 getDOCPREV (L _ (ITdocCommentPrev x)) = x
