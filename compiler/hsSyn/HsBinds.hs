@@ -912,8 +912,8 @@ isPragLSig :: LSig name -> Bool
 isPragLSig (L _ (SpecSig {}))   = True
 isPragLSig (L _ (InlineSig {})) = True
 isPragLSig (L _ (SCCFunSig {})) = True
+isPragLSig (L _ (CompleteMatchSig {})) = True
 isPragLSig _                    = False
---TODO: Add complete match sig here?
 
 isInlineLSig :: LSig name -> Bool
 -- Identifies inline pragmas
