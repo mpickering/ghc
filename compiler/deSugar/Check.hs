@@ -1026,7 +1026,7 @@ pmcheckGuardsI gvs vva = liftD incrCheckPmIterDs >> pmcheckGuards gvs vva
 
 -- | Increase the counter for elapsed algorithm iterations, check that the
 -- limit is not exceeded and call `pmcheckHd`
-pmcheckHdI :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec i
+pmcheckHdI :: Pattern -> PatVec -> [PatVec] -> ValAbs -> ValVec
            -> PmM PartialResult
 pmcheckHdI p ps guards va vva = do
   n <- liftD incrCheckPmIterDs

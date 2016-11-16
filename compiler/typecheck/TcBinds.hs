@@ -210,13 +210,14 @@ tcTopBinds binds sigs
 -- impossible to ever match every constructor in the list and so
 -- the pragma would be useless.
 
-data CompleteSigType = AcceptAny | Fixed TyCon
+data CompleteSigType = AcceptAny | Fixed ConLike TyCon
 
 tcCompleteSigs  :: [LSig Name] -> TcM [[ConLike]]
 tcCompleteSigs sigs =
   let
-      doOne (L _ (CompleteMatchSig _ lns))
-        = Just . snd <$> foldM checkCLType (AcceptAny, []) (unLoc lns)
+      doOne c@(CompleteMatchSig _ lns)
+        = addErrCtxt (text "In" <+> ppr c) $
+            Just . snd <$> foldM checkCLType (AcceptAny, []) (unLoc lns)
       doOne _ = return Nothing
       -- See note [Typechecking Complete Matches]
       checkCLType :: (CompleteSigType, [ConLike]) -> Located Name
@@ -227,13 +228,17 @@ tcCompleteSigs sigs =
               res_ty_con = fst <$> splitTyConApp_maybe res_ty
         case (cst, res_ty_con) of
           (AcceptAny, Nothing) -> return (AcceptAny, cl:cs)
-          (AcceptAny, Just tc) -> return (Fixed tc, cl:cs)
-          (Fixed tc, Nothing)  -> return (Fixed tc, cl:cs)
-          (Fixed tc, Just tc') ->
+          (AcceptAny, Just tc) -> return (Fixed cl tc, cl:cs)
+          (Fixed fcl tc, Nothing)  -> return (Fixed fcl tc, cl:cs)
+          (Fixed fcl tc, Just tc') ->
             if tc == tc'
-              then return (Fixed tc, cl:cs)
-              else failWithTc (text "error")
-  in  mapMaybeM doOne sigs
+              then return (Fixed fcl tc, cl:cs)
+              else failWithTc errMsg
+            where
+              errMsg :: SDoc
+              errMsg = text "The result type of" <+> ppr fcl <+> text "and"
+                        <+> ppr cl <+> text "do not match"
+  in  mapMaybeM (addLocM doOne) sigs
 
 tcRecSelBinds :: HsValBinds Name -> TcM TcGblEnv
 tcRecSelBinds (ValBindsOut binds sigs)
