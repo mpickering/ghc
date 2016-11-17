@@ -997,17 +997,23 @@ mkOrphMap get_key decls
 {-
 ************************************************************************
 *                                                                      *
+       COMPLETE Pragmas
+*                                                                      *
+************************************************************************
+-}
+
+mkIfaceCompleteSig :: [ConLike] -> IfaceCompleteSet
+mkIfaceCompleteSig = map conLikeName
+
+
+{-
+************************************************************************
+*                                                                      *
        Keeping track of what we've slurped, and fingerprints
 *                                                                      *
 ************************************************************************
 -}
 
-mkIfaceCompleteSig :: [ConLike] -> [Either IfaceDecl IfExtName]
-mkIfaceCompleteSig = map doOne
-  where
-    doOne :: ConLike -> Either IfaceDecl IfExtName
-    doOne (RealDataCon dc) = Right (dataConName dc)
-    doOne (PatSynCon   ps) = Left (patSynToIfaceDecl ps)
 
 
 mkIfaceAnnotation :: Annotation -> IfaceAnnotation
