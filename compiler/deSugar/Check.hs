@@ -87,6 +87,29 @@ type PmM a = ListT DsM a
 liftD :: DsM a -> PmM a
 liftD m = ListT $ \sk fk -> m >>= \a -> sk a fk
 
+-- Pick the first match complete covered match or otherwise the "best" match
+getResult :: PmM PmResult -> DsM PmResult
+getResult ls = do
+  res <- fold ls goM (pure Nothing)
+  case res of
+    Nothing -> panic "getResult is empty"
+    Just a -> return a
+  where
+    goM :: PmResult -> DsM (Maybe PmResult) -> DsM (Maybe PmResult)
+    goM mpm dpm = do
+      pmr <- dpm
+      return $ go pmr mpm
+    -- Careful not to force unecessary results
+    go :: Maybe PmResult -> PmResult -> Maybe PmResult
+    go Nothing rs = Just rs
+    go old@(Just (PmResult rs us _)) new
+      | null us && null rs = old
+      | otherwise =
+        let PmResult rs' us' _ = new
+        in case (compare (length us) (length us'), length rs > length rs') of
+             ( GT , _ ) -> Just new
+             ( EQ , r ) -> if r then Just new else old
+             ( LT , _ ) -> old
 
 myRunListT :: PmM a -> DsM [a]
 myRunListT pm = fold pm go (return [])
