@@ -945,7 +945,7 @@ hsSigDoc (SpecInstSig {})       = text "SPECIALISE instance pragma"
 hsSigDoc (FixSig {})            = text "fixity declaration"
 hsSigDoc (MinimalSig {})        = text "MINIMAL pragma"
 hsSigDoc (SCCFunSig {})         = text "SCC pragma"
-hsSigDoc (CompleteMatchSig {})       = text "COMPLETE pragma"
+hsSigDoc (CompleteMatchSig {})  = text "COMPLETE pragma"
 
 {-
 Check if signatures overlap; this is used when checking for duplicate

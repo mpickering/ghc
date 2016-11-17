@@ -881,8 +881,10 @@ coercePmPat (PmCon { pm_con_con = con, pm_con_arg_tys = arg_tys
 coercePmPat (PmGrd {}) = [] -- drop the guards
 
 singleConstructor :: ConLike -> Bool
-singleConstructor (RealDataCon dc)
-  = length (tyConDataCons (dataConTyCon dc)) == 1
+singleConstructor (RealDataCon dc) =
+  case tyConDataCons (dataConTyCon dc) of
+    [_] -> True
+    _   -> False
 singleConstructor _ = False
 
 allCompleteGroups :: ConLike -> DsM [[ConLike]]
