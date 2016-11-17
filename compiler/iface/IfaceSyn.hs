@@ -14,7 +14,7 @@ module IfaceSyn (
         IfaceBinding(..), IfaceConAlt(..),
         IfaceIdInfo(..), IfaceIdDetails(..), IfaceUnfolding(..),
         IfaceInfoItem(..), IfaceRule(..), IfaceAnnotation(..), IfaceAnnTarget,
-        IfaceClsInst(..), IfaceFamInst(..), IfaceTickish(..),
+        IfaceClsInst(..), IfaceFamInst(..), IfaceTickish(..), IfaceCompleteSet,
         IfaceBang(..),
         IfaceSrcBang(..), SrcUnpackedness(..), SrcStrictness(..),
         IfaceAxBranch(..),
@@ -296,6 +296,8 @@ data IfaceAnnotation
   }
 
 type IfaceAnnTarget = AnnTarget OccName
+
+type IfaceCompleteSet = [IfExtName]
 
 -- Here's a tricky case:
 --   * Compile with -O module A, and B which imports A.f
