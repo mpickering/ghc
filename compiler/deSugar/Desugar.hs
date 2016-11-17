@@ -398,7 +398,8 @@ deSugar hsc_env
                 mg_vect_decls   = ds_vects,
                 mg_vect_info    = noVectInfo,
                 mg_safe_haskell = safe_mode,
-                mg_trust_pkg    = imp_trust_own_pkg imports
+                mg_trust_pkg    = imp_trust_own_pkg imports,
+                mg_complete_sigs = complete_matches
               }
         ; return (msgs, Just mod_guts)
         }}}}
