@@ -50,7 +50,7 @@ import Coercion
 import TcEvidence
 import IOEnv
 
-import ListT (ListT(..), fold)
+import ListT (ListT(..), fold, select)
 
 {-
 This module checks pattern matches for:
