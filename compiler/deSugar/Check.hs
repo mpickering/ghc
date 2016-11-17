@@ -50,8 +50,7 @@ import Coercion
 import TcEvidence
 import IOEnv
 
-import ListT (ListT(..), Step(..), fold)
-import qualified ListT as L (empty)
+import ListT (ListT(..), fold)
 
 {-
 This module checks pattern matches for:
@@ -78,12 +77,14 @@ The algorithm is based on the paper:
 type PmM a = ListT DsM a
 
 liftD :: DsM a -> PmM a
-liftD a = ListT (do
-                x <- a
-                return (Cons x L.empty))
+liftD m = ListT $ \sk fk -> m >>= \a -> sk a fk
+
 
 myRunListT :: PmM a -> DsM [a]
-myRunListT = fold (flip (:)) [] id
+myRunListT pm = fold pm go (return [])
+  where
+    go a mas =
+      mas >>= \as -> return (a:as)
 
 data PatTy = PAT | VA -- Used only as a kind, to index PmPat
 
