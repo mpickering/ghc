@@ -74,6 +74,14 @@ The algorithm is based on the paper:
 %************************************************************************
 -}
 
+-- We use the non-determinism monad to apply the algorithm to several
+-- possible sets of constructors. Users can specify complete sets of
+-- constructors by using COMPLETE pragmas.
+-- The algorithm only picks out constructor
+-- sets deep in the bowels which makes a simpler `mapM` more difficult to
+-- implement. The non-determinism is only used in one place, see the ConVar
+-- case in `pmCheckHd`.
+
 type PmM a = ListT DsM a
 
 liftD :: DsM a -> PmM a
@@ -166,8 +174,7 @@ instance Monoid Diverged where
 data PartialResult = PartialResult {
                       presultCovered :: Covered
                       , presultUncovered :: Uncovered
-                      , presultDivergent :: Diverged
-                      }
+                      , presultDivergent :: Diverged }
 
 instance Outputable PartialResult where
   ppr (PartialResult c vsa d) = text "PartialResult" <+> ppr c
@@ -192,8 +199,7 @@ data PmResult =
   PmResult {
     pmresultRedundant :: [Located [LPat Id]]
     , pmresultUncovered :: Uncovered
-    , pmresultInaccessible :: [Located [LPat Id]]
-    }
+    , pmresultInaccessible :: [Located [LPat Id]] }
 
 {-
 %************************************************************************
@@ -772,7 +778,7 @@ mkOneConFull x con = do
   (subst, ex_tvs') <- cloneTyVarBndrs subst1 ex_tvs <$> getUniqueSupplyM
 
   -- Fresh term variables (VAs) as arguments to the constructor
-  arguments <-  mapM (mkPmVar) (substTys subst arg_tys)
+  arguments <-  mapM mkPmVar (substTys subst arg_tys)
   -- All constraints bound by the constructor (alpha-renamed)
   let theta_cs = substTheta subst (eqSpecPreds eq_spec ++ thetas)
   evvars <- mapM (nameType "pm") theta_cs
