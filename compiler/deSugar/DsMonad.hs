@@ -151,11 +151,12 @@ initDs :: HscEnv
 
 initDs hsc_env mod rdr_env type_env fam_inst_env complete_matches thing_inside
   = do  { msg_var <- newIORef (emptyBag, emptyBag)
+        ; let all_matches = (hptCompleteSigs hsc_env) ++ complete_matches
         ; pm_iter_var      <- newIORef 0
         ; let dflags                   = hsc_dflags hsc_env
               (ds_gbl_env, ds_lcl_env) = mkDsEnvs dflags mod rdr_env type_env
                                                   fam_inst_env msg_var
-                                                  pm_iter_var complete_matches
+                                                  pm_iter_var all_matches
 
         ; either_res <- initTcRnIf 'd' hsc_env ds_gbl_env ds_lcl_env $
                           loadDAP $
