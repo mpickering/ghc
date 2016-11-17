@@ -975,20 +975,12 @@ tcIfaceAnnTarget (ModuleTarget mod) = do
 ************************************************************************
 -}
 
-tcIfaceCompleteSigs :: [[Either IfaceDecl IfExtName]] -> IfL [[ConLike]]
+tcIfaceCompleteSigs :: [IfaceCompleteSet] -> IfL [[ConLike]]
 tcIfaceCompleteSigs = mapM tcIfaceCompleteSig
 
-tcIfaceCompleteSig :: [Either IfaceDecl IfExtName] -> IfL [ConLike]
+tcIfaceCompleteSig :: IfaceCompleteSet -> IfL [ConLike]
 tcIfaceCompleteSig = mapM tcIfaceConLike
 
-tcIfaceConLike :: Either IfaceDecl IfExtName -> IfL ConLike
-tcIfaceConLike (Left ips) = do
-  -- This is definitely an IfacePatSyn so the boolean doesn't matter
-  res <- tcIfaceDecl False ips
-  case res of
-    (AConLike c) -> return c
-    _ -> pprPanic "tcIfaceConLike expecting conlike" (ppr res)
-tcIfaceConLike (Right dc) = RealDataCon <$> tcIfaceDataCon dc
 {-
 ************************************************************************
 *                                                                      *
@@ -1642,6 +1634,14 @@ tcIfaceDataCon name = do { thing <- tcIfaceGlobal name
                          ; case thing of
                                 AConLike (RealDataCon dc) -> return dc
                                 _       -> pprPanic "tcIfaceExtDC" (ppr name$$ ppr thing) }
+
+tcIfaceConLike :: Name -> IfL ConLike
+tcIfaceConLike name =
+    do { thing <- tcIfaceGlobal name
+       ; case thing of
+        AConLike cl -> return cl
+        _           -> pprPanic "tcIfaceExtCL" (ppr name$$ ppr thing) }
+
 
 tcIfaceExtId :: Name -> IfL Id
 tcIfaceExtId name = do { thing <- tcIfaceGlobal name
