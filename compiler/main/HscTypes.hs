@@ -925,7 +925,7 @@ data ModIface
                 -- itself) but imports some trustworthy modules from its own
                 -- package (which does require its own package be trusted).
                 -- See Note [RnNames . Trust Own Package]
-        mi_complete_sigs :: [[Either IfaceDecl IfExtName]]
+        mi_complete_sigs :: [IfaceCompleteSet]
      }
 
 -- | Old-style accessor for whether or not the ModIface came from an hs-boot
