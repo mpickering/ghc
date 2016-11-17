@@ -37,6 +37,7 @@ module HscTypes (
         HomePackageTable, HomeModInfo(..), emptyHomePackageTable,
         lookupHpt, eltsHpt, filterHpt, allHpt, mapHpt, delFromHpt,
         addToHpt, addListToHpt, lookupHptDirectly, listToHpt,
+        hptCompleteSigs,
         hptInstances, hptRules, hptVectInfo, pprHPT,
         hptObjs,
 
@@ -613,6 +614,8 @@ lookupIfaceByModule _dflags hpt pit mod
 -- We could eliminate (b) if we wanted, by making GHC.Prim belong to a package
 -- of its own, but it doesn't seem worth the bother.
 
+hptCompleteSigs :: HscEnv -> [[ConLike]]
+hptCompleteSigs = hptAllThings  (md_complete_prags . hm_details)
 
 -- | Find all the instance declarations (of classes and families) from
 -- the Home Package Table filtered by the provided predicate function.
@@ -915,13 +918,14 @@ data ModIface
         mi_trust     :: !IfaceTrustInfo,
                 -- ^ Safe Haskell Trust information for this module.
 
-        mi_trust_pkg :: !Bool
+        mi_trust_pkg :: !Bool,
                 -- ^ Do we require the package this module resides in be trusted
                 -- to trust this module? This is used for the situation where a
                 -- module is Safe (so doesn't require the package be trusted
                 -- itself) but imports some trustworthy modules from its own
                 -- package (which does require its own package be trusted).
                 -- See Note [RnNames . Trust Own Package]
+        mi_complete_sigs :: [[Either IfaceDecl IfExtName]]
      }
 
 -- | Old-style accessor for whether or not the ModIface came from an hs-boot
@@ -996,7 +1000,8 @@ instance Binary ModIface where
                  mi_vect_info = vect_info,
                  mi_hpc       = hpc_info,
                  mi_trust     = trust,
-                 mi_trust_pkg = trust_pkg }) = do
+                 mi_trust_pkg = trust_pkg,
+                 mi_complete_sigs = complete_sigs }) = do
         put_ bh mod
         put_ bh sig_of
         put_ bh hsc_src
@@ -1022,6 +1027,7 @@ instance Binary ModIface where
         put_ bh hpc_info
         put_ bh trust
         put_ bh trust_pkg
+        put_ bh complete_sigs
 
    get bh = do
         mod         <- get bh
@@ -1049,6 +1055,7 @@ instance Binary ModIface where
         hpc_info    <- get bh
         trust       <- get bh
         trust_pkg   <- get bh
+        complete_sigs <- get bh
         return (ModIface {
                  mi_module      = mod,
                  mi_sig_of      = sig_of,
@@ -1079,7 +1086,8 @@ instance Binary ModIface where
                         -- And build the cached values
                  mi_warn_fn     = mkIfaceWarnCache warns,
                  mi_fix_fn      = mkIfaceFixCache fixities,
-                 mi_hash_fn     = mkIfaceHashCache decls })
+                 mi_hash_fn     = mkIfaceHashCache decls,
+                 mi_complete_sigs = complete_sigs })
 
 -- | The original names declared of a certain module that are exported
 type IfaceExport = AvailInfo
@@ -1115,7 +1123,8 @@ emptyModIface mod
                mi_hash_fn     = emptyIfaceHashCache,
                mi_hpc         = False,
                mi_trust       = noIfaceTrustInfo,
-               mi_trust_pkg   = False }
+               mi_trust_pkg   = False,
+               mi_complete_sigs = [] }
 
 
 -- | Constructs cache for the 'mi_hash_fn' field of a 'ModIface'
@@ -1147,7 +1156,8 @@ data ModDetails
         md_rules     :: ![CoreRule],    -- ^ Domain may include 'Id's from other modules
         md_anns      :: ![Annotation],  -- ^ Annotations present in this module: currently
                                         -- they only annotate things also declared in this module
-        md_vect_info :: !VectInfo       -- ^ Module vectorisation information
+        md_vect_info :: !VectInfo,       -- ^ Module vectorisation information
+        md_complete_prags :: [[ConLike]] -- ^ Complete match pragmas for this module
      }
 
 -- | Constructs an empty ModDetails
@@ -1159,7 +1169,8 @@ emptyModDetails
                  md_rules     = [],
                  md_fam_insts = [],
                  md_anns      = [],
-                 md_vect_info = noVectInfo }
+                 md_vect_info = noVectInfo,
+                 md_complete_prags = [] }
 
 -- | Records the modules directly imported by a module for extracting e.g.
 -- usage information, and also to give better error message
@@ -1206,6 +1217,7 @@ data ModGuts
         mg_foreign   :: !ForeignStubs,   -- ^ Foreign exports declared in this module
         mg_warns     :: !Warnings,       -- ^ Warnings declared in the module
         mg_anns      :: [Annotation],    -- ^ Annotations declared in this module
+        mg_complete_sigs :: [[ConLike]], -- ^ Complete Matches
         mg_hpc_info  :: !HpcInfo,        -- ^ Coverage tick boxes in the module
         mg_modBreaks :: !(Maybe ModBreaks), -- ^ Breakpoints for the module
         mg_vect_decls:: ![CoreVect],     -- ^ Vectorisation declarations in this module
