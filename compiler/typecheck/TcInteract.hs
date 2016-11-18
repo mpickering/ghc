@@ -2169,7 +2169,7 @@ matchTypeable clas [k,t]  -- clas = Typeable
   | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
   | t `eqType` mkTyConTy funTyCon          = return NoInstance --doPrimRep trArrowName             t
   | Just (tc, ks) <- splitTyConApp_maybe t -- See Note [Typeable (T a b c)]
-  , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc
+  , onlyNamedBndrsApplied tc ks            = doTyConApp clas t tc ks
   | Just (f,kt)   <- splitAppTy_maybe t    = doTyApp    clas t f kt
 
 matchTypeable _ _ = return NoInstance
@@ -2195,10 +2195,10 @@ doPrimRep rep_name ty
 -- kind variables have been instantiated).
 --
 -- TODO: Do we want to encode the applied kinds in the representation?
-doTyConApp :: Class -> Type -> TyCon -> TcS LookupInstResult
-doTyConApp clas ty tc
-  = return $ GenInst [mk_typeable_pred clas $ typeKind ty]
-                     (\[ev] -> EvTypeable ty $ EvTypeableTyCon tc ev)
+doTyConApp :: Class -> Type -> TyCon -> [Kind] -> TcS LookupInstResult
+doTyConApp clas ty tc kind_args
+  = return $ GenInst (map (mk_typeable_pred clas) kind_args)
+                     (\kinds -> EvTypeable ty $ EvTypeableTyCon tc kinds)
                      True
 
 -- | Representation for TyCon applications of a concrete kind. We just use the

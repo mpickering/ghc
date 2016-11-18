@@ -48,11 +48,10 @@ module Data.Typeable.Internal (
 
     -- * TypeRep
     TypeRep,
-    pattern TRApp, pattern TRCon, pattern TRFun,
+    pattern TRApp, pattern TRCon, pattern TRCon', pattern TRFun,
     typeRep,
     typeOf,
     typeRepTyCon,
-    typeRepKind,
     typeRepFingerprint,
     splitApp,
     rnfTypeRep,
@@ -150,14 +149,13 @@ rnfString (c:cs) = c `seq` rnfString cs
 -- | A concrete representation of a (monomorphic) type.
 -- 'TypeRep' supports reasonably efficient equality.
 data TypeRep (a :: k) where
-    TrTyCon :: {-# UNPACK #-} !Fingerprint -> !TyCon -> TypeRep k -> TypeRep (a :: k)
+    TrTyCon :: {-# UNPACK #-} !Fingerprint -> !TyCon -> [SomeTypeRep] -> TypeRep (a :: k)
     TrApp   :: forall k1 k2 (a :: k1 -> k2) (b :: k1).
                {-# UNPACK #-} !Fingerprint
             -> TypeRep (a :: k1 -> k2)
             -> TypeRep (b :: k1)
             -> TypeRep (a b)
-    TrFun   :: forall (r1 :: RuntimeRep) (r2 :: RuntimeRep)
-                      (a :: TYPE r1) (b :: TYPE r2).
+    TrFun   :: forall a b.
                {-# UNPACK #-} !Fingerprint
             -> TypeRep a
             -> TypeRep b
@@ -196,8 +194,7 @@ instance Ord SomeTypeRep where
     typeRepFingerprint a `compare` typeRepFingerprint b
 
 pattern TRFun :: forall fun. ()
-              => forall (r1 :: RuntimeRep) (r2 :: RuntimeRep)
-                        (arg :: TYPE r1) (res :: TYPE r2). (fun ~ (arg -> res))
+              => forall arg res. (fun ~ (arg -> res))
               => TypeRep arg
               -> TypeRep res
               -> TypeRep fun
@@ -217,12 +214,12 @@ typeRepFingerprint (TrFun fpr _ _) = fpr
 --
 -- Note that this is unsafe as it allows you to construct
 -- ill-kinded types.
-mkTrCon :: forall k (a :: k). TyCon -> TypeRep k -> TypeRep a
-mkTrCon tc kind = TrTyCon fpr tc kind
+mkTrCon :: forall k (a :: k). TyCon -> [SomeTypeRep] -> TypeRep a
+mkTrCon tc kind_vars = TrTyCon fpr tc kind_vars
   where
-    fpr_tc = tyConFingerprint tc
-    fpr_k  = typeRepFingerprint kind
-    fpr    = fingerprintFingerprints [fpr_tc, fpr_k]
+    fpr_tc  = tyConFingerprint tc
+    fpr_kvs = map typeRepXFingerprint kind_vars
+    fpr     = fingerprintFingerprints (fpr_tc:fpr_kvs)
 
 -- | Construct a representation for a type application.
 --
@@ -259,9 +256,13 @@ withTypeable rep k = unsafeCoerce k' rep
 newtype Gift a r = Gift (Typeable a => r)
 
 -- | Pattern match on a type constructor
--- TODO: do we want to expose kinds in these patterns?
 pattern TRCon :: forall k (a :: k). TyCon -> TypeRep a
 pattern TRCon con <- TrTyCon _ con _
+
+-- | Pattern match on a type constructor including its instantiated kind
+-- variables.
+pattern TRCon' :: forall k (a :: k). TyCon -> [SomeTypeRep] -> TypeRep a
+pattern TRCon' con ks <- TrTyCon _ con ks
 
 -- | Splits a type application.
 splitApp :: TypeRep a -> Maybe (AppResult a)
@@ -270,14 +271,6 @@ splitApp (TrApp _ f x)   = Just $ App f x
 splitApp (TrFun _ _ _)   = Nothing
 
 ----------------- Observation ---------------------
-
-typeRepKind :: forall k (a :: k). TypeRep a -> TypeRep k
-typeRepKind (TrTyCon _ _ k) = k
-typeRepKind (TrApp _ f _) =
-    case typeRepKind f of
-        TRFun _arg res -> res
-        _              -> error "typeRepKind: impossible"
-typeRepKind (TrFun _ _ _) = star
 
 -- | Observe the type constructor of a quantified type representation.
 typeRepXTyCon :: SomeTypeRep -> TyCon
@@ -339,13 +332,7 @@ pprFpr _ = id
 
 showTypeable :: Int -> TypeRep (a :: k) -> ShowS
 showTypeable p rep
-  | Just HRefl <- star `eqTypeRep` typeRepKind rep =
-    showParen True $
-    showTypeable' 1 rep . pprFpr (typeRepKind rep) . pprFpr rep
-
-  | otherwise =
-    showParen (p > 1) $
-    showTypeable' 1 rep . showString " :: " . showParen True (showTypeable' 0 (typeRepKind rep) . pprFpr (typeRepKind rep)) . pprFpr rep
+  = showParen True $ showTypeable' 1 rep
 
 showTypeable' :: Int -> TypeRep (a :: k) -> ShowS
 showTypeable' _ rep
@@ -459,7 +446,7 @@ typeSymbolTypeRep p = typeLitTypeRep (show (symbolVal' p))
 
 -- | An internal function, to make representations for type literals.
 typeLitTypeRep :: forall (a :: k). (Typeable k) => String -> TypeRep a
-typeLitTypeRep nm = mkTrCon (mkTypeLitTyCon nm) typeRep
+typeLitTypeRep nm = mkTrCon (mkTypeLitTyCon nm) []
 
 {- *********************************************************
 *                                                          *
@@ -486,8 +473,8 @@ manually.
 
 -- | We can't use 'mkTrCon' here as it requires the fingerprint of the kind
 -- which is knot-tied.
-mkPrimTrCon :: forall k (a :: k). TyCon -> TypeRep k -> TypeRep a
-mkPrimTrCon tc kind = TrTyCon fpr tc kind
+mkPrimTrCon :: forall k (a :: k). TyCon -> [SomeTypeRep] -> TypeRep a
+mkPrimTrCon tc kind_vars = TrTyCon fpr tc kind_vars
   where
     fpr_tc  = tyConFingerprint tc
     fpr_tag = fingerprintString "prim"
@@ -496,23 +483,19 @@ mkPrimTrCon tc kind = TrTyCon fpr tc kind
 mkPrimTyCon :: String -> TyCon
 mkPrimTyCon = mkTyCon "ghc-prim" "GHC.Prim"
 
-mkTrFun :: forall (r1 :: RuntimeRep) (r2 :: RuntimeRep).
-           forall (a :: TYPE r1) (b :: TYPE r2).
+mkTrFun :: forall a b.
            TypeRep a -> TypeRep b -> TypeRep ((a -> b) :: Type)
 mkTrFun arg res = TrFun fpr arg res
   where fpr = undefined
 
 trTYPE :: TypeRep TYPE
-trTYPE = mkPrimTrCon (mkPrimTyCon "TYPE") runtimeRep_arr_type
-  where
-    runtimeRep_arr_type :: TypeRep (RuntimeRep -> Type)
-    runtimeRep_arr_type = mkTrFun trRuntimeRep star
+trTYPE = mkPrimTrCon (mkPrimTyCon "TYPE") []
 
 trRuntimeRep :: TypeRep RuntimeRep
-trRuntimeRep = mkPrimTrCon (mkPrimTyCon "RuntimeRep") star
+trRuntimeRep = mkPrimTrCon (mkPrimTyCon "RuntimeRep") []
 
 tr'PtrRepLifted :: TypeRep 'PtrRepLifted
-tr'PtrRepLifted = mkPrimTrCon (mkPrimTyCon "'PtrRepLifted") trRuntimeRep
+tr'PtrRepLifted = mkPrimTrCon (mkPrimTyCon "'PtrRepLifted") []
 
 trTYPE'PtrRepLifted :: TypeRep (TYPE 'PtrRepLifted)
 trTYPE'PtrRepLifted = mkTrApp trTYPE tr'PtrRepLifted

@@ -137,7 +137,6 @@ fromDynamic (Dynamic t v)
 dynApply :: Dynamic -> Dynamic -> Maybe Dynamic
 dynApply (Dynamic (TRFun ta tr) f) (Dynamic ta' x)
   | Just HRefl <- ta `eqTypeRep` ta'
-  , Just HRefl <- typeRepKind tr `eqTypeRep` typeRep @Type
   = Just (Dynamic tr (f x))
 dynApply _ _
   = Nothing

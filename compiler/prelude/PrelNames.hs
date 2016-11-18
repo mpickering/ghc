@@ -224,6 +224,8 @@ basicKnownKeyNames
         -- Typeable
         typeableClassName,
         typeRepTyConName,
+        someTypeRepTyConName,
+        someTypeRepDataConName,
         typeRepIdName,
         mkTrConName,
         mkTrAppName,
@@ -1185,6 +1187,8 @@ trTyConDataConName    = dcQual gHC_TYPES          (fsLit "TyCon")          trTyC
 -- Class Typeable, and functions for constructing `Typeable` dictionaries
 typeableClassName
   , typeRepTyConName
+  , someTypeRepTyConName
+  , someTypeRepDataConName
   , mkTrConName
   , mkTrAppName
   , mkTrFunName
@@ -1195,6 +1199,8 @@ typeableClassName
   :: Name
 typeableClassName     = clsQual tYPEABLE_INTERNAL (fsLit "Typeable")       typeableClassKey
 typeRepTyConName      = tcQual  tYPEABLE_INTERNAL (fsLit "TypeRep")        typeRepTyConKey
+someTypeRepTyConName   = tcQual tYPEABLE_INTERNAL (fsLit "SomeTypeRep")    someTypeRepTyConKey
+someTypeRepDataConName = dcQual tYPEABLE_INTERNAL (fsLit "SomeTypeRep")    someTypeRepDataConKey
 typeRepIdName         = varQual tYPEABLE_INTERNAL (fsLit "typeRep#")       typeRepIdKey
 mkTrConName           = varQual tYPEABLE_INTERNAL (fsLit "mkTrCon")        mkTrConKey
 mkTrAppName           = varQual tYPEABLE_INTERNAL (fsLit "mkTrApp")        mkTrAppKey
@@ -1785,8 +1791,11 @@ callStackTyConKey :: Unique
 callStackTyConKey = mkPreludeTyConUnique 183
 
 -- Typeables
-typeRepTyConKey :: Unique
-typeRepTyConKey = mkPreludeTyConUnique 184
+typeRepTyConKey, someTypeRepTyConKey, someTypeRepDataConKey :: Unique
+typeRepTyConKey       = mkPreludeTyConUnique 184
+someTypeRepTyConKey   = mkPreludeTyConUnique 185
+someTypeRepDataConKey = mkPreludeTyConUnique 186
+
 
 typeSymbolAppendFamNameKey :: Unique
 typeSymbolAppendFamNameKey = mkPreludeTyConUnique 185

@@ -1448,7 +1448,7 @@ zonkEvTerm env (EvDelayedError ty msg)
 
 zonkEvTypeable :: ZonkEnv -> EvTypeable -> TcM EvTypeable
 zonkEvTypeable env (EvTypeableTyCon tycon e)
-  = do { e'  <- zonkEvTerm env e
+  = do { e'  <- mapM (zonkEvTerm env) e
        ; return $ EvTypeableTyCon tycon e' }
 zonkEvTypeable env (EvTypeableTyApp t1 t2)
   = do { t1' <- zonkEvTerm env t1

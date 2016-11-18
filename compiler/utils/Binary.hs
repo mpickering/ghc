@@ -593,12 +593,14 @@ putTypeRep bh rep
   = put_ bh (0 :: Word8)
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep)
   = put_ bh (1 :: Word8)
-  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep (->))
-  = put_ bh (2 :: Word8)
-putTypeRep bh rep@(TRCon con) = do
+  | TRFun arg res <- rep
+  = do put_ bh (2 :: Word8)
+       putTypeRep bh arg
+       putTypeRep bh res
+putTypeRep bh rep@(TRCon' con ks) = do
     put_ bh (3 :: Word8)
     put_ bh con
-    putTypeRep bh (typeRepKind rep)
+    put_ bh ks
 putTypeRep bh (TRApp f x) = do
     put_ bh (4 :: Word8)
     putTypeRep bh f
@@ -612,7 +614,10 @@ getSomeTypeRep bh = do
         5 -> return $ SomeTypeRep (typeRep :: TypeRep Type)
         0 -> return $ SomeTypeRep (typeRep :: TypeRep TYPE)
         1 -> return $ SomeTypeRep (typeRep :: TypeRep RuntimeRep)
-        2 -> return $ SomeTypeRep (typeRep :: TypeRep (->))
+        2 -> do arg <- getTypeRep bh
+                res <- getTypeRep bh
+                -- TODO: verify kind
+                return $ SomeTypeRep $ TRFun arg res
         3 -> do con <- get bh :: IO TyCon
                 SomeTypeRep rep_k <- getSomeTypeRep bh
                 case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of

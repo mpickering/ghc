@@ -488,9 +488,10 @@ data EvTerm
 -- | Instructions on how to make a 'Typeable' dictionary.
 -- See Note [Typeable evidence terms]
 data EvTypeable
-  = EvTypeableTyCon TyCon EvTerm
-    -- ^ Dictionary for @Typeable (T :: k)@.
-    -- The 'EvTerm' is a @Typeable k@ dictionary.
+  = EvTypeableTyCon TyCon [EvTerm]
+    -- ^ Dictionary for @Typeable T@ where @T@ is a type constructor with all of
+    -- its kind variables saturated. The @[EvTerm]@ is @Typeable@ evidence for
+    -- the applied kinds..
 
   | EvTypeableTyApp EvTerm EvTerm
     -- ^ Dictionary for @Typeable (s t)@,
@@ -823,7 +824,7 @@ evVarsOfCallStack cs = case cs of
 evVarsOfTypeable :: EvTypeable -> VarSet
 evVarsOfTypeable ev =
   case ev of
-    EvTypeableTyCon _ e   -> evVarsOfTerm e
+    EvTypeableTyCon _ e   -> mapUnionVarSet evVarsOfTerm e
     EvTypeableTyApp e1 e2 -> evVarsOfTerms [e1,e2]
     EvTypeableTrFun e1 e2 -> evVarsOfTerms [e1,e2]
     EvTypeableTyLit e     -> evVarsOfTerm e

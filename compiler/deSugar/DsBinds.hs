@@ -1208,9 +1208,20 @@ ds_ev_typeable :: Type -> EvTypeable -> DsM CoreExpr
 ds_ev_typeable ty (EvTypeableTyCon tc kind_ev)
   = do { mkTrCon <- dsLookupGlobalId mkTrConName
                     -- mkTrCon :: forall k (a :: k). TyCon -> TypeRep k -> TypeRep a
+       ; someTypeRepTyCon <- dsLookupTyCon someTypeRepTyConName
+       ; someTypeRepDataCon <- dsLookupDataCon someTypeRepDataConName
+                    -- SomeTypeRep :: forall k (a :: k). TypeRep a -> SomeTypeRep
 
        ; tc_rep <- tyConRep tc                      -- :: TyCon
-       ; kind_rep <- getRep kind_ev (typeKind ty)   -- :: TypeRep k
+       ; let ks = tyConAppArgs ty
+             -- Construct a SomeTypeRep
+             toSomeTypeRep :: Type -> EvTerm -> DsM CoreExpr
+             toSomeTypeRep t ev = do
+                 rep <- getRep ev t
+                 return $ mkCoreConApps someTypeRepDataCon [Type (typeKind t), Type t, rep]
+       ; kind_arg_reps <- sequence $ zipWith toSomeTypeRep ks kind_ev   -- :: TypeRep t
+       ; let -- :: [SomeTypeRep]
+             kind_args = mkListExpr (mkTyConTy someTypeRepTyCon) kind_arg_reps
 
          -- Note that we use the kind of the type, not the TyCon from which it is
          -- constructed since the latter may be kind polymorphic whereas the
@@ -1218,7 +1229,7 @@ ds_ev_typeable ty (EvTypeableTyCon tc kind_ev)
        ; return $ mkApps (Var mkTrCon) [ Type (typeKind ty)
                                        , Type ty
                                        , tc_rep
-                                       , kind_rep ]
+                                       , kind_args ]
        }
 
 ds_ev_typeable ty (EvTypeableTyApp ev1 ev2)

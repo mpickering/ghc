@@ -95,12 +95,14 @@ putTypeRep rep
   = put (0 :: Word8)
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep)
   = put (1 :: Word8)
-  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep (->))
-  = put (2 :: Word8)
-putTypeRep rep@(TRCon con) = do
+putTypeRep (TRFun arg res) = do
+    put (2 :: Word8)
+    put arg
+    put res
+putTypeRep rep@(TRCon' con ks) = do
     put (3 :: Word8)
     put con
-    putTypeRep (typeRepKind rep)
+    put ks
 putTypeRep (TRApp f x) = do
     put (4 :: Word8)
     putTypeRep f
@@ -114,15 +116,11 @@ getSomeTypeRep = do
         5 -> return $ SomeTypeRep (typeRep :: TypeRep Type)
         0 -> return $ SomeTypeRep (typeRep :: TypeRep TYPE)
         1 -> return $ SomeTypeRep (typeRep :: TypeRep RuntimeRep)
-        2 -> return $ SomeTypeRep (typeRep :: TypeRep (->))
+        2 -> return undefined -- TODO
         3 -> do con <- get :: Get TyCon
                 SomeTypeRep rep_k <- getSomeTypeRep
-                case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
-                    Just HRefl -> pure $ SomeTypeRep $ mkTrCon con rep_k
-                    Nothing    -> failure "Kind mismatch"
-                                          [ "Type constructor: " ++ show con
-                                          , "Applied to type:  " ++ show rep_k
-                                          ]
+                ks <- get :: Get [SomeTypeRep]
+                return $ mkTrCon con ks
 
         4 -> do SomeTypeRep f <- getSomeTypeRep
                 SomeTypeRep x <- getSomeTypeRep

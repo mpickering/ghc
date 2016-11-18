@@ -16,10 +16,9 @@ module Type.Reflection
       -- ** Type-Indexed
     , I.TypeRep
     , I.typeOf
-    , pattern I.TRApp, pattern I.TRCon, pattern I.TRFun
+    , pattern I.TRApp, pattern I.TRCon, pattern I.TRCon', pattern I.TRFun
     , I.typeRepFingerprint
     , I.typeRepTyCon
-    , I.typeRepKind
     , I.splitApp
     , I.rnfTypeRep
     , I.eqTypeRep
