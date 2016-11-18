@@ -605,30 +605,30 @@ putTypeRep bh (TRApp f x) = do
     putTypeRep bh x
 putTypeRep _ _ = fail "Binary.putTypeRep: Impossible"
 
-getTypeRepX :: BinHandle -> IO TypeRepX
-getTypeRepX bh = do
+getSomeTypeRep :: BinHandle -> IO SomeTypeRep
+getSomeTypeRep bh = do
     tag <- get bh :: IO Word8
     case tag of
-        5 -> return $ TypeRepX (typeRep :: TypeRep Type)
-        0 -> return $ TypeRepX (typeRep :: TypeRep TYPE)
-        1 -> return $ TypeRepX (typeRep :: TypeRep RuntimeRep)
-        2 -> return $ TypeRepX (typeRep :: TypeRep (->))
+        5 -> return $ SomeTypeRep (typeRep :: TypeRep Type)
+        0 -> return $ SomeTypeRep (typeRep :: TypeRep TYPE)
+        1 -> return $ SomeTypeRep (typeRep :: TypeRep RuntimeRep)
+        2 -> return $ SomeTypeRep (typeRep :: TypeRep (->))
         3 -> do con <- get bh :: IO TyCon
-                TypeRepX rep_k <- getTypeRepX bh
+                SomeTypeRep rep_k <- getSomeTypeRep bh
                 case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
-                    Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
+                    Just HRefl -> pure $ SomeTypeRep $ mkTrCon con rep_k
                     Nothing    -> failure "Kind mismatch in constructor application"
                                           [ "    Type constructor: " ++ show con
                                           , "    Applied to type : " ++ show rep_k
                                           ]
 
-        4 -> do TypeRepX f <- getTypeRepX bh
-                TypeRepX x <- getTypeRepX bh
+        4 -> do SomeTypeRep f <- getSomeTypeRep bh
+                SomeTypeRep x <- getSomeTypeRep bh
                 case typeRepKind f of
                     TRFun arg _ ->
                         case arg `eqTypeRep` typeRepKind x of
                             Just HRefl ->
-                                pure $ TypeRepX $ mkTrApp f x
+                                pure $ SomeTypeRep $ mkTrApp f x
                             _ -> failure "Kind mismatch in type application"
                                          [ "    Found argument of kind: " ++ show (typeRepKind x)
                                          , "    Where the constructor:  " ++ show f
@@ -638,16 +638,16 @@ getTypeRepX bh = do
                                  [ "    Applied type: " ++ show f
                                  , "    To argument:  " ++ show x
                                  ]
-        _ -> failure "Invalid TypeRepX" []
+        _ -> failure "Invalid SomeTypeRep" []
   where
     failure description info =
-        fail $ unlines $ [ "Binary.getTypeRepX: "++description ]
+        fail $ unlines $ [ "Binary.getSomeTypeRep: "++description ]
                       ++ map ("    "++) info
 
 instance Typeable a => Binary (TypeRep (a :: k)) where
     put_ = putTypeRep
     get bh = do
-        TypeRepX rep <- getTypeRepX bh
+        SomeTypeRep rep <- getSomeTypeRep bh
         case rep `eqTypeRep` expected of
             Just HRefl -> pure rep
             Nothing    -> fail $ unlines
@@ -657,9 +657,9 @@ instance Typeable a => Binary (TypeRep (a :: k)) where
                                ]
      where expected = typeRep :: TypeRep a
 
-instance Binary TypeRepX where
-    put_ bh (TypeRepX rep) = putTypeRep bh rep
-    get = getTypeRepX
+instance Binary SomeTypeRep where
+    put_ bh (SomeTypeRep rep) = putTypeRep bh rep
+    get = getSomeTypeRep
 #else
 instance Binary TypeRep where
     put_ bh type_rep = do

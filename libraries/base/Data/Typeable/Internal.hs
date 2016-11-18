@@ -58,12 +58,12 @@ module Data.Typeable.Internal (
     rnfTypeRep,
     eqTypeRep,
 
-    -- * TypeRepX
-    TypeRepX(..),
+    -- * SomeTypeRep
+    SomeTypeRep(..),
     typeRepX,
     typeRepXTyCon,
     typeRepXFingerprint,
-    rnfTypeRepX,
+    rnfSomeTypeRep,
 
     -- * Construction
     -- | These are for internal use only
@@ -182,17 +182,17 @@ instance Ord (TypeRep a) where
   compare = compare `on` typeRepFingerprint
 
 -- | A non-indexed type representation.
-data TypeRepX where
-    TypeRepX :: TypeRep a -> TypeRepX
+data SomeTypeRep where
+    SomeTypeRep :: TypeRep a -> SomeTypeRep
 
-instance Eq TypeRepX where
-  TypeRepX a == TypeRepX b =
+instance Eq SomeTypeRep where
+  SomeTypeRep a == SomeTypeRep b =
       case a `eqTypeRep` b of
           Just _  -> True
           Nothing -> False
 
-instance Ord TypeRepX where
-  TypeRepX a `compare` TypeRepX b =
+instance Ord SomeTypeRep where
+  SomeTypeRep a `compare` SomeTypeRep b =
     typeRepFingerprint a `compare` typeRepFingerprint b
 
 pattern TRFun :: forall fun. ()
@@ -280,8 +280,8 @@ typeRepKind (TrApp _ f _) =
 typeRepKind (TrFun _ _ _) = star
 
 -- | Observe the type constructor of a quantified type representation.
-typeRepXTyCon :: TypeRepX -> TyCon
-typeRepXTyCon (TypeRepX t) = typeRepTyCon t
+typeRepXTyCon :: SomeTypeRep -> TyCon
+typeRepXTyCon (SomeTypeRep t) = typeRepTyCon t
 
 -- | Observe the type constructor of a type representation
 typeRepTyCon :: TypeRep a -> TyCon
@@ -319,12 +319,12 @@ typeOf _ = typeRep
 -- of that type.
 --
 -- @since 4.7.0.0
-typeRepX :: forall proxy a. Typeable a => proxy a -> TypeRepX
-typeRepX _ = TypeRepX (typeRep :: TypeRep a)
+typeRepX :: forall proxy a. Typeable a => proxy a -> SomeTypeRep
+typeRepX _ = SomeTypeRep (typeRep :: TypeRep a)
 {-# INLINE typeRep #-}
 
-typeRepXFingerprint :: TypeRepX -> Fingerprint
-typeRepXFingerprint (TypeRepX t) = typeRepFingerprint t
+typeRepXFingerprint :: SomeTypeRep -> Fingerprint
+typeRepXFingerprint (SomeTypeRep t) = typeRepFingerprint t
 
 ----------------- Showing TypeReps --------------------
 
@@ -370,15 +370,15 @@ showTypeable' p (TrApp _ f x)
     showsPrec 9 x
 
 -- | @since 4.10.0.0
-instance Show TypeRepX where
-  showsPrec p (TypeRepX ty) = showsPrec p ty
+instance Show SomeTypeRep where
+  showsPrec p (SomeTypeRep ty) = showsPrec p ty
 
-splitApps :: TypeRep a -> (TyCon, [TypeRepX])
+splitApps :: TypeRep a -> (TyCon, [SomeTypeRep])
 splitApps = go []
   where
-    go :: [TypeRepX] -> TypeRep a -> (TyCon, [TypeRepX])
+    go :: [SomeTypeRep] -> TypeRep a -> (TyCon, [SomeTypeRep])
     go xs (TrTyCon _ tc _) = (tc, xs)
-    go xs (TrApp _ f x)    = go (TypeRepX x : xs) f
+    go xs (TrApp _ f x)    = go (SomeTypeRep x : xs) f
     go _  (TrFun _ _ _)    = error "splitApps: FunTy" -- TODO
 
 isListTyCon :: TyCon -> Bool
@@ -402,11 +402,11 @@ rnfTypeRep (TrTyCon _ tyc _) = rnfTyCon tyc
 rnfTypeRep (TrApp _ f x)     = rnfTypeRep f `seq` rnfTypeRep x
 rnfTypeRep (TrFun _ x y)     = rnfTypeRep x `seq` rnfTypeRep y
 
--- | Helper to fully evaluate 'TypeRepX' for use as @NFData(rnf)@ implementation
+-- | Helper to fully evaluate 'SomeTypeRep' for use as @NFData(rnf)@ implementation
 --
 -- @since 4.10.0.0
-rnfTypeRepX :: TypeRepX -> ()
-rnfTypeRepX (TypeRepX r) = rnfTypeRep r
+rnfSomeTypeRep :: SomeTypeRep -> ()
+rnfSomeTypeRep (SomeTypeRep r) = rnfTypeRep r
 
 {- *********************************************************
 *                                                          *

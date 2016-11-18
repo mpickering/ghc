@@ -96,7 +96,7 @@ import GHC.Show
 import GHC.Base
 
 -- | A quantified type representation.
-type TypeRep = I.TypeRepX
+type TypeRep = I.SomeTypeRep
 
 -- | Observe a type representation for the type of a value.
 typeOf :: forall a. Typeable a => a -> TypeRep
@@ -110,7 +110,7 @@ typeRep :: forall proxy a. Typeable a => proxy a -> TypeRep
 typeRep = I.typeRepX
 
 -- | Show a type representation
-showsTypeRep :: I.TypeRepX -> ShowS
+showsTypeRep :: I.SomeTypeRep -> ShowS
 showsTypeRep = shows
 
 -- | The type-safe cast operation
@@ -156,13 +156,13 @@ typeRepTyCon = I.typeRepXTyCon
 -- function of type @t@. Otherwise, returns @Nothing@.
 funResultTy :: TypeRep -> TypeRep -> Maybe TypeRep
 {-
-funResultTy (I.TypeRepX f) (I.TypeRepX x) =
+funResultTy (I.SomeTypeRep f) (I.SomeTypeRep x) =
     case (I.typeRep :: I.TypeRep Type) `I.eqTypeRep` I.typeRepKind f of
         Just HRefl ->
             case f of
                 I.TRFun arg res ->
                     case arg `I.eqTypeRep` x of
-                        Just HRefl -> Just (I.TypeRepX res)
+                        Just HRefl -> Just (I.SomeTypeRep res)
                         Nothing    -> Nothing
                 _ -> Nothing
         Nothing -> Nothing
@@ -171,10 +171,10 @@ funResultTy _ _ = Nothing
 
 -- | Build a function type.
 mkFunTy :: TypeRep -> TypeRep -> TypeRep
-mkFunTy (I.TypeRepX arg) (I.TypeRepX res)
+mkFunTy (I.SomeTypeRep arg) (I.SomeTypeRep res)
   | Just HRefl <- arg `I.eqTypeRep` liftedTy
   , Just HRefl <- res `I.eqTypeRep` liftedTy
-  = I.TypeRepX (I.TRFun arg res)
+  = I.SomeTypeRep (I.TRFun arg res)
   | otherwise
   = error $ "mkFunTy: Attempted to construct function type from non-lifted "++
             "type: arg="++show arg++", res="++show res
@@ -184,7 +184,7 @@ mkFunTy (I.TypeRepX arg) (I.TypeRepX res)
 
 -- | Force a 'TypeRep' to normal form.
 rnfTypeRep :: TypeRep -> ()
-rnfTypeRep = I.rnfTypeRepX
+rnfTypeRep = I.rnfSomeTypeRep
 
 
 -- Keeping backwards-compatibility

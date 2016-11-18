@@ -149,5 +149,5 @@ dynApp f x = case dynApply f x of
                                "Can't apply function " ++ show f ++
                                " to argument " ++ show x)
 
-dynTypeRep :: Dynamic -> TypeRepX
-dynTypeRep (Dynamic tr _) = TypeRepX tr
+dynTypeRep :: Dynamic -> SomeTypeRep
+dynTypeRep (Dynamic tr _) = SomeTypeRep tr

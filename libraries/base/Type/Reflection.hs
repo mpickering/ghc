@@ -25,9 +25,9 @@ module Type.Reflection
     , I.eqTypeRep
 
       -- ** Quantified
-    , I.TypeRepX(..)
+    , I.SomeTypeRep(..)
     , I.typeRepXTyCon
-    , I.rnfTypeRepX
+    , I.rnfSomeTypeRep
 
       -- * Type constructors
     , I.TyCon           -- abstract, instance of: Eq, Show, Typeable

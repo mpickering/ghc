@@ -107,30 +107,30 @@ putTypeRep (TRApp f x) = do
     putTypeRep x
 putTypeRep _ = fail "GHCi.TH.Binary.putTypeRep: Impossible"
 
-getTypeRepX :: Get TypeRepX
-getTypeRepX = do
+getSomeTypeRep :: Get SomeTypeRep
+getSomeTypeRep = do
     tag <- get :: Get Word8
     case tag of
-        5 -> return $ TypeRepX (typeRep :: TypeRep Type)
-        0 -> return $ TypeRepX (typeRep :: TypeRep TYPE)
-        1 -> return $ TypeRepX (typeRep :: TypeRep RuntimeRep)
-        2 -> return $ TypeRepX (typeRep :: TypeRep (->))
+        5 -> return $ SomeTypeRep (typeRep :: TypeRep Type)
+        0 -> return $ SomeTypeRep (typeRep :: TypeRep TYPE)
+        1 -> return $ SomeTypeRep (typeRep :: TypeRep RuntimeRep)
+        2 -> return $ SomeTypeRep (typeRep :: TypeRep (->))
         3 -> do con <- get :: Get TyCon
-                TypeRepX rep_k <- getTypeRepX
+                SomeTypeRep rep_k <- getSomeTypeRep
                 case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
-                    Just HRefl -> pure $ TypeRepX $ mkTrCon con rep_k
+                    Just HRefl -> pure $ SomeTypeRep $ mkTrCon con rep_k
                     Nothing    -> failure "Kind mismatch"
                                           [ "Type constructor: " ++ show con
                                           , "Applied to type:  " ++ show rep_k
                                           ]
 
-        4 -> do TypeRepX f <- getTypeRepX
-                TypeRepX x <- getTypeRepX
+        4 -> do SomeTypeRep f <- getSomeTypeRep
+                SomeTypeRep x <- getSomeTypeRep
                 case typeRepKind f of
                     TRFun arg _ ->
                         case arg `eqTypeRep` typeRepKind x of
                             Just HRefl ->
-                                pure $ TypeRepX $ mkTrApp f x
+                                pure $ SomeTypeRep $ mkTrApp f x
                             _ -> failure "Kind mismatch"
                                          [ "Found argument of kind:      " ++ show (typeRepKind x)
                                          , "Where the constructor:       " ++ show f
@@ -140,16 +140,16 @@ getTypeRepX = do
                                  [ "Applied type: " ++ show f
                                  , "To argument:  " ++ show x
                                  ]
-        _ -> failure "Invalid TypeRepX" []
+        _ -> failure "Invalid SomeTypeRep" []
   where
     failure description info =
-        fail $ unlines $ [ "GHCi.TH.Binary.getTypeRepX: "++description ]
+        fail $ unlines $ [ "GHCi.TH.Binary.getSomeTypeRep: "++description ]
                       ++ map ("    "++) info
 
 instance Typeable a => Binary (TypeRep (a :: k)) where
     put = putTypeRep
     get = do
-        TypeRepX rep <- getTypeRepX
+        SomeTypeRep rep <- getSomeTypeRep
         case rep `eqTypeRep` expected of
             Just HRefl -> pure rep
             Nothing    -> fail $ unlines
@@ -159,9 +159,9 @@ instance Typeable a => Binary (TypeRep (a :: k)) where
                                ]
      where expected = typeRep :: TypeRep a
 
-instance Binary TypeRepX where
-    put (TypeRepX rep) = putTypeRep rep
-    get = getTypeRepX
+instance Binary SomeTypeRep where
+    put (SomeTypeRep rep) = putTypeRep rep
+    get = getSomeTypeRep
 #else
 instance Binary TyCon where
     put tc = put (tyConPackage tc) >> put (tyConModule tc) >> put (tyConName tc)
