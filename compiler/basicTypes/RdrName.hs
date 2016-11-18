@@ -81,7 +81,7 @@ import StaticFlags( opt_PprStyle_Debug )
 import NameEnv
 
 import Data.Data
-import Data.List( sortBy, foldl' )
+import Data.List( sortBy, foldl', nub )
 
 {-
 ************************************************************************
@@ -455,7 +455,7 @@ data GlobalRdrElt
         , gre_par  :: Parent
         , gre_lcl :: Bool          -- ^ True <=> the thing was defined locally
         , gre_imp :: [ImportSpec]  -- ^ In scope through these imports
-    } deriving Data
+    } deriving (Data, Eq)
          -- INVARIANT: either gre_lcl = True or gre_imp is non-empty
          -- See Note [GlobalRdrElt provenance]
 
@@ -695,9 +695,13 @@ greParentName gre = case gre_par gre of
                       ParentIs n -> Just n
                       FldParent n _ -> Just n
 
+-- | Takes a list of distinct GREs and folds them
+-- into AvailInfos. This is more efficient than mapping each individual
+-- GRE to an AvailInfo and the folding using `plusAvail` but needs the
+-- uniqueness assumption.
 gresToAvailInfo :: [GlobalRdrElt] -> [AvailInfo]
 gresToAvailInfo gres
-  = nameEnvElts avail_env
+  = ASSERT( nub gres == gres ) nameEnvElts avail_env
   where
     avail_env :: NameEnv AvailInfo -- keyed by the parent
     avail_env = foldl' add emptyNameEnv gres
@@ -710,9 +714,13 @@ gresToAvailInfo gres
       where
         -- We want to insert the child `k` into a list of children but
         -- need to maintain the invariant that the parent is first.
+        --
+        -- We also use the invariant that `k` is not already in `ns`.
         insertChildIntoChildren :: Name -> [Name] -> Name -> [Name]
         insertChildIntoChildren _ [] k = [k]
-        insertChildIntoChildren p (n:ns) k = if p == n then n:k:ns else k:n:ns
+        insertChildIntoChildren p (n:ns) k
+          | p == k = k:n:ns
+          | otherwise = n:k:ns
 
         comb :: GlobalRdrElt -> AvailInfo -> AvailInfo
         comb _ (Avail n) = Avail n -- Duplicated name
