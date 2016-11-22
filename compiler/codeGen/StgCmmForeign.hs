@@ -12,6 +12,7 @@ module StgCmmForeign (
   cgForeignCall,
   emitPrimCall, emitCCall,
   emitForeignCall,     -- For CmmParse
+  InitialSp,
   emitSaveThreadState,
   saveThreadState,
   emitLoadThreadState,
@@ -45,6 +46,7 @@ import Maybes
 import Outputable
 import UniqSupply
 import BasicTypes
+import FastString
 
 import Control.Monad
 
@@ -277,12 +279,35 @@ maybe_assign_temp e = do
 emitSaveThreadState :: FCode ()
 emitSaveThreadState = do
   dflags <- getDynFlags
-  code <- saveThreadState dflags
+  code <- saveThreadState dflags Nothing
   emit code
 
+-- | An @InitialSp@ is a function which, given a 'CmmExpr' which evaluates to
+-- the current value of the @Sp@ register, will evaluate to the value of @Sp@ in
+-- the calling context. This is used by 'saveThreadState' to compute unwinding
+-- information over the course of a safe foreign call.
+--
+-- See Note [Stack unwinding through safe foreign calls].
+type InitialSp = CmmExpr -> CmmExpr
+
+{-
+Note [Stack unwinding through safe foreign calls]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When we perform a safe foreign call we need to ensure that we preserve the
+ability to unwind the stack despite the fact that the value of the Sp register
+now must be retrieved from the TSO. For this reason the caller of
+{load,save}ThreadSave provides an InitialSp function, which provides a way to
+compute the initial value of Sp in the calling context while abstracting over
+the location of the current value of Sp.
+
+Not familiar with stack unwinding? See Note [What is this unwinding business?]
+in Debug.
+-}
+
 -- | Produce code to save the current thread state to @CurrentTSO@
-saveThreadState :: MonadUnique m => DynFlags -> m CmmAGraph
-saveThreadState dflags = do
+saveThreadState :: MonadUnique m => DynFlags -> Maybe InitialSp -> m CmmAGraph
+saveThreadState dflags initialSp = do
   tso <- newTemp (gcWord dflags)
   close_nursery <- closeNursery dflags tso
   pure $ catAGraphs [
@@ -296,6 +321,16 @@ saveThreadState dflags = do
                                 (bWord dflags))
                        (stack_SP dflags))
             stgSp,
+    -- unwind Sp = initialSp(tso->stackobj->sp)
+    -- See Note [Stack unwinding through safe foreign calls].
+    case initialSp of
+      Just initial | debugLevel dflags > 0 ->
+        let tsoValue =
+              CmmLoad (cmmOffset dflags stgCurrentTSO (tso_stackobj dflags))
+                      (bWord dflags)
+            spValue = cmmOffset dflags tsoValue (stack_SP dflags)
+        in mkUnwind Sp (initial spValue)
+      _ -> mkComment $ mkFastString "Couldn't find unwinding",
     close_nursery,
     -- and save the current cost centre stack in the TSO when profiling:
     if gopt Opt_SccProfilingOn dflags then
@@ -359,12 +394,12 @@ closeNursery df tso = do
 emitLoadThreadState :: FCode ()
 emitLoadThreadState = do
   dflags <- getDynFlags
-  code <- loadThreadState dflags
+  code <- loadThreadState dflags Nothing
   emit code
 
 -- | Produce code to load the current thread state from @CurrentTSO@
-loadThreadState :: MonadUnique m => DynFlags -> m CmmAGraph
-loadThreadState dflags = do
+loadThreadState :: MonadUnique m => DynFlags -> Maybe InitialSp -> m CmmAGraph
+loadThreadState dflags initialSp = do
   tso <- newTemp (gcWord dflags)
   stack <- newTemp (gcWord dflags)
   open_nursery <- openNursery dflags tso
@@ -375,6 +410,12 @@ loadThreadState dflags = do
     mkAssign (CmmLocal stack) (CmmLoad (cmmOffset dflags (CmmReg (CmmLocal tso)) (tso_stackobj dflags)) (bWord dflags)),
     -- Sp = stack->sp;
     mkAssign sp (CmmLoad (cmmOffset dflags (CmmReg (CmmLocal stack)) (stack_SP dflags)) (bWord dflags)),
+    -- unwind Sp = initialSp(Sp);
+    -- See Note [Stack unwinding through safe foreign calls].
+    case initialSp of
+      Just initial | debugLevel dflags > 0 ->
+        mkUnwind Sp (initial (CmmReg sp))
+      _ -> mkComment $ mkFastString "Couldn't find unwinding",
     -- SpLim = stack->stack + RESERVED_STACK_WORDS;
     mkAssign spLim (cmmOffsetW dflags (cmmOffset dflags (CmmReg (CmmLocal stack)) (stack_STACK dflags))
                                 (rESERVED_STACK_WORDS dflags)),
