@@ -441,13 +441,28 @@ data TrName
   = TrNameS Addr#  -- Static
   | TrNameD [Char] -- Dynamic
 
+-- | A de Bruijn index for a binder within a 'KindRep'.
+type KindBndr = Int
+
+-- | The representation produced by GHC for conjuring up the kind of a
+-- 'TypeRep'.
+data KindRep = KindRepTyConApp TyCon [KindRep]
+             | KindRepVar !KindBndr
+             | KindRepApp KindRep KindRep
+             | KindRepFun KindRep KindRep
+             | KindRepTYPE !RuntimeRep
+
 -- Show instance for TyCon found in GHC.Show
 #if WORD_SIZE_IN_BITS < 64
 data TyCon = TyCon Word64#  Word64#   -- Fingerprint
                    Module             -- Module in which this is defined
                    TrName             -- Type constructor name
+                   Int                -- How many kind variables do we accept?
+                   KindRep            -- A representation of the type's kind
 #else
 data TyCon = TyCon Word#    Word#
                    Module
                    TrName
+                   Int
+                   KindRep
 #endif

@@ -226,6 +226,12 @@ basicKnownKeyNames
         typeRepTyConName,
         someTypeRepTyConName,
         someTypeRepDataConName,
+        kindRepTyConName,
+        kindRepTyConAppDataConName,
+        kindRepVarDataConName,
+        kindRepAppDataConName,
+        kindRepFunDataConName,
+        kindRepTYPEDataConName,
         typeRepIdName,
         mkTrConName,
         mkTrAppName,
@@ -1175,6 +1181,11 @@ trModuleTyConName
   , trNameDDataConName
   , trTyConTyConName
   , trTyConDataConName
+  , kindRepTyConName
+  , kindRepTyConAppDataConName
+  , kindRepVarDataConName
+  , kindRepAppDataConName
+  , kindRepFunDataConName
   :: Name
 trModuleTyConName     = tcQual gHC_TYPES          (fsLit "Module")         trModuleTyConKey
 trModuleDataConName   = dcQual gHC_TYPES          (fsLit "Module")         trModuleDataConKey
@@ -1183,6 +1194,12 @@ trNameSDataConName    = dcQual gHC_TYPES          (fsLit "TrNameS")        trNam
 trNameDDataConName    = dcQual gHC_TYPES          (fsLit "TrNameD")        trNameDDataConKey
 trTyConTyConName      = tcQual gHC_TYPES          (fsLit "TyCon")          trTyConTyConKey
 trTyConDataConName    = dcQual gHC_TYPES          (fsLit "TyCon")          trTyConDataConKey
+kindRepTyConName      = tcQual gHC_TYPES          (fsLit "KindRep")        kindRepTyConKey
+kindRepTyConAppDataConName = dcQual gHC_TYPES     (fsLit "KindRepTyConApp") kindRepTyConAppDataConKey
+kindRepVarDataConName = dcQual gHC_TYPES          (fsLit "KindRepVar")     kindRepVarDataConKey
+kindRepAppDataConName = dcQual gHC_TYPES          (fsLit "KindRepApp")     kindRepAppDataConKey
+kindRepFunDataConName = dcQual gHC_TYPES          (fsLit "KindRepFun")     kindRepFunDataConKey
+kindRepTYPEDataConName = dcQual gHC_TYPES         (fsLit "KindRepTYPE")    kindRepTYPEDataConKey
 
 -- Class Typeable, and functions for constructing `Typeable` dictionaries
 typeableClassName
@@ -1880,7 +1897,7 @@ srcLocDataConKey                        = mkPreludeDataConUnique 37
 trTyConTyConKey, trTyConDataConKey,
   trModuleTyConKey, trModuleDataConKey,
   trNameTyConKey, trNameSDataConKey, trNameDDataConKey,
-  trGhcPrimModuleKey :: Unique
+  trGhcPrimModuleKey, kindRepTyConKey :: Unique
 trTyConTyConKey                         = mkPreludeDataConUnique 41
 trTyConDataConKey                       = mkPreludeDataConUnique 42
 trModuleTyConKey                        = mkPreludeDataConUnique 43
@@ -1889,6 +1906,7 @@ trNameTyConKey                          = mkPreludeDataConUnique 45
 trNameSDataConKey                       = mkPreludeDataConUnique 46
 trNameDDataConKey                       = mkPreludeDataConUnique 47
 trGhcPrimModuleKey                      = mkPreludeDataConUnique 48
+kindRepTyConKey                         = mkPreludeDataConUnique 49
 
 typeErrorTextDataConKey,
   typeErrorAppendDataConKey,
@@ -1947,8 +1965,17 @@ vecCountDataConKeys = map mkPreludeDataConUnique [83..88]
 vecElemDataConKeys :: [Unique]
 vecElemDataConKeys = map mkPreludeDataConUnique [89..98]
 
+-- Typeable things
+kindRepTyConAppDataConKey, kindRepVarDataConKey, kindRepAppDataConKey,
+    kindRepFunDataConKey :: Unique
+kindRepTyConAppDataConKey = mkPreludeDataConUnique 100
+kindRepVarDataConKey      = mkPreludeDataConUnique 101
+kindRepAppDataConKey      = mkPreludeDataConUnique 102
+kindRepFunDataConKey      = mkPreludeDataConUnique 103
+kindRepTYPEDataConKey     = mkPreludeDataConUnique 104
+
 ---------------- Template Haskell -------------------
---      THNames.hs: USES DataUniques 100-150
+--      THNames.hs: USES DataUniques 200-250
 -----------------------------------------------------
 
 

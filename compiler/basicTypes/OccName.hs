@@ -73,7 +73,7 @@ module OccName (
         mkPReprTyConOcc,
         mkPADFunOcc,
         mkRecFldSelOcc,
-        mkTyConRepOcc,
+        mkTyConRepOcc, mkKindRepOcc,
 
         -- ** Deconstruction
         occNameFS, occNameString, occNameSpace,
@@ -610,7 +610,7 @@ mkDataConWrapperOcc, mkWorkerOcc,
         mkDataConWorkerOcc, mkNewTyCoOcc,
         mkInstTyCoOcc, mkEqPredCoOcc, mkClassOpAuxOcc,
         mkCon2TagOcc, mkTag2ConOcc, mkMaxTagOcc,
-        mkTyConRepOcc
+        mkTyConRepOcc, mkKindRepOcc
    :: OccName -> OccName
 
 -- These derived variables have a prefix that no Haskell value could have
@@ -640,6 +640,7 @@ mkTyConRepOcc occ = mk_simple_deriv varName prefix occ
   where
     prefix | isDataOcc occ = "$tc'"
            | otherwise     = "$tc"
+mkKindRepOcc = mk_simple_deriv varName "$tk"
 
 -- Generic deriving mechanism
 mkGenR   = mk_simple_deriv tcName "Rep_"
