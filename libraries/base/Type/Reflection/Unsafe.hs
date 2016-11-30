@@ -14,6 +14,8 @@
 -----------------------------------------------------------------------------
 
 module Type.Reflection.Unsafe (
+    tyConKindRep, tyConKindVars,
+    KindRep(..),
     mkTrCon, mkTrApp, mkTyCon
   ) where
 

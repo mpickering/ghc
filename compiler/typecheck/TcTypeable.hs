@@ -178,6 +178,17 @@ mkTypeableTyConBinds tycons
        ; stuff <- collect_stuff mod mod_expr
        ; let all_tycons = [ tc' | tc <- tycons, tc' <- tc : tyConATs tc ]
                              -- We need type representations for any associated types
+
+         -- First extend the type environment with all of the bindings which we
+         -- are going to produce since we may need to refer to them while
+         -- generating the RHSs
+       ; let tycon_rep_bndrs :: [Id]
+             tycon_rep_bndrs = [ rep_id
+                               | tc <- all_tycons
+                               , Just rep_id <- pure $ tyConRepId stuff tc
+                               ]
+       ; gbl_env <- tcExtendGlobalValEnv tycon_rep_bndrs getGblEnv
+
        ; foldlM (mk_typeable_binds stuff) gbl_env all_tycons }
 
 -- | Generate bindings for the type representation of a wired-in 'TyCon's defined
@@ -297,15 +308,21 @@ mk_typeable_binds stuff gbl_env tycon
                                   (tyConDataCons tycon)
             typecheckAndAddBindings gbl_env' $ unionManyBags promoted_reps
 
+-- | The 'Id' of the @TyCon@ binding for a type constructor.
+tyConRepId :: TypeableStuff -> TyCon -> Maybe Id
+tyConRepId (Stuff {..}) tycon
+  = mkRepId <$> tyConRepName_maybe tycon
+  where
+    mkRepId rep_name = mkExportedVanillaId rep_name (mkTyConTy trTyConTyCon)
+
 -- | Make typeable bindings for the given 'TyCon'.
 mkTyConRepBinds :: TypeableStuff -> TyCon -> TcRn (LHsBinds Id)
 mkTyConRepBinds stuff@(Stuff {..}) tycon
   = pprTrace "mkTyConRepBinds" (ppr tycon) $
-    case tyConRepName_maybe tycon of
-      Just rep_name -> do
+    case tyConRepId stuff tycon of
+      Just tycon_rep_id -> do
           tycon_rep_rhs <- mkTyConRepTyConRHS stuff tycon
-          let tycon_rep_id  = mkExportedVanillaId rep_name (mkTyConTy trTyConTyCon)
-              tycon_rep     = mkVarBind tycon_rep_id tycon_rep_rhs
+          let tycon_rep = mkVarBind tycon_rep_id tycon_rep_rhs
           return $ unitBag tycon_rep
       _ -> return emptyBag
 

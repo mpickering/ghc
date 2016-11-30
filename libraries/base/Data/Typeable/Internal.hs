@@ -43,7 +43,8 @@ module Data.Typeable.Internal (
 
     -- * TyCon
     TyCon,   -- Abstract
-    tyConPackage, tyConModule, tyConName,
+    tyConPackage, tyConModule, tyConName, tyConKindVars, tyConKindRep,
+    KindRep(..),
     rnfTyCon,
 
     -- * TypeRep
@@ -116,6 +117,12 @@ trNameString (TrNameD s) = s
 tyConFingerprint :: TyCon -> Fingerprint
 tyConFingerprint (TyCon hi lo _ _ _ _)
   = Fingerprint (W64# hi) (W64# lo)
+
+tyConKindVars :: TyCon -> Int
+tyConKindVars (TyCon _ _ _ _ n _) = I# n
+
+tyConKindRep :: TyCon -> KindRep
+tyConKindRep (TyCon _ _ _ _ _ k) = k
 
 -- | Helper to fully evaluate 'TyCon' for use as @NFData(rnf)@ implementation
 --
@@ -202,8 +209,8 @@ instance Ord SomeTypeRep where
   SomeTypeRep a `compare` SomeTypeRep b =
     typeRepFingerprint a `compare` typeRepFingerprint b
 
-pattern TRFun :: forall fun. ()
-              => forall (r1 :: RuntimeRep) (r2 :: RuntimeRep) (arg :: TYPE r1) (res :: TYPE r2). (fun ~ (arg -> res))
+pattern TRFun :: forall k (fun :: k). ()
+              => forall (r1 :: RuntimeRep) (r2 :: RuntimeRep) (arg :: TYPE r1) (res :: TYPE r2). (k ~ Type, fun ~~ (arg -> res))
               => TypeRep arg
               -> TypeRep res
               -> TypeRep fun

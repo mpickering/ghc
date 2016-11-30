@@ -14,7 +14,7 @@ import qualified Data.ByteString as B
 import Type.Reflection
 import Type.Reflection.Unsafe
 import Data.Kind (Type)
-import GHC.Exts (TYPE, RuntimeRep)
+import GHC.Exts (TYPE, RuntimeRep(..), VecCount, VecElem)
 #else
 import Data.Typeable
 #endif
@@ -80,9 +80,70 @@ instance Binary TH.PatSynArgs
 -- We need Binary TypeRep for serializing annotations
 
 #if MIN_VERSION_base(4,10,0)
+instance Binary VecCount where
+    put = putWord8 . fromIntegral . fromEnum
+    get = toEnum . fromIntegral <$> getWord8
+
+instance Binary VecElem where
+    put = putWord8 . fromIntegral . fromEnum
+    get = toEnum . fromIntegral <$> getWord8
+
+instance Binary RuntimeRep where
+    put (VecRep a b) = putWord8 0 >> put a >> put b
+    put PtrRepLifted = putWord8 1
+    put PtrRepUnlifted = putWord8 2
+    put VoidRep = putWord8 3
+    put IntRep = putWord8 4
+    put WordRep = putWord8 5
+    put Int64Rep = putWord8 6
+    put Word64Rep = putWord8 7
+    put AddrRep = putWord8 8
+    put FloatRep = putWord8 9
+    put DoubleRep = putWord8 10
+    put UnboxedTupleRep = putWord8 11
+    put UnboxedSumRep = putWord8 12
+
+    get = do
+        tag <- getWord8
+        case tag of
+          0 -> VecRep <$> get <*> get
+          1 -> pure PtrRepLifted
+          2 -> pure PtrRepUnlifted
+          3 -> pure VoidRep
+          4 -> pure IntRep
+          5 -> pure WordRep
+          6 -> pure Int64Rep
+          7 -> pure Word64Rep
+          8 -> pure AddrRep
+          9 -> pure FloatRep
+          10 -> pure DoubleRep
+          11 -> pure UnboxedTupleRep
+          12 -> pure UnboxedSumRep
+
 instance Binary TyCon where
-    put tc = put (tyConPackage tc) >> put (tyConModule tc) >> put (tyConName tc)
-    get = mkTyCon <$> get <*> get <*> get
+    put tc = do
+        put (tyConPackage tc)
+        put (tyConModule tc)
+        put (tyConName tc)
+        put (tyConKindVars tc)
+        put (tyConKindRep tc)
+    get = mkTyCon <$> get <*> get <*> get <*> get <*> get
+
+instance Binary KindRep where
+    put (KindRepTyConApp tc k) = putWord8 0 >> put tc >> put k
+    put (KindRepVar bndr) = putWord8 1 >> put bndr
+    put (KindRepApp a b) = putWord8 2 >> put a >> put b
+    put (KindRepFun a b) = putWord8 3 >> put a >> put b
+    put (KindRepTYPE r) = putWord8 4 >> put r
+
+    get = do
+        tag <- getWord8
+        case tag of
+          0 -> KindRepTyConApp <$> get <*> get
+          1 -> KindRepVar <$> get
+          2 -> KindRepApp <$> get <*> get
+          3 -> KindRepFun <$> get <*> get
+          4 -> KindRepTYPE <$> get
 
 putTypeRep :: TypeRep a -> Put
 -- Special handling for TYPE, (->), and RuntimeRep due to recursive kind
@@ -120,7 +181,7 @@ getSomeTypeRep = do
         3 -> do con <- get :: Get TyCon
                 SomeTypeRep rep_k <- getSomeTypeRep
                 ks <- get :: Get [SomeTypeRep]
-                return $ mkTrCon con ks
+                return $ SomeTypeRep $ mkTrCon con ks
 
         4 -> do SomeTypeRep f <- getSomeTypeRep
                 SomeTypeRep x <- getSomeTypeRep
