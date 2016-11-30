@@ -39,7 +39,7 @@ module GHC.Types (
         VecCount(..), VecElem(..),
 
         -- * Runtime type representation
-        Module(..), TrName(..), TyCon(..)
+        Module(..), TrName(..), TyCon(..), KindRep(..)
     ) where
 
 import GHC.Prim
@@ -457,12 +457,12 @@ data KindRep = KindRepTyConApp TyCon [KindRep]
 data TyCon = TyCon Word64#  Word64#   -- Fingerprint
                    Module             -- Module in which this is defined
                    TrName             -- Type constructor name
-                   Int                -- How many kind variables do we accept?
+                   Int#               -- How many kind variables do we accept?
                    KindRep            -- A representation of the type's kind
 #else
 data TyCon = TyCon Word#    Word#
                    Module
                    TrName
-                   Int
+                   Int#
                    KindRep
 #endif

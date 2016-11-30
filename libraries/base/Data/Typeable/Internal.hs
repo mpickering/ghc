@@ -107,20 +107,20 @@ moduleName :: Module -> String
 moduleName (Module _ m) = trNameString m
 
 tyConPackage :: TyCon -> String
-tyConPackage (TyCon _ _ m _) = modulePackage m
+tyConPackage (TyCon _ _ m _ _ _) = modulePackage m
 
 tyConModule :: TyCon -> String
-tyConModule (TyCon _ _ m _) = moduleName m
+tyConModule (TyCon _ _ m _ _ _) = moduleName m
 
 tyConName :: TyCon -> String
-tyConName (TyCon _ _ _ n) = trNameString n
+tyConName (TyCon _ _ _ n _ _) = trNameString n
 
 trNameString :: TrName -> String
 trNameString (TrNameS s) = unpackCString# s
 trNameString (TrNameD s) = s
 
 tyConFingerprint :: TyCon -> Fingerprint
-tyConFingerprint (TyCon hi lo _ _)
+tyConFingerprint (TyCon hi lo _ _ _ _)
   = Fingerprint (W64# hi) (W64# lo)
 
 -- | Helper to fully evaluate 'TyCon' for use as @NFData(rnf)@ implementation
@@ -133,12 +133,26 @@ rnfTrName :: TrName -> ()
 rnfTrName (TrNameS _) = ()
 rnfTrName (TrNameD n) = rnfString n
 
-rnfTyCon :: TyCon -> ()
-rnfTyCon (TyCon _ _ m n) = rnfModule m `seq` rnfTrName n
+rnfKindRep :: KindRep -> ()
+rnfKindRep (KindRepTyConApp tc args) = rnfTyCon tc `seq` rnfList rnfKindRep args
+rnfKindRep (KindRepVar _)   = ()
+rnfKindRep (KindRepApp a b) = rnfKindRep a `seq` rnfKindRep b
+rnfKindRep (KindRepFun a b) = rnfKindRep a `seq` rnfKindRep b
+rnfKindRep (KindRepTYPE rr) = rnfRuntimeRep rr
+
+rnfRuntimeRep :: RuntimeRep -> ()
+rnfRuntimeRep (VecRep !_ !_) = ()
+rnfRuntimeRep !_             = ()
+
+rnfList :: (a -> ()) -> [a] -> ()
+rnfList _     []     = ()
+rnfList force (x:xs) = force x `seq` rnfList force xs
 
 rnfString :: [Char] -> ()
-rnfString [] = ()
-rnfString (c:cs) = c `seq` rnfString cs
+rnfString = rnfList (`seq` ())
+
+rnfTyCon :: TyCon -> ()
+rnfTyCon (TyCon _ _ m n _ k) = rnfModule m `seq` rnfTrName n `seq` rnfKindRep k
 
 
 {- *********************************************************************
@@ -413,10 +427,12 @@ rnfSomeTypeRep (SomeTypeRep r) = rnfTypeRep r
 mkTyCon# :: Addr#       -- ^ package name
          -> Addr#       -- ^ module name
          -> Addr#       -- ^ the name of the type constructor
+         -> Int#        -- ^ number of kind variables
+         -> KindRep     -- ^ kind representation
          -> TyCon       -- ^ A unique 'TyCon' object
-mkTyCon# pkg modl name
+mkTyCon# pkg modl name n_kinds kind_rep
   | Fingerprint (W64# hi) (W64# lo) <- fingerprint
-  = TyCon hi lo (Module (TrNameS pkg) (TrNameS modl)) (TrNameS name)
+  = TyCon hi lo (Module (TrNameS pkg) (TrNameS modl)) (TrNameS name) n_kinds kind_rep
   where
     fingerprint :: Fingerprint
     fingerprint = fingerprintString (unpackCString# pkg
@@ -430,30 +446,36 @@ mkTyCon# pkg modl name
 mkTyCon :: String       -- ^ package name
         -> String       -- ^ module name
         -> String       -- ^ the name of the type constructor
+        -> Int         -- ^ number of kind variables
+        -> KindRep     -- ^ kind representation
         -> TyCon        -- ^ A unique 'TyCon' object
 -- Used when the strings are dynamically allocated,
 -- eg from binary deserialisation
-mkTyCon pkg modl name
+mkTyCon pkg modl name (I# n_kinds) kind_rep
   | Fingerprint (W64# hi) (W64# lo) <- fingerprint
-  = TyCon hi lo (Module (TrNameD pkg) (TrNameD modl)) (TrNameD name)
+  = TyCon hi lo (Module (TrNameD pkg) (TrNameD modl)) (TrNameD name) n_kinds kind_rep
   where
     fingerprint :: Fingerprint
     fingerprint = fingerprintString (pkg ++ (' ':modl) ++ (' ':name))
 
-mkTypeLitTyCon :: String -> TyCon
-mkTypeLitTyCon name = mkTyCon "base" "GHC.TypeLits" name
+mkTypeLitTyCon :: String -> TyCon -> TyCon
+mkTypeLitTyCon name kind_tycon
+  = mkTyCon "base" "GHC.TypeLits" name 0 kind
+  where kind = KindRepTyConApp kind_tycon []
 
 -- | Used to make `'Typeable' instance for things of kind Nat
 typeNatTypeRep :: KnownNat a => Proxy# a -> TypeRep a
-typeNatTypeRep p = typeLitTypeRep (show (natVal' p))
+typeNatTypeRep p = typeLitTypeRep (show (natVal' p)) tcNat
+  where tcNat = typeRepTyCon (typeRep @Nat)
 
 -- | Used to make `'Typeable' instance for things of kind Symbol
 typeSymbolTypeRep :: KnownSymbol a => Proxy# a -> TypeRep a
-typeSymbolTypeRep p = typeLitTypeRep (show (symbolVal' p))
+typeSymbolTypeRep p = typeLitTypeRep (show (symbolVal' p)) tcSymbol
+  where tcSymbol = typeRepTyCon (typeRep @Symbol)
 
 -- | An internal function, to make representations for type literals.
-typeLitTypeRep :: forall (a :: k). (Typeable k) => String -> TypeRep a
-typeLitTypeRep nm = mkTrCon (mkTypeLitTyCon nm) []
+typeLitTypeRep :: forall (a :: k). (Typeable k) => String -> TyCon -> TypeRep a
+typeLitTypeRep nm kind_tycon = mkTrCon (mkTypeLitTyCon nm kind_tycon) []
 
 {- *********************************************************
 *                                                          *
