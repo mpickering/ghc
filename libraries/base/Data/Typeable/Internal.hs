@@ -69,12 +69,6 @@ module Data.Typeable.Internal (
     -- | These are for internal use only
     mkTrCon, mkTrApp, mkTyCon, mkTyCon#,
     typeSymbolTypeRep, typeNatTypeRep,
-
-    -- * Representations for primitive types
-    trTYPE,
-    trTYPE'PtrRepLifted,
-    trRuntimeRep,
-    tr'PtrRepLifted,
   ) where
 
 import GHC.Base
@@ -477,58 +471,8 @@ typeSymbolTypeRep p = typeLitTypeRep (show (symbolVal' p)) tcSymbol
 typeLitTypeRep :: forall (a :: k). (Typeable k) => String -> TyCon -> TypeRep a
 typeLitTypeRep nm kind_tycon = mkTrCon (mkTypeLitTyCon nm kind_tycon) []
 
-{- *********************************************************
-*                                                          *
-*       TyCon/TypeRep definitions for primitive types      *
-*       (TYPE, RuntimeRep, (->) and promoted constructors) *
-*                                                          *
-********************************************************* -}
-
-{-
-Note [Mutually recursive representations of primitive types]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-These primitive types exhibit mutual recursion through their kinds.
-
-    TYPE          :: RuntimeRep -> TYPE 'PtrRepLifted
-    RuntimeRep    :: TYPE 'PtrRepLifted
-    'PtrRepLifted :: RuntimeRep
-    (->)          :: TYPE 'PtrRepLifted -> TYPE 'PtrRepLifted -> Type 'PtrRepLifted
-    TYPE 'PtrRepLifted :: TYPE 'PtrRepLifted
-
-For this reason we are forced to define their representations
-manually.
--}
-
--- | We can't use 'mkTrCon' here as it requires the fingerprint of the kind
--- which is knot-tied.
-mkPrimTrCon :: forall k (a :: k). TyCon -> [SomeTypeRep] -> TypeRep a
-mkPrimTrCon tc kind_vars = TrTyCon fpr tc kind_vars
-  where
-    fpr_tc  = tyConFingerprint tc
-    fpr_tag = fingerprintString "prim"
-    fpr     = fingerprintFingerprints [fpr_tag, fpr_tc]
-
-mkPrimTyCon :: String -> TyCon
-mkPrimTyCon = mkTyCon "ghc-prim" "GHC.Prim"
-
+-- | For compiler use.
 mkTrFun :: forall (r1 :: RuntimeRep) (r2 :: RuntimeRep) (a :: TYPE r1) (b :: TYPE r2).
            TypeRep a -> TypeRep b -> TypeRep ((a -> b) :: Type)
 mkTrFun arg res = TrFun fpr arg res
-  where fpr = undefined
-
-trTYPE :: TypeRep TYPE
-trTYPE = mkPrimTrCon (mkPrimTyCon "TYPE") []
-
-trRuntimeRep :: TypeRep RuntimeRep
-trRuntimeRep = mkPrimTrCon (mkPrimTyCon "RuntimeRep") []
-
-tr'PtrRepLifted :: TypeRep 'PtrRepLifted
-tr'PtrRepLifted = mkPrimTrCon (mkPrimTyCon "'PtrRepLifted") []
-
-trTYPE'PtrRepLifted :: TypeRep (TYPE 'PtrRepLifted)
-trTYPE'PtrRepLifted = mkTrApp trTYPE tr'PtrRepLifted
-
--- Some useful aliases
-star :: TypeRep (TYPE 'PtrRepLifted)
-star = trTYPE'PtrRepLifted
+  where fpr = fingerprintFingerprints [typeRepFingerprint arg, typeRepFingerprint res]

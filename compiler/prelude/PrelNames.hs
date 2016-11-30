@@ -238,11 +238,6 @@ basicKnownKeyNames
         mkTrFunName,
         typeSymbolTypeRepName, typeNatTypeRepName,
         trGhcPrimModuleName,
-        -- Representations
-        trTYPEName,
-        trTYPE'PtrRepLiftedName,
-        trRuntimeRepName,
-        tr'PtrRepLiftedName,
 
         -- Dynamic
         toDynName,
@@ -1227,17 +1222,6 @@ typeSymbolTypeRepName = varQual tYPEABLE_INTERNAL (fsLit "typeSymbolTypeRep") ty
 -- this is the Typeable 'Module' for GHC.Prim (which has no code, so we place in GHC.Types)
 -- See Note [Grand plan for Typeable] in TcTypeable.
 trGhcPrimModuleName   = varQual gHC_TYPES         (fsLit "tr$ModuleGHCPrim")  trGhcPrimModuleKey
--- Representations for primitive types
--- These are of type `TypeRep a`
-trTYPEName
-  , trTYPE'PtrRepLiftedName
-  , trRuntimeRepName
-  , tr'PtrRepLiftedName
-  :: Name
-trTYPEName              = varQual tYPEABLE_INTERNAL (fsLit "trTYPE")              trTYPEKey
-trTYPE'PtrRepLiftedName = varQual tYPEABLE_INTERNAL (fsLit "trTYPE'PtrRepLifted") trTYPE'PtrRepLiftedKey
-trRuntimeRepName        = varQual tYPEABLE_INTERNAL (fsLit "trRuntimeRep")        trRuntimeRepKey
-tr'PtrRepLiftedName     = varQual tYPEABLE_INTERNAL (fsLit "tr'PtrRepLifted")     tr'PtrRepLiftedKey
 
 -- Custom type errors
 errorMessageTypeErrorFamName

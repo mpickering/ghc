@@ -25,8 +25,7 @@ import TcType
 import Name
 import PrelNames ( knownNatClassName, knownSymbolClassName,
                    typeableClassName, coercibleTyConKey,
-                   heqTyConKey, ipClassKey,
-                   trTYPEName, trTYPE'PtrRepLiftedName, trRuntimeRepName )
+                   heqTyConKey, ipClassKey )
 import TysWiredIn ( typeNatKind, typeSymbolKind, heqDataCon,
                     coercibleDataCon, runtimeRepTy )
 import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon, tYPETyCon )
@@ -2163,9 +2162,6 @@ matchTypeable clas [k,t]  -- clas = Typeable
   -- Now cases that do work
   | k `eqType` typeNatKind                 = doTyLit knownNatClassName         t
   | k `eqType` typeSymbolKind              = doTyLit knownSymbolClassName      t
-  | t `eqType` liftedTypeKind              = doPrimRep trTYPE'PtrRepLiftedName t
-  | t `eqType` mkTyConTy tYPETyCon         = doPrimRep trTYPEName              t
-  | t `eqType` runtimeRepTy                = doPrimRep trRuntimeRepName        t
   | Just (arg,ret) <- splitFunTy_maybe t   = doFunTy    clas t arg ret
   | t `eqType` mkTyConTy funTyCon          = return NoInstance --doPrimRep trArrowName             t
   | Just (tc, ks) <- splitTyConApp_maybe t -- See Note [Typeable (T a b c)]

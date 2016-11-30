@@ -166,10 +166,7 @@ primTyCons
 -- See Note [Mutually recursive representations of primitive types] in
 -- "Data.Typeable.Internal" and Note [Grand plan for Typeable] in "TcTypeable".
 primTypeableTyCons :: NameEnv TyConRepName
-primTypeableTyCons = mkNameEnv
-    [ (tYPETyConName, trTYPEName)
-    , (tyConName runtimeRepTyCon, trRuntimeRepName)
-    ]
+primTypeableTyCons = mkNameEnv [] -- TODO: Remove me
 
 mkPrimTc :: FastString -> Unique -> TyCon -> Name
 mkPrimTc fs unique tycon
