@@ -22,6 +22,7 @@ module Type.Reflection
     , I.splitApp
     , I.rnfTypeRep
     , I.eqTypeRep
+    , I.typeRepKind
 
       -- ** Quantified
     , I.SomeTypeRep(..)

@@ -56,6 +56,7 @@ module Data.Typeable.Internal (
     splitApp,
     rnfTypeRep,
     eqTypeRep,
+    typeRepKind,
 
     -- * SomeTypeRep
     SomeTypeRep(..),
@@ -155,7 +156,7 @@ data TypeRep (a :: k) where
             -> TypeRep (a :: k1 -> k2)
             -> TypeRep (b :: k1)
             -> TypeRep (a b)
-    TrFun   :: forall a b.
+    TrFun   :: forall (r1 :: RuntimeRep) (r2 :: RuntimeRep) (a :: TYPE r1) (b :: TYPE r2).
                {-# UNPACK #-} !Fingerprint
             -> TypeRep a
             -> TypeRep b
@@ -194,7 +195,7 @@ instance Ord SomeTypeRep where
     typeRepFingerprint a `compare` typeRepFingerprint b
 
 pattern TRFun :: forall fun. ()
-              => forall arg res. (fun ~ (arg -> res))
+              => forall (r1 :: RuntimeRep) (r2 :: RuntimeRep) (arg :: TYPE r1) (res :: TYPE r2). (fun ~ (arg -> res))
               => TypeRep arg
               -> TypeRep res
               -> TypeRep fun
@@ -291,6 +292,10 @@ eqTypeRep a b
   | typeRepFingerprint a == typeRepFingerprint b = Just (unsafeCoerce# HRefl)
   | otherwise                                    = Nothing
 
+-- | Observe the kind of a type.
+typeRepKind :: TypeRep (a :: k) -> TypeRep k
+typeRepKind a = undefined
+
 -------------------------------------------------------------
 --
 --      The Typeable class and friends
@@ -361,12 +366,14 @@ instance Show SomeTypeRep where
   showsPrec p (SomeTypeRep ty) = showsPrec p ty
 
 splitApps :: TypeRep a -> (TyCon, [SomeTypeRep])
-splitApps = go []
+splitApps = undefined --go []
+    {-
   where
     go :: [SomeTypeRep] -> TypeRep a -> (TyCon, [SomeTypeRep])
     go xs (TrTyCon _ tc _) = (tc, xs)
     go xs (TrApp _ f x)    = go (SomeTypeRep x : xs) f
     go _  (TrFun _ _ _)    = error "splitApps: FunTy" -- TODO
+-}
 
 isListTyCon :: TyCon -> Bool
 isListTyCon tc = tc == typeRepTyCon (typeRep :: TypeRep [Int])
@@ -483,7 +490,7 @@ mkPrimTrCon tc kind_vars = TrTyCon fpr tc kind_vars
 mkPrimTyCon :: String -> TyCon
 mkPrimTyCon = mkTyCon "ghc-prim" "GHC.Prim"
 
-mkTrFun :: forall a b.
+mkTrFun :: forall (r1 :: RuntimeRep) (r2 :: RuntimeRep) (a :: TYPE r1) (b :: TYPE r2).
            TypeRep a -> TypeRep b -> TypeRep ((a -> b) :: Type)
 mkTrFun arg res = TrFun fpr arg res
   where fpr = undefined
