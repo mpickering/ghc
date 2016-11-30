@@ -876,3 +876,10 @@ dn_list x0 delta lim = go (x0 :: Integer)
                     where
                         go x | x < lim   = []
                              | otherwise = x : go (x+delta)
+
+-- Instances from GHC.Types
+deriving instance Bounded VecCount
+deriving instance Enum VecCount
+
+deriving instance Bounded VecElem
+deriving instance Enum VecElem
