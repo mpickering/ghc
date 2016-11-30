@@ -878,8 +878,50 @@ dn_list x0 delta lim = go (x0 :: Integer)
                              | otherwise = x : go (x+delta)
 
 -- Instances from GHC.Types
-deriving instance Bounded VecCount
-deriving instance Enum VecCount
+instance Bounded VecCount where
+    minBound = Vec2
+    maxBound = Vec64
 
-deriving instance Bounded VecElem
-deriving instance Enum VecElem
+instance Enum VecCount where
+    fromEnum Vec2  = 0
+    fromEnum Vec4  = 1
+    fromEnum Vec8  = 2
+    fromEnum Vec16 = 3
+    fromEnum Vec32 = 4
+    fromEnum Vec64 = 5
+
+    toEnum 0 = Vec2
+    toEnum 1 = Vec4
+    toEnum 2 = Vec8
+    toEnum 3 = Vec16
+    toEnum 4 = Vec32
+    toEnum 5 = Vec64
+    toEnum _ = error "Enum(VecCount): Invalid index"
+
+instance Bounded VecElem where
+    minBound = Int8ElemRep
+    maxBound = DoubleElemRep
+
+instance Enum VecElem where
+    fromEnum Int8ElemRep   = 0
+    fromEnum Int16ElemRep  = 1
+    fromEnum Int32ElemRep  = 2
+    fromEnum Int64ElemRep  = 3
+    fromEnum Word8ElemRep  = 4
+    fromEnum Word16ElemRep = 5
+    fromEnum Word32ElemRep = 6
+    fromEnum Word64ElemRep = 7
+    fromEnum FloatElemRep  = 8
+    fromEnum DoubleElemRep = 9
+
+    toEnum 0 = Int8ElemRep
+    toEnum 1 = Int16ElemRep
+    toEnum 2 = Int32ElemRep
+    toEnum 3 = Int64ElemRep
+    toEnum 4 = Word8ElemRep
+    toEnum 5 = Word16ElemRep
+    toEnum 6 = Word32ElemRep
+    toEnum 7 = Word64ElemRep
+    toEnum 8 = FloatElemRep
+    toEnum 9 = DoubleElemRep
+    toEnum _ = error "Enum(VecElem): Invalid index"
