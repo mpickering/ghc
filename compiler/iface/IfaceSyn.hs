@@ -242,8 +242,6 @@ data IfaceConDecl
           -- See Note [Bangs on imported data constructors] in MkId
         ifConSrcStricts :: [IfaceSrcBang] } -- empty meaning no src stricts
 
-
-
 type IfaceEqSpec = [(IfLclName,IfaceType)]
 
 -- | This corresponds to an HsImplBang; that is, the final
