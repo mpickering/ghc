@@ -287,7 +287,6 @@ mkIface_ hsc_env maybe_old_fingerprint
               -- And build the cached values
               mi_warn_fn     = mkIfaceWarnCache warns,
               mi_fix_fn      = mkIfaceFixCache fixities,
-
               mi_complete_sigs = icomplete_sigs }
 
     (new_iface, no_change_at_all)
@@ -1012,7 +1011,6 @@ mkIfaceCompleteSig = map conLikeName
 *                                                                      *
 ************************************************************************
 -}
-
 
 
 mkIfaceAnnotation :: Annotation -> IfaceAnnotation
