@@ -210,6 +210,10 @@ tcTopBinds binds sigs
 -- impossible to ever match every constructor in the list and so
 -- the pragma would be useless.
 
+-- This is only used in `tcCompleteSig`. We fold over all the conlikes,
+-- this accumulator keeps track of the first `ConLike` with a concrete
+-- return type. After fixing the return type, all other constructors with
+-- a fixed return type must agree with this.
 data CompleteSigType = AcceptAny | Fixed ConLike TyCon
 
 tcCompleteSigs  :: [LSig Name] -> TcM [[ConLike]]
