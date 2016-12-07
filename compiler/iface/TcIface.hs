@@ -975,11 +975,12 @@ tcIfaceAnnTarget (ModuleTarget mod) = do
 ************************************************************************
 -}
 
-tcIfaceCompleteSigs :: [IfaceCompleteSet] -> IfL [[ConLike]]
+tcIfaceCompleteSigs :: [IfaceCompleteMatch] -> IfL [CompleteMatch]
 tcIfaceCompleteSigs = mapM tcIfaceCompleteSig
 
-tcIfaceCompleteSig :: IfaceCompleteSet -> IfL [ConLike]
-tcIfaceCompleteSig = mapM tcIfaceConLike
+tcIfaceCompleteSig :: IfaceCompleteMatch -> IfL CompleteMatch
+tcIfaceCompleteSig ms =
+  CompleteMatch <$> (mapM tcIfaceConLike ms)
 
 {-
 ************************************************************************

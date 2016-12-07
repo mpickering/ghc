@@ -73,7 +73,6 @@ import ErrUtils
 import FastString
 import Maybes
 import Var (EvVar)
-import ConLike
 import qualified GHC.LanguageExtensions as LangExt
 
 import Data.IORef
@@ -144,7 +143,7 @@ type DsWarning = (SrcSpan, SDoc)
 
 initDs :: HscEnv
        -> Module -> GlobalRdrEnv -> TypeEnv -> FamInstEnv
-       -> [[ConLike]]
+       -> [CompleteMatch]
        -> DsM a
        -> IO (Messages, Maybe a)
 -- Print errors and warnings, if any arise
@@ -265,7 +264,7 @@ initTcDsForSolver thing_inside
          thing_inside }
 
 mkDsEnvs :: DynFlags -> Module -> GlobalRdrEnv -> TypeEnv -> FamInstEnv
-         -> IORef Messages -> IORef Int -> [[ConLike]]
+         -> IORef Messages -> IORef Int -> [CompleteMatch]
          -> (DsGblEnv, DsLclEnv)
 mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar complete_matches
   = let if_genv = IfGblEnv { if_doc       = text "mkDsEnvs",
@@ -515,7 +514,7 @@ dsGetFamInstEnvs
 dsGetMetaEnv :: DsM (NameEnv DsMetaVal)
 dsGetMetaEnv = do { env <- getLclEnv; return (dsl_meta env) }
 
-dsGetCompleteMatches :: DsM [[ConLike]]
+dsGetCompleteMatches :: DsM [CompleteMatch]
 dsGetCompleteMatches = do
   env <- getGblEnv
   return (ds_complete_matches env)
