@@ -1277,7 +1277,6 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
                 -- Vectorisation declarations
         vects <- tcVectDecls vect_decls ;
 
-
                 -- Wrap up
         traceTc "Tc7a" empty ;
         let { all_binds = inst_binds     `unionBags`
@@ -1289,7 +1288,6 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
 
             ; sig_names = mkNameSet (collectHsValBinders hs_val_binds)
                           `minusNameSet` getTypeSigNames val_sigs
-
 
                 -- Extend the GblEnv with the (as yet un-zonked)
                 -- bindings, rules, foreign decls
