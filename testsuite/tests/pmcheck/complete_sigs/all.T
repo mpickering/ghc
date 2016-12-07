@@ -4,4 +4,6 @@ test('Completesig03', normal, multimod_compile, ['Completesig03', '-Wall'])
 test('completesig04', normal, compile_fail, [''])
 test('completesig05', normal, compile, [''])
 test('completesig06', normal, compile, [''])
+test('completesig07', normal, compile, [''])
+test('completesig08', normal, compile, [''])
 
