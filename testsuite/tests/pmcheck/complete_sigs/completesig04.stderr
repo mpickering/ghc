@@ -1,4 +1,4 @@
 
-ty-mismatch.hs:3:1: error:
+completesig04.hs:3:1: error:
     • The result type of Just and Left do not match
     • In {-# COMPLETE Just, Left #-}
