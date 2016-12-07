@@ -6,4 +6,4 @@ test('completesig05', normal, compile, [''])
 test('completesig06', normal, compile, [''])
 test('completesig07', normal, compile, [''])
 test('completesig08', normal, compile, [''])
-
+test('completesig09', normal, compile, [''])
