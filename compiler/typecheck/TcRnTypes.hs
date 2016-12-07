@@ -43,7 +43,7 @@ module TcRnTypes(
         IdBindingInfo(..),
         IsGroupClosed(..),
         SelfBootInfo(..),
-        pprTcTyThingCategory, pprPECategory,
+        pprTcTyThingCategory, pprPECategory, CompleteMatch(..),
 
         -- Desugaring types
         DsM, DsLclEnv(..), DsGblEnv(..), PArrBuiltin(..),
@@ -376,9 +376,10 @@ data DsGblEnv
                                                 -- exported entities of 'Data.Array.Parallel' iff
                                                 -- '-XParallelArrays' was given; otherwise, empty
         , ds_parr_bi :: PArrBuiltin             -- desugarar names for '-XParallelArrays'
-        , ds_complete_matches :: [[ConLike]]
+        , ds_complete_matches :: [CompleteMatch]
            -- Additional complete pattern matches
         }
+
 
 instance ContainsModule DsGblEnv where
     extractModule = ds_mod
@@ -656,7 +657,7 @@ data TcGblEnv
         tcg_static_wc :: TcRef WantedConstraints,
           -- ^ Wanted constraints of static forms.
         -- See Note [Constraints in static forms].
-        tcg_complete_matches :: [[ConLike]]
+        tcg_complete_matches :: [CompleteMatch]
     }
 
 -- NB: topModIdentity, not topModSemantic!
