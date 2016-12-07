@@ -12,5 +12,3 @@ data S = D | E | F
 match :: T -> S -> ()
 match A D = ()
 match B D = ()
-
-
