@@ -134,6 +134,9 @@ module HscTypes (
         SourceError, GhcApiError, mkSrcErr, srcErrorMessages, mkApiErr,
         throwOneError, handleSourceError,
         handleFlagWarnings, printOrThrowWarnings,
+
+        -- * COMPLETE signature
+        CompleteMatch(..), relevantMatch,
     ) where
 
 #include "HsVersions.h"
@@ -624,7 +627,7 @@ lookupIfaceByModule _dflags hpt pit mod
 -- We could eliminate (b) if we wanted, by making GHC.Prim belong to a package
 -- of its own, but it doesn't seem worth the bother.
 
-hptCompleteSigs :: HscEnv -> [[ConLike]]
+hptCompleteSigs :: HscEnv -> [CompleteMatch]
 hptCompleteSigs = hptAllThings  (md_complete_sigs . hm_details)
 
 -- | Find all the instance declarations (of classes and families) from
@@ -935,7 +938,7 @@ data ModIface
                 -- itself) but imports some trustworthy modules from its own
                 -- package (which does require its own package be trusted).
                 -- See Note [RnNames . Trust Own Package]
-        mi_complete_sigs :: [IfaceCompleteSet]
+        mi_complete_sigs :: [IfaceCompleteMatch]
      }
 
 -- | Old-style accessor for whether or not the ModIface came from an hs-boot
@@ -1167,7 +1170,7 @@ data ModDetails
         md_anns      :: ![Annotation],  -- ^ Annotations present in this module: currently
                                         -- they only annotate things also declared in this module
         md_vect_info :: !VectInfo,       -- ^ Module vectorisation information
-        md_complete_sigs :: [[ConLike]]
+        md_complete_sigs :: [CompleteMatch]
           -- ^ Complete match pragmas for this module
      }
 
@@ -1228,7 +1231,7 @@ data ModGuts
         mg_foreign   :: !ForeignStubs,   -- ^ Foreign exports declared in this module
         mg_warns     :: !Warnings,       -- ^ Warnings declared in the module
         mg_anns      :: [Annotation],    -- ^ Annotations declared in this module
-        mg_complete_sigs :: [[ConLike]], -- ^ Complete Matches
+        mg_complete_sigs :: [CompleteMatch], -- ^ Complete Matches
         mg_hpc_info  :: !HpcInfo,        -- ^ Coverage tick boxes in the module
         mg_modBreaks :: !(Maybe ModBreaks), -- ^ Breakpoints for the module
         mg_vect_decls:: ![CoreVect],     -- ^ Vectorisation declarations in this module
@@ -3006,3 +3009,15 @@ byteCodeOfObject :: Unlinked -> CompiledByteCode
 byteCodeOfObject (BCOs bc) = bc
 byteCodeOfObject other     = pprPanic "byteCodeOfObject" (ppr other)
 
+
+-------------------------------------------
+
+-- A list of conlikes which represents a complete pattern match.
+-- These arise from COMPLETE signatures.
+newtype CompleteMatch = CompleteMatch [ConLike]
+
+relevantMatch :: ConLike -> CompleteMatch -> Bool
+relevantMatch cl (CompleteMatch ms) = cl `elem` ms
+
+instance Outputable CompleteMatch where
+  ppr (CompleteMatch cl) = text "CompleteMatch:" <+> ppr cl
