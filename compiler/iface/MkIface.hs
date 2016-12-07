@@ -1001,8 +1001,8 @@ mkOrphMap get_key decls
 ************************************************************************
 -}
 
-mkIfaceCompleteSig :: [ConLike] -> IfaceCompleteSet
-mkIfaceCompleteSig = map conLikeName
+mkIfaceCompleteSig :: CompleteMatch -> IfaceCompleteMatch
+mkIfaceCompleteSig (CompleteMatch cls) = map conLikeName cls
 
 
 {-

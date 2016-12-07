@@ -32,6 +32,7 @@ import Util
 import Outputable
 import FastString
 import DataCon
+import HscTypes (CompleteMatch(..), relevantMatch)
 
 import DsMonad
 import TcSimplify    (tcCheckSatisfiability)
@@ -434,7 +435,7 @@ translatePat fam_insts pat = case pat of
             , pat_tvs     = ex_tvs
             , pat_dicts   = dicts
             , pat_args    = ps } -> do
-    groups <- allCompleteGroups con
+    groups <- allCompleteMatches con
     case groups of
       [] -> mkCanFailPmPat (conLikeResTy con arg_tys)
       _  -> do
@@ -887,16 +888,17 @@ singleConstructor (RealDataCon dc) =
     _   -> False
 singleConstructor _ = False
 
-allCompleteGroups :: ConLike -> DsM [[ConLike]]
-allCompleteGroups cl = do
+allCompleteMatches :: ConLike -> DsM [CompleteMatch]
+allCompleteMatches cl = do
   let fam = case cl of
-           RealDataCon dc -> [map RealDataCon (tyConDataCons (dataConTyCon dc))]
+           RealDataCon dc ->
+            [CompleteMatch $ map RealDataCon (tyConDataCons (dataConTyCon dc))]
            PatSynCon _    -> []
 
   from_pragma <- dsGetCompleteMatches
 
-  let final_groups = fam ++ filter (cl `elem`) from_pragma
-  tracePmD "allCompleteGroups" (ppr final_groups)
+  let final_groups = fam ++ filter (relevantMatch cl) from_pragma
+  tracePmD "allCompleteMatches" (ppr final_groups)
   return final_groups
 
 -- -----------------------------------------------------------------------
@@ -1115,9 +1117,9 @@ pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva =
 pmcheckHd (p@(PmCon { pm_con_con = con }))
           ps guards
           (PmVar x) (ValVec vva delta) = do
-  complete_group <- select =<< liftD (allCompleteGroups con)
+  (CompleteMatch complete_match) <- select =<< liftD (allCompleteMatches con)
 
-  cons_cs <- mapM (liftD . mkOneConFull x) complete_group
+  cons_cs <- mapM (liftD . mkOneConFull x) complete_match
 
   inst_vsa <- flip concatMapM cons_cs $ \(va, tm_ct, ty_cs) -> do
     let ty_state = ty_cs `unionBags` delta_ty_cs delta -- not actually a state
