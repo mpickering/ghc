@@ -220,12 +220,14 @@ tcTopBinds binds sigs
 -- stored for error messages.
 data CompleteSigType = AcceptAny | Fixed ConLike TyCon
 
-tcCompleteSigs  :: [LSig Name] -> TcM [[ConLike]]
+tcCompleteSigs  :: [LSig Name] -> TcM [CompleteMatch]
 tcCompleteSigs sigs =
   let
+      doOne :: Sig Name -> TcM (Maybe CompleteMatch)
       doOne c@(CompleteMatchSig _ lns)
         = addErrCtxt (text "In" <+> ppr c) $
-            Just . snd <$> foldM checkCLType (AcceptAny, []) (unLoc lns)
+            Just . CompleteMatch . snd
+              <$> foldM checkCLType (AcceptAny, []) (unLoc lns)
       doOne _ = return Nothing
       -- See note [Typechecking Complete Matches]
       checkCLType :: (CompleteSigType, [ConLike]) -> Located Name
