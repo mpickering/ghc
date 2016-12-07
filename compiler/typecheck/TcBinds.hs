@@ -214,6 +214,10 @@ tcTopBinds binds sigs
 -- this accumulator keeps track of the first `ConLike` with a concrete
 -- return type. After fixing the return type, all other constructors with
 -- a fixed return type must agree with this.
+--
+-- The fields of `Fixed` cache the first conlike and its return type so
+-- that that we can compare all the other conlikes to it. The conlike is
+-- stored for error messages.
 data CompleteSigType = AcceptAny | Fixed ConLike TyCon
 
 tcCompleteSigs  :: [LSig Name] -> TcM [[ConLike]]
