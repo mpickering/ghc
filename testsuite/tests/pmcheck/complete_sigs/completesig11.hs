@@ -12,4 +12,3 @@ pattern BS = B
 
 m1  :: T -> ()
 m1 A = ()
-
