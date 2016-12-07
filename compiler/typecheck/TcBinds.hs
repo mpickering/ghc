@@ -246,8 +246,13 @@ tcCompleteSigs sigs =
               else failWithTc errMsg
             where
               errMsg :: SDoc
-              errMsg = text "The result type of" <+> ppr fcl <+> text "and"
-                        <+> ppr cl <+> text "do not match"
+              errMsg =
+                text "Cannot form a group of complete patterns from patterns"
+                  <+> quotes (ppr fcl) <+> text "and" <+> quotes (ppr cl)
+                  <+> text "as they match different type constructors"
+                  <+> parens (quotes (ppr tc)
+                               <+> text "resp."
+                               <+> quotes (ppr tc'))
   in  mapMaybeM (addLocM doOne) sigs
 
 tcRecSelBinds :: HsValBinds Name -> TcM TcGblEnv
