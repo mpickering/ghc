@@ -446,6 +446,7 @@ data GeneralFlag
    | Opt_CrossModuleSpecialise
    | Opt_StaticArgumentTransformation
    | Opt_CSE
+   | Opt_StgCSE
    | Opt_LiberateCase
    | Opt_SpecConstr
    | Opt_DoLambdaEtaExpansion
@@ -3571,6 +3572,7 @@ fFlagsDeps = [
   flagSpec "cmm-elim-common-blocks"           Opt_CmmElimCommonBlocks,
   flagSpec "cmm-sink"                         Opt_CmmSink,
   flagSpec "cse"                              Opt_CSE,
+  flagSpec "stg-cse"                          Opt_StgCSE,
   flagSpec "cpr-anal"                         Opt_CprAnal,
   flagSpec "defer-type-errors"                Opt_DeferTypeErrors,
   flagSpec "defer-typed-holes"                Opt_DeferTypedHoles,
@@ -4024,6 +4026,7 @@ optLevelFlags -- see Note [Documenting optimisation flags]
     , ([1,2],   Opt_CmmElimCommonBlocks)
     , ([1,2],   Opt_CmmSink)
     , ([1,2],   Opt_CSE)
+    , ([1,2],   Opt_StgCSE)
     , ([1,2],   Opt_EnableRewriteRules)  -- Off for -O0; see Note [Scoping for Builtin rules]
                                          --              in PrelRules
     , ([1,2],   Opt_FloatIn)

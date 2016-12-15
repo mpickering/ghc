@@ -401,6 +401,7 @@ Library
         Simplify
         SimplStg
         StgStats
+        StgCse
         UnariseStg
         RepType
         Rules
