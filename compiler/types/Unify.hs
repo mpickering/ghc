@@ -1270,7 +1270,15 @@ ty_co_match menv subst ty1 (AppCo co2 arg2) _lkco _rkco
 ty_co_match menv subst (TyConApp tc1 tys) (TyConAppCo _ tc2 cos) _lkco _rkco
   = ty_co_match_tc menv subst tc1 tys tc2 cos
 ty_co_match menv subst (FunTy ty1 ty2) (TyConAppCo _ tc cos) _lkco _rkco
-  = ty_co_match_tc menv subst funTyCon [ty1, ty2] tc cos
+    -- Despite the fact that (->) is polymorphic in four type variables (two
+    -- runtime rep and two types), we shouldn't need to explicitly unify the
+    -- runtime reps here; unifying the types themselves should be sufficient.
+    -- See Note [Representation of function types].
+  | Just rep1 <- getRuntimeRep_maybe ty1
+  , Just rep2 <- getRuntimeRep_maybe ty2
+  = ty_co_match_tc menv subst funTyCon [rep1, rep2, ty1, ty2] tc cos
+  | otherwise
+  = panic "ty_co_match"
 
 ty_co_match menv subst (ForAllTy (TvBndr tv1 _) ty1)
                        (ForAllCo tv2 kind_co2 co2)
@@ -1334,7 +1342,10 @@ pushRefl :: Coercion -> Maybe Coercion
 pushRefl (Refl Nominal (AppTy ty1 ty2))
   = Just (AppCo (Refl Nominal ty1) (mkNomReflCo ty2))
 pushRefl (Refl r (FunTy ty1 ty2))
-  = Just (TyConAppCo r funTyCon [mkReflCo r ty1, mkReflCo r ty2])
+  | Just rep1 <- getRuntimeRep_maybe ty1
+  , Just rep2 <- getRuntimeRep_maybe ty2
+  = Just (TyConAppCo r funTyCon [ mkReflCo r rep1, mkReflCo r rep2
+                                , mkReflCo r ty1,  mkReflCo r ty2 ])
 pushRefl (Refl r (TyConApp tc tys))
   = Just (TyConAppCo r tc (zipWith mkReflCo (tyConRolesX r tc) tys))
 pushRefl (Refl r (ForAllTy (TvBndr tv _) ty))

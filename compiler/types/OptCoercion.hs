@@ -207,6 +207,21 @@ opt_co4 env sym rep r (ForAllCo tv k_co co)
                             opt_co4_wrap env' sym rep r co
      -- Use the "mk" functions to check for nested Refls
 
+opt_co4 env sym rep r g@(FunCo _r co1 co2)
+  = ASSERT( r == _r )
+    case (rep, r) of
+      (True, Nominal) ->
+        mkFunCo Representational
+                (opt_co3 env sym (Just Representational) Nominal co1)
+                (opt_co3 env sym (Just Representational) Nominal co2)
+      (False, Nominal) ->
+        mkFunCo Nominal (opt_co4_wrap env sym False Nominal co1)
+                        (opt_co4_wrap env sym False Nominal co2)
+      (_, Representational) ->
+        mkFunCo r (opt_co2 env sym Representational co1)
+                  (opt_co2 env sym Representational co2)
+      (_, Phantom) -> pprPanic "opt_co4 sees a phantom!" (ppr g)
+
 opt_co4 env sym rep r (CoVarCo cv)
   | Just co <- lookupCoVar (lcTCvSubst env) cv
   = opt_co4_wrap (zapLiftingContext env) sym rep r co

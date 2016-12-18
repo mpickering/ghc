@@ -862,6 +862,7 @@ exactTyCoVarsOfType ty
     goCo (AppCo co arg)     = goCo co `unionVarSet` goCo arg
     goCo (ForAllCo tv k_co co)
       = goCo co `delVarSet` tv `unionVarSet` goCo k_co
+    goCo (FunCo _ co1 co2)   = goCo co1 `unionVarSet` goCo co2
     goCo (CoVarCo v)         = unitVarSet v `unionVarSet` go (varType v)
     goCo (AxiomInstCo _ _ args) = goCos args
     goCo (UnivCo p _ t1 t2)  = goProv p `unionVarSet` go t1 `unionVarSet` go t2
@@ -1396,9 +1397,16 @@ tcSplitTyConApp_maybe ty | Just ty' <- coreView ty = tcSplitTyConApp_maybe ty'
 tcSplitTyConApp_maybe ty                           = tcRepSplitTyConApp_maybe ty
 
 tcRepSplitTyConApp_maybe :: Type -> Maybe (TyCon, [Type])
-tcRepSplitTyConApp_maybe (TyConApp tc tys) = Just (tc, tys)
-tcRepSplitTyConApp_maybe (FunTy arg res)   = Just (funTyCon, [arg,res])
-tcRepSplitTyConApp_maybe _                 = Nothing
+tcRepSplitTyConApp_maybe (TyConApp tc tys)          = Just (tc, tys)
+tcRepSplitTyConApp_maybe (FunTy arg res)
+  | Just arg_rep <- getRuntimeRep_maybe arg
+  , Just res_rep <- getRuntimeRep_maybe res
+  = Just (funTyCon, [arg_rep, res_rep, arg, res])
+
+  | otherwise
+  = Nothing -- TODO (is this reasonable?)
+            --pprPanic "tcRepSplitTyConApp_maybe" (ppr arg $$ ppr res)
+tcRepSplitTyConApp_maybe _                          = Nothing
 
 
 -----------------------
