@@ -20,11 +20,10 @@ import TysPrim ( primTyCons, primTypeableTyCons )
 import TysWiredIn ( tupleTyCon )
 import Id
 import Type
-import Kind ( isConstraintKind )
+import Kind ( isTYPEApp )
 import TyCon
 import DataCon
-import Name ( getOccName, nameOccName )
-import Literal ( mkMachInt )
+import Name ( getOccName )
 import OccName
 import Module
 import NameEnv
@@ -350,7 +349,7 @@ mkTyConRepTyConRHS stuff@(Stuff {..}) tycon
     Fingerprint high low = fingerprintString hashThis
 
     int :: Int -> HsLit
-    int n = HsIntPrim (show n) (toInteger n)
+    int n = HsIntPrim (SourceText $ show n) (toInteger n)
 
     word64 :: Word64 -> HsLit
     word64
@@ -438,7 +437,8 @@ mkTyConKindRep (Stuff {..}) tycon = do
            t2' <- go bndrs t2
            return $ nlHsApps (dataConWrapId kindRepAppDataCon) [t1', t2']
     go _ ty | Just rr <- isTYPEApp ty
-      = pprTrace "mkTyConKeyRepBinds(TYPE)" (ppr rr) $ return $ nlHsApps (dataConWrapId kindRepTYPEDataCon) [rr]
+      = pprTrace "mkTyConKeyRepBinds(TYPE)" (ppr rr) $
+        return $ nlHsApps (dataConWrapId kindRepTYPEDataCon) [nlHsVar $ dataConWrapId rr]
     go bndrs (TyConApp tycon tys)
       | Just rep_name <- tyConRepName_maybe tycon
       = do rep_id <- lookupId rep_name
@@ -449,7 +449,7 @@ mkTyConKindRep (Stuff {..}) tycon = do
                              ]
       | otherwise
       = pprPanic "UnrepresentableThingy" empty
-    go bndrs (ForAllTy (TvBndr var _) ty)
+    go _bndrs (ForAllTy (TvBndr var _) ty)
       = pprPanic "mkTyConKeyRepBinds(forall)" (ppr var $$ ppr ty)
     --  = let bndrs' = extendVarEnv (mapVarEnv (+1) bndrs) var 0
     --    in go bndrs' ty
