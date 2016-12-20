@@ -218,17 +218,37 @@ tcTopBinds binds sigs
 -- The fields of `Fixed` cache the first conlike and its return type so
 -- that that we can compare all the other conlikes to it. The conlike is
 -- stored for error messages.
-data CompleteSigType = AcceptAny | Fixed ConLike TyCon
+--
+-- `Nothing` in the case that the type is fixed by a type signature
+data CompleteSigType = AcceptAny | Fixed (Maybe ConLike) TyCon
 
 tcCompleteSigs  :: [LSig Name] -> TcM [CompleteMatch]
 tcCompleteSigs sigs =
   let
       doOne :: Sig Name -> TcM (Maybe CompleteMatch)
-      doOne c@(CompleteMatchSig _ lns)
-        = addErrCtxt (text "In" <+> ppr c) $
-            Just . CompleteMatch . snd
-              <$> foldM checkCLType (AcceptAny, []) (unLoc lns)
+      doOne c@(CompleteMatchSig _ lns mtc)
+        = fmap Just $ do
+           addErrCtxt (text "In" <+> ppr c) $
+            case mtc of
+              Nothing -> infer_complete_match
+              Just tc -> check_complete_match tc
+        where
+
+          checkCLTypes acc = foldM checkCLType (acc, []) (unLoc lns)
+
+          infer_complete_match = do
+            (res, cls) <- checkCLTypes AcceptAny
+            case res of
+              AcceptAny -> error "Ambig"
+              Fixed _ tc  -> return $ CompleteMatch cls tc
+
+          check_complete_match tc_name = do
+            ty_con <- tcLookupLocatedTyCon tc_name
+            (_, cls) <- checkCLTypes (Fixed Nothing ty_con)
+            return $ CompleteMatch cls ty_con
       doOne _ = return Nothing
+
+
       -- See note [Typechecking Complete Matches]
       checkCLType :: (CompleteSigType, [ConLike]) -> Located Name
                   -> TcM (CompleteSigType, [ConLike])
@@ -238,15 +258,26 @@ tcCompleteSigs sigs =
               res_ty_con = fst <$> splitTyConApp_maybe res_ty
         case (cst, res_ty_con) of
           (AcceptAny, Nothing) -> return (AcceptAny, cl:cs)
-          (AcceptAny, Just tc) -> return (Fixed cl tc, cl:cs)
-          (Fixed fcl tc, Nothing)  -> return (Fixed fcl tc, cl:cs)
-          (Fixed fcl tc, Just tc') ->
+          (AcceptAny, Just tc) -> return (Fixed (Just cl) tc, cl:cs)
+          (Fixed mfcl tc, Nothing)  -> return (Fixed mfcl tc, cl:cs)
+          (Fixed mfcl tc, Just tc') ->
             if tc == tc'
-              then return (Fixed fcl tc, cl:cs)
-              else failWithTc errMsg
-            where
-              errMsg :: SDoc
-              errMsg =
+              then return (Fixed mfcl tc, cl:cs)
+              else case mfcl of
+                     Nothing ->
+                      addErrCtxt (text "In" <+> ppr cl) $
+                        failWithTc typeSigErrMsg
+                     Just cl -> failWithTc (errMsg cl)
+             where
+              typeSigErrMsg :: SDoc
+              typeSigErrMsg =
+                text "Couldn't match expected type"
+                      <+> quotes (ppr tc)
+                      <+> text "with"
+                      <+> quotes (ppr tc')
+
+              errMsg :: ConLike -> SDoc
+              errMsg fcl =
                 text "Cannot form a group of complete patterns from patterns"
                   <+> quotes (ppr fcl) <+> text "and" <+> quotes (ppr cl)
                   <+> text "as they match different type constructors"

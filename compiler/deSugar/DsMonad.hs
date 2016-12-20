@@ -74,6 +74,7 @@ import FastString
 import Maybes
 import Var (EvVar)
 import qualified GHC.LanguageExtensions as LangExt
+import UniqFM ( lookupWithDefaultUFM )
 
 import Data.IORef
 import Control.Monad
@@ -272,6 +273,7 @@ mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar complete_matches
         if_lenv = mkIfLclEnv mod (text "GHC error in desugarer lookup in" <+> ppr mod)
                              False -- not boot!
         real_span = realSrcLocSpan (mkRealSrcLoc (moduleNameFS (moduleName mod)) 1 1)
+        completeMatchMap = mkCompleteMatchMap complete_matches
         gbl_env = DsGblEnv { ds_mod     = mod
                            , ds_fam_inst_env = fam_inst_env
                            , ds_if_env  = (if_genv, if_lenv)
@@ -279,7 +281,7 @@ mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar complete_matches
                            , ds_msgs    = msg_var
                            , ds_dph_env = emptyGlobalRdrEnv
                            , ds_parr_bi = panic "DsMonad: uninitialised ds_parr_bi"
-                           , ds_complete_matches = complete_matches
+                           , ds_complete_matches = completeMatchMap
                            }
         lcl_env = DsLclEnv { dsl_meta    = emptyNameEnv
                            , dsl_loc     = real_span
@@ -288,6 +290,7 @@ mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var pmvar complete_matches
                            , dsl_pm_iter = pmvar
                            }
     in (gbl_env, lcl_env)
+
 
 -- Attempt to load the given module and return its exported entities if successful.
 --
@@ -514,10 +517,10 @@ dsGetFamInstEnvs
 dsGetMetaEnv :: DsM (NameEnv DsMetaVal)
 dsGetMetaEnv = do { env <- getLclEnv; return (dsl_meta env) }
 
-dsGetCompleteMatches :: DsM [CompleteMatch]
-dsGetCompleteMatches = do
+dsGetCompleteMatches :: TyCon -> DsM [CompleteMatch]
+dsGetCompleteMatches tc = do
   env <- getGblEnv
-  return (ds_complete_matches env)
+  return $ (lookupWithDefaultUFM (ds_complete_matches env) [] tc)
 
 dsLookupMetaEnv :: Name -> DsM (Maybe DsMetaVal)
 dsLookupMetaEnv name = do { env <- getLclEnv; return (lookupNameEnv (dsl_meta env) name) }

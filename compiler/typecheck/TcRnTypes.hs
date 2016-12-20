@@ -47,7 +47,7 @@ module TcRnTypes(
 
         -- Desugaring types
         DsM, DsLclEnv(..), DsGblEnv(..), PArrBuiltin(..),
-        DsMetaEnv, DsMetaVal(..),
+        DsMetaEnv, DsMetaVal(..), CompleteMatchMap, mkCompleteMatchMap,
 
         -- Template Haskell
         ThStage(..), SpliceType(..), PendingStuff(..),
@@ -174,6 +174,7 @@ import FastString
 import qualified GHC.LanguageExtensions as LangExt
 import Fingerprint
 import Util
+import UniqFM ( emptyUFM, addToUFM_C, UniqFM )
 
 import Control.Monad (ap, liftM, msum)
 #if __GLASGOW_HASKELL__ > 710
@@ -181,7 +182,7 @@ import qualified Control.Monad.Fail as MonadFail
 #endif
 import Data.Set      ( Set )
 
-import Data.Map      ( Map )
+import Data.Map ( Map )
 import Data.Dynamic  ( Dynamic )
 import Data.Typeable ( TypeRep )
 import GHCi.Message
@@ -376,10 +377,17 @@ data DsGblEnv
                                                 -- exported entities of 'Data.Array.Parallel' iff
                                                 -- '-XParallelArrays' was given; otherwise, empty
         , ds_parr_bi :: PArrBuiltin             -- desugarar names for '-XParallelArrays'
-        , ds_complete_matches :: [CompleteMatch]
+        , ds_complete_matches :: CompleteMatchMap
            -- Additional complete pattern matches
         }
 
+type CompleteMatchMap = UniqFM [CompleteMatch]
+
+mkCompleteMatchMap :: [CompleteMatch] -> CompleteMatchMap
+mkCompleteMatchMap cms = foldr insertMatch emptyUFM cms
+  where
+    insertMatch :: CompleteMatch -> CompleteMatchMap -> CompleteMatchMap
+    insertMatch c@(CompleteMatch _ t) ufm = addToUFM_C (++) ufm t [c]
 
 instance ContainsModule DsGblEnv where
     extractModule = ds_mod

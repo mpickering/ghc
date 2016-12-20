@@ -134,7 +134,7 @@ module HscTypes (
         handleFlagWarnings, printOrThrowWarnings,
 
         -- * COMPLETE signature
-        CompleteMatch(..), relevantMatch,
+        CompleteMatch(..)
     ) where
 
 #include "HsVersions.h"
@@ -2986,10 +2986,11 @@ byteCodeOfObject other     = pprPanic "byteCodeOfObject" (ppr other)
 
 -- A list of conlikes which represents a complete pattern match.
 -- These arise from COMPLETE signatures.
-newtype CompleteMatch = CompleteMatch [ConLike]
-
-relevantMatch :: ConLike -> CompleteMatch -> Bool
-relevantMatch cl (CompleteMatch ms) = cl `elem` ms
+data CompleteMatch = CompleteMatch {
+                          completeMatch :: [ConLike]
+                          , completeMatchType :: TyCon
+                          }
 
 instance Outputable CompleteMatch where
-  ppr (CompleteMatch cl) = text "CompleteMatch:" <+> ppr cl
+  ppr (CompleteMatch cl ty) = text "CompleteMatch:" <+> ppr cl
+                                                   <+>  dcolon <+> ppr ty

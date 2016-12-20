@@ -1025,8 +1025,8 @@ tcIfaceCompleteSigs :: [IfaceCompleteMatch] -> IfL [CompleteMatch]
 tcIfaceCompleteSigs = mapM tcIfaceCompleteSig
 
 tcIfaceCompleteSig :: IfaceCompleteMatch -> IfL CompleteMatch
-tcIfaceCompleteSig ms =
-  CompleteMatch <$> (mapM tcIfaceConLike ms)
+tcIfaceCompleteSig (IfaceCompleteMatch ms t) =
+  CompleteMatch <$> (mapM tcIfaceConLike ms) <*> tcIfaceTyConByName t
 
 {-
 ************************************************************************
