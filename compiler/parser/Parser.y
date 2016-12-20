@@ -1618,6 +1618,10 @@ opt_asig :: { ([AddAnn],Maybe (LHsType RdrName)) }
         : {- empty -}                   { ([],Nothing) }
         | '::' atype                    { ([mu AnnDcolon $1],Just $2) }
 
+opt_tyconsig :: { ([AddAnn], Maybe (Located RdrName)) }
+             : {- empty -}              { ([], Nothing) }
+             | '::' gtycon              { ([mu AnnDcolon $1], Just $2) }
+
 sigtype :: { LHsType RdrName }
         : ctype                            { $1 }
 
@@ -2194,11 +2198,12 @@ sigdecl :: { LHsDecl RdrName }
 
         | pattern_synonym_sig   { sLL $1 $> . SigD . unLoc $ $1 }
 
-        | '{-# COMPLETE' con_list '#-}'
-                {% ams
-                    (sLL $1
-                      $> (SigD (CompleteMatchSig (getCOMPLETE_PRAGs $1) $2)))
-                    [ mo $1, mc $3] }
+        | '{-# COMPLETE' con_list opt_tyconsig  '#-}'
+                {% let (dcolon, tc) = $3
+                   in ams
+                       (sLL $1 $>
+                         (SigD (CompleteMatchSig (getCOMPLETE_PRAGs $1) $2 tc)))
+                    ([ mo $1 ] ++ dcolon ++ [mc $4]) }
 
         -- This rule is for both INLINE and INLINABLE pragmas
         | '{-# INLINE' activation qvar '#-}'

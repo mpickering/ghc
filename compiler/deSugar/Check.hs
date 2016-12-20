@@ -32,7 +32,7 @@ import Util
 import Outputable
 import FastString
 import DataCon
-import HscTypes (CompleteMatch(..), relevantMatch)
+import HscTypes (CompleteMatch(..))
 
 import DsMonad
 import TcSimplify    (tcCheckSatisfiability)
@@ -435,7 +435,7 @@ translatePat fam_insts pat = case pat of
             , pat_tvs     = ex_tvs
             , pat_dicts   = dicts
             , pat_args    = ps } -> do
-    groups <- allCompleteMatches con
+    groups <- allCompleteMatches con arg_tys
     case groups of
       [] -> mkCanFailPmPat (conLikeResTy con arg_tys)
       _  -> do
@@ -888,16 +888,20 @@ singleConstructor (RealDataCon dc) =
     _   -> False
 singleConstructor _ = False
 
-allCompleteMatches :: ConLike -> DsM [CompleteMatch]
-allCompleteMatches cl = do
+allCompleteMatches :: ConLike -> [Type] -> DsM [[ConLike]]
+allCompleteMatches cl tys = do
   let fam = case cl of
            RealDataCon dc ->
-            [CompleteMatch $ map RealDataCon (tyConDataCons (dataConTyCon dc))]
+            [map RealDataCon (tyConDataCons (dataConTyCon dc))]
            PatSynCon _    -> []
 
-  from_pragma <- dsGetCompleteMatches
 
-  let final_groups = fam ++ filter (relevantMatch cl) from_pragma
+  from_pragma <- map completeMatch <$>
+                  case splitTyConApp_maybe (conLikeResTy cl tys) of
+                    Just (tc, _) -> dsGetCompleteMatches tc
+                    Nothing -> return []
+
+  let final_groups = fam ++ from_pragma
   tracePmD "allCompleteMatches" (ppr final_groups)
   return final_groups
 
@@ -1114,10 +1118,10 @@ pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva =
     False -> return $ ucon va (usimple [vva])
 
 -- ConVar
-pmcheckHd (p@(PmCon { pm_con_con = con }))
+pmcheckHd (p@(PmCon { pm_con_con = con, pm_con_arg_tys = tys }))
           ps guards
           (PmVar x) (ValVec vva delta) = do
-  (CompleteMatch complete_match) <- select =<< liftD (allCompleteMatches con)
+  complete_match <- select =<< liftD (allCompleteMatches con tys)
 
   cons_cs <- mapM (liftD . mkOneConFull x) complete_match
 

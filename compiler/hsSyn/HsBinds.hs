@@ -848,7 +848,7 @@ data Sig name
   | SCCFunSig  SourceText      -- Note [Pragma source text] in BasicTypes
                (Located name)  -- Function name
                (Maybe StringLiteral)
-  | CompleteMatchSig SourceText (Located [Located name])
+  | CompleteMatchSig SourceText (Located [Located name]) (Maybe (Located name))
 
 deriving instance (DataId name) => Data (Sig name)
 
@@ -985,9 +985,12 @@ ppr_sig (PatSynSig names sig_ty)
   = text "pattern" <+> pprVarSig (map unLoc names) (ppr sig_ty)
 ppr_sig (SCCFunSig src fn mlabel)
   = pragSrcBrackets src "{-# SCC" (ppr fn <+> maybe empty ppr mlabel )
-ppr_sig (CompleteMatchSig src cs)
-  = pragSrcBrackets src "{-# COMPLETE" (hsep (punctuate comma
-                                              (map ppr (unLoc cs))))
+ppr_sig (CompleteMatchSig src cs mty)
+  = pragSrcBrackets src "{-# COMPLETE"
+      ((hsep (punctuate comma (map ppr (unLoc cs))))
+        <+> opt_sig)
+  where
+    opt_sig = maybe empty ((\t -> dcolon <+> ppr t) . unLoc) mty
 
 instance OutputableBndr name => Outputable (FixitySig name) where
   ppr (FixitySig names fixity) = sep [ppr fixity, pprops]
