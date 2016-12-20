@@ -187,13 +187,7 @@ mkTypeableTyConBinds mod_id tycons
                                , tc' <- tc : promoted
                                , Just rep_id <- pure $ tyConRepId stuff tc'
                                ]
-       ; gbl_env <- pprTrace "typeable tycons" (ppr $ map (\x -> (x, tyConRepId stuff x)) all_tycons)
-                    $ pprTrace "typeable tycons'" (ppr [ (tc', promoted, tyConRepId stuff tc')
-                                                       | tc <- all_tycons
-                                                       , let promoted = map promoteDataCon (tyConDataCons tc)
-                                                       , tc' <- tc:promoted ])
-                    $ pprTrace "typeable binders" (ppr tycon_rep_bndrs) $
-                    tcExtendGlobalValEnv tycon_rep_bndrs getGblEnv
+       ; gbl_env <- tcExtendGlobalValEnv tycon_rep_bndrs getGblEnv
 
        ; setGblEnv gbl_env $ foldlM (mk_typeable_binds stuff) gbl_env all_tycons }
 
@@ -206,7 +200,7 @@ mkPrimTypeableBinds :: TcM TcGblEnv
 mkPrimTypeableBinds
   = do { mod <- getModule
        ; if mod == gHC_TYPES
-           then do { trModuleTyCon <- pprTrace "mkPrimTypeableBinds" (ppr $ map tyConName ghcPrimTypeableTyCons) $ tcLookupTyCon trModuleTyConName
+           then do { trModuleTyCon <- tcLookupTyCon trModuleTyConName
                    ; let ghc_prim_module_id =
                              mkExportedVanillaId trGhcPrimModuleName
                                                  (mkTyConTy trModuleTyCon)
@@ -293,7 +287,7 @@ mkTrNameLit = do
 mk_typeable_binds :: TypeableStuff -> TcGblEnv -> TyCon -> TcM TcGblEnv
 mk_typeable_binds stuff gbl_env tycon
   = do binds <- mkTyConRepBinds stuff tycon
-       let gbl_env' = pprTrace "mk_typeable_binds" (ppr binds) $ gbl_env `addTypecheckedBinds` [binds]
+       let gbl_env' = gbl_env `addTypecheckedBinds` [binds]
        setGblEnv gbl_env' $ do
             promoted_reps <- mapM (mkTyConRepBinds stuff . promoteDataCon)
                                   (tyConDataCons tycon)
@@ -309,8 +303,7 @@ tyConRepId (Stuff {..}) tycon
 -- | Make typeable bindings for the given 'TyCon'.
 mkTyConRepBinds :: TypeableStuff -> TyCon -> TcRn (LHsBinds Id)
 mkTyConRepBinds stuff@(Stuff {..}) tycon
-  = pprTrace "mkTyConRepBinds" (ppr tycon) $
-    case tyConRepId stuff tycon of
+  = case tyConRepId stuff tycon of
       Just tycon_rep_id -> do
           tycon_rep_rhs <- mkTyConRepTyConRHS stuff tycon
           let tycon_rep = mkVarBind tycon_rep_id tycon_rep_rhs
@@ -415,7 +408,7 @@ mkTyConKindRep :: TypeableStuff -> TyCon -> TcRn (LHsExpr Id)
 mkTyConKindRep (Stuff {..}) tycon = do
     let bndrs = mkVarEnv $ (`zip` [0..]) $ map binderVar
                 $ reverse $ filter isNamedTyConBinder (tyConBinders tycon)
-    pprTrace "mkTyConKeyRepBinds" (ppr tycon <+> pprType' (tyConKind tycon)) $ go bndrs (tyConResKind tycon)
+    go bndrs (tyConResKind tycon)
   where
     -- Compute RHS
     go :: VarEnv Int -> Kind -> TcRn (LHsExpr Id)
@@ -430,8 +423,7 @@ mkTyConKindRep (Stuff {..}) tycon = do
            t2' <- go bndrs t2
            return $ nlHsApps (dataConWrapId kindRepAppDataCon) [t1', t2']
     go _ ty | Just rr <- isTYPEApp ty
-      = pprTrace "mkTyConKeyRepBinds(type)" (ppr rr) $
-        return $ nlHsApps (dataConWrapId kindRepTYPEDataCon) [nlHsVar $ dataConWrapId rr]
+      = return $ nlHsApps (dataConWrapId kindRepTYPEDataCon) [nlHsVar $ dataConWrapId rr]
     go bndrs (TyConApp tycon tys)
       | Just rep_name <- tyConRepName_maybe tycon
       = do rep_id <- lookupId rep_name
