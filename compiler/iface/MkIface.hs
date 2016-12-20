@@ -1002,7 +1002,8 @@ mkOrphMap get_key decls
 -}
 
 mkIfaceCompleteSig :: CompleteMatch -> IfaceCompleteMatch
-mkIfaceCompleteSig (CompleteMatch cls) = map conLikeName cls
+mkIfaceCompleteSig (CompleteMatch cls tc) =
+  IfaceCompleteMatch (map conLikeName cls) (tyConName tc)
 
 
 {-
