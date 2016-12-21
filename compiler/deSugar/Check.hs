@@ -51,6 +51,7 @@ import Control.Monad (forM, when, forM_)
 import Coercion
 import TcEvidence
 import IOEnv
+import Data.Monoid   ( Monoid(mappend) )
 
 import ListT (ListT(..), fold, select)
 
@@ -91,7 +92,8 @@ liftD m = ListT $ \sk fk -> m >>= \a -> sk a fk
 
 -- Pick the first match complete covered match or otherwise the "best" match.
 -- The best match is the one with the least uncovered clauses, ties broken
--- by the number of redundant clauses.
+-- by the number of inaccessible clauses followed by number of redudant
+-- clauses
 getResult :: PmM PmResult -> DsM PmResult
 getResult ls = do
   res <- fold ls goM (pure Nothing)
@@ -106,14 +108,21 @@ getResult ls = do
     -- Careful not to force unecessary results
     go :: Maybe PmResult -> PmResult -> Maybe PmResult
     go Nothing rs = Just rs
-    go old@(Just (PmResult _ rs us _)) new
-      | null us && null rs = old
+    go old@(Just (PmResult prov rs us is)) new
+      | null us && null rs && null is = old
       | otherwise =
-        let PmResult _ rs' us' _ = new
-        in case (compare (length us) (length us'), length rs > length rs') of
-             ( GT , _ ) -> Just new
-             ( EQ , r ) -> if r then Just new else old
-             ( LT , _ ) -> old
+        let PmResult prov' rs' us' is' = new
+            lr  = length rs
+            lr' = length rs'
+            li  = length is
+            li' = length is'
+        in case compare (length us) (length us')
+                `mappend` (compare li li')
+                `mappend` (compare lr lr')
+                `mappend` (compare prov prov') of
+              GT  -> Just new
+              EQ  -> Just new
+              LT  -> old
 
 data PatTy = PAT | VA -- Used only as a kind, to index PmPat
 
@@ -193,7 +202,7 @@ instance Monoid Diverged where
   NotDiverged `mappend` NotDiverged = NotDiverged
 
 data Provenance = FromComplete | FromBuiltin
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 instance Outputable Provenance where
   ppr  = text . show
