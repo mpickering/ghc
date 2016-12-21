@@ -408,15 +408,6 @@ pprPmExprCon (RealDataCon con) args
   | isTupleDataCon con = mkTuple <$> mapM pprPmExpr args
   |  isPArrFakeCon con = mkPArr  <$> mapM pprPmExpr args
   |  isConsDataCon con = pretty_list
-  | dataConIsInfix con = case args of
-      [x, y] -> do x' <- pprPmExprWithParens x
-                   y' <- pprPmExprWithParens y
-                   return (x' <+> ppr con <+> y')
-      -- can it be infix but have more than two arguments?
-      list   -> pprPanic "pprPmExprCon:" (ppr list)
-  | null args = return (ppr con)
-  | otherwise = do args' <- mapM pprPmExprWithParens args
-                   return (fsep (ppr con : args'))
   where
     mkTuple, mkPArr :: [SDoc] -> SDoc
     mkTuple = parens     . fsep . punctuate comma
@@ -437,7 +428,16 @@ pprPmExprCon (RealDataCon con) args
           = x : list_elements es
       | otherwise = [x,y]
     list_elements list  = pprPanic "list_elements:" (ppr list)
-pprPmExprCon (PatSynCon _) _ = panic "pprPmExprCon TODO"
+pprPmExprCon cl args
+  | conLikeIsInfix cl = case args of
+      [x, y] -> do x' <- pprPmExprWithParens x
+                   y' <- pprPmExprWithParens y
+                   return (x' <+> ppr cl <+> y')
+      -- can it be infix but have more than two arguments?
+      list   -> pprPanic "pprPmExprCon:" (ppr list)
+  | null args = return (ppr cl)
+  | otherwise = do args' <- mapM pprPmExprWithParens args
+                   return (fsep (ppr cl : args'))
 
 instance Outputable PmLit where
   ppr (PmSLit     l) = pmPprHsLit l
