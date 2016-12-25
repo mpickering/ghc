@@ -318,7 +318,7 @@ the analysis of `e2` will not report anything about `x`. To ensure that
 `callArityBind` does still do the right thing we have to take that into account
 everytime we would be lookup up `x` in the analysis result of `e2`.
   * Instead of calling lookupCallArityRes, we return (0, True), indicating
-    that this variable might be called many times with no variables.
+    that this variable might be called many times with no arguments.
   * Instead of checking `calledWith x`, we assume that everything can be called
     with it.
   * In the recursive case, when calclulating the `cross_calls`, if there is
