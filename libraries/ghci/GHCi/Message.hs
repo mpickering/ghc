@@ -377,7 +377,7 @@ fromSerializableException (EOtherException str) = toException (ErrorCall str)
 -- as the minimum
 instance Binary ExitCode where
   put ExitSuccess      = putWord8 0
-  put (ExitFailure ec) = putWord8 1 `mappend` put ec
+  put (ExitFailure ec) = putWord8 1 >> put ec
   get = do
     w <- getWord8
     case w of
