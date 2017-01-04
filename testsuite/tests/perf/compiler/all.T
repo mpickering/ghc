@@ -898,3 +898,13 @@ test('T12234',
      ],
      compile,
      [''])
+
+test('T13056',
+     [ only_ways(['optasm']),
+       compiler_stats_num_field('bytes allocated',
+         [(wordsize(64), 1, 5),
+         # 2017-01-04    1 initial
+         ]),
+     ],
+     compile,
+     ['-O1'])
