@@ -2,7 +2,3 @@
 completesig10.hs:20:1: warning: [-Wincomplete-patterns (in -Wextra)]
     Pattern match(es) are non-exhaustive
     In an equation for ‘m2’: Patterns not matched: A
-
-completesig10.hs:25:1: warning: [-Wincomplete-patterns (in -Wextra)]
-    Pattern match(es) are non-exhaustive
-    In an equation for ‘m3’: Patterns not matched: A
