@@ -61,6 +61,7 @@ import Outputable
 import UniqDFM
 import SrcLoc
 import qualified ErrUtils as Err
+import TcType           ( isOverloadedTy )
 
 import Control.Monad
 import Data.Function
