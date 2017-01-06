@@ -201,7 +201,7 @@ instance Monoid Diverged where
   _ `mappend` Diverged = Diverged
   NotDiverged `mappend` NotDiverged = NotDiverged
 
-data Provenance = FromComplete | FromBuiltin
+data Provenance = FromBuiltin | FromComplete
   deriving (Show, Eq, Ord)
 
 instance Outputable Provenance where
