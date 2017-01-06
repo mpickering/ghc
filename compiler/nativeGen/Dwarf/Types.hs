@@ -36,7 +36,7 @@ import SrcLoc
 import Dwarf.Constants
 
 import qualified Control.Monad.Trans.State.Strict as S
-import Control.Monad (zipWithM)
+import Control.Monad (zipWithM, join)
 import Data.Bits
 import qualified Data.Map as Map
 import Data.Word
@@ -290,7 +290,7 @@ pprDwarfFrame DwarfFrame{dwCieLabel=cieLabel,dwCieInit=cieInit,dwCieProcs=procs}
         spReg       = dwarfGlobalRegNo plat Sp
         retReg      = dwarfReturnRegNo plat
         wordSize    = platformWordSize plat
-        pprInit :: (GlobalReg, UnwindExpr) -> SDoc
+        pprInit :: (GlobalReg, Maybe UnwindExpr) -> SDoc
         pprInit (g, uw) = pprSetUnwind plat g (Nothing, uw)
 
         -- Preserve C stack pointer: This necessary to override that default
@@ -366,20 +366,29 @@ pprFrameBlock (DwarfFrameBlock hasInfo uws0) =
   where
     pprFrameDecl :: Bool -> UnwindPoint -> S.State UnwindTable SDoc
     pprFrameDecl firstDecl (UnwindPoint lbl uws) = S.state $ \oldUws ->
-        let isChanged g v | old == Just v  = Nothing
-                          | otherwise      = Just (old, v)
-                          where old = Map.lookup g oldUws
+        let -- Did a register's unwind expression change?
+            isChanged :: GlobalReg -> Maybe UnwindExpr
+                      -> Maybe (Maybe UnwindExpr, Maybe UnwindExpr)
+            isChanged g new
+                -- the value didn't change
+              | Just new == old = Nothing
+                -- the value was and still is undefined
+              | Nothing <- old
+              , Nothing <- new  = Nothing
+                -- the value changed
+              | otherwise       = Just (join old, new)
+              where
+                old = Map.lookup g oldUws
+
             changed = Map.toList $ Map.mapMaybeWithKey isChanged uws
-            died    = Map.toList $ Map.difference oldUws uws
 
         in if oldUws == uws
              then (empty, oldUws)
-             else let needsOffset = firstDecl && hasInfo -- see [Note: Info Offset]
+             else let needsOffset = firstDecl && hasInfo -- see Note [Info Offset]
                       lblDoc = ppr lbl <> if needsOffset then text "-1" else empty
                       doc = sdocWithPlatform $ \plat ->
                            pprByte dW_CFA_set_loc $$ pprWord lblDoc $$
-                           vcat (map (uncurry $ pprSetUnwind plat) changed) $$
-                           vcat (map (pprUndefUnwind plat . fst) died)
+                           vcat (map (uncurry $ pprSetUnwind plat) changed)
                   in (doc, uws)
 
 -- Note [Info Offset]
@@ -410,12 +419,20 @@ dwarfGlobalRegNo p reg = maybe 0 (dwarfRegNo p . RegReal) $ globalRegMaybe p reg
 -- | Generate code for setting the unwind information for a register,
 -- optimized using its known old value in the table. Note that "Sp" is
 -- special: We see it as synonym for the CFA.
-pprSetUnwind :: Platform -> GlobalReg -> (Maybe UnwindExpr, UnwindExpr) -> SDoc
-pprSetUnwind _    Sp (Just (UwReg s _), UwReg s' o') | s == s'
+pprSetUnwind :: Platform
+             -> GlobalReg
+                -- ^ the register to produce an unwinding table entry for
+             -> (Maybe UnwindExpr, Maybe UnwindExpr)
+                -- ^ the old and new values of the register
+             -> SDoc
+pprSetUnwind plat g  (_, Nothing)
+  = pprByte dW_CFA_undefined $$
+    pprLEBWord (fromIntegral $ dwarfGlobalRegNo plat g)
+pprSetUnwind _    Sp (Just (UwReg s _), Just (UwReg s' o')) | s == s'
   = if o' >= 0
     then pprByte dW_CFA_def_cfa_offset $$ pprLEBWord (fromIntegral o')
     else pprByte dW_CFA_def_cfa_offset_sf $$ pprLEBInt o'
-pprSetUnwind plat Sp (_, UwReg s' o')
+pprSetUnwind plat Sp (_, Just (UwReg s' o'))
   = if o' >= 0
     then pprByte dW_CFA_def_cfa $$
          pprLEBWord (fromIntegral $ dwarfGlobalRegNo plat s') $$
@@ -423,9 +440,9 @@ pprSetUnwind plat Sp (_, UwReg s' o')
     else pprByte dW_CFA_def_cfa_sf $$
          pprLEBWord (fromIntegral $ dwarfGlobalRegNo plat s') $$
          pprLEBInt o'
-pprSetUnwind _    Sp (_, uw)
+pprSetUnwind _    Sp (_, Just uw)
   = pprByte dW_CFA_def_cfa_expression $$ pprUnwindExpr False uw
-pprSetUnwind plat g  (_, UwDeref (UwReg Sp o))
+pprSetUnwind plat g  (_, Just (UwDeref (UwReg Sp o)))
   | o < 0 && ((-o) `mod` platformWordSize plat) == 0 -- expected case
   = pprByte (dW_CFA_offset + dwarfGlobalRegNo plat g) $$
     pprLEBWord (fromIntegral ((-o) `div` platformWordSize plat))
@@ -433,11 +450,11 @@ pprSetUnwind plat g  (_, UwDeref (UwReg Sp o))
   = pprByte dW_CFA_offset_extended_sf $$
     pprLEBWord (fromIntegral (dwarfGlobalRegNo plat g)) $$
     pprLEBInt o
-pprSetUnwind plat g  (_, UwDeref uw)
+pprSetUnwind plat g  (_, Just (UwDeref uw))
   = pprByte dW_CFA_expression $$
     pprLEBWord (fromIntegral (dwarfGlobalRegNo plat g)) $$
     pprUnwindExpr True uw
-pprSetUnwind plat g  (_, uw)
+pprSetUnwind plat g  (_, Just uw)
   = pprByte dW_CFA_val_expression $$
     pprLEBWord (fromIntegral (dwarfGlobalRegNo plat g)) $$
     pprUnwindExpr True uw
