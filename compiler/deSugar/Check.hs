@@ -5,6 +5,7 @@ Pattern Matching Coverage Checking.
 -}
 
 {-# LANGUAGE CPP, GADTs, DataKinds, KindSignatures #-}
+{-# LANGUAGE TupleSections #-}
 
 module Check (
         -- Checking and printing
@@ -105,10 +106,10 @@ getResult ls = do
     -- Careful not to force unecessary results
     go :: Maybe PmResult -> PmResult -> Maybe PmResult
     go Nothing rs = Just rs
-    go old@(Just (PmResult rs us _)) new
+    go old@(Just (PmResult _ rs us _)) new
       | null us && null rs = old
       | otherwise =
-        let PmResult rs' us' _ = new
+        let PmResult _ rs' us' _ = new
         in case (compare (length us) (length us'), length rs > length rs') of
              ( GT , _ ) -> Just new
              ( EQ , r ) -> if r then Just new else old
@@ -191,20 +192,38 @@ instance Monoid Diverged where
   _ `mappend` Diverged = Diverged
   NotDiverged `mappend` NotDiverged = NotDiverged
 
+data Provenance = FromComplete | FromBuiltin
+  deriving (Show, Eq)
+
+instance Outputable Provenance where
+  ppr  = text . show
+
+instance Monoid Provenance where
+  mempty = FromBuiltin
+  FromComplete `mappend` _ = FromComplete
+  _ `mappend` FromComplete = FromComplete
+  _ `mappend` _ = FromBuiltin
+
 data PartialResult = PartialResult {
-                      presultCovered :: Covered
+                        presultProvenence :: Provenance
+                         -- keep track of provenance because we don't want
+                         -- to warn about redundant matches if the result
+                         -- is contaiminated with a COMPLETE pragma
+                      , presultCovered :: Covered
                       , presultUncovered :: Uncovered
                       , presultDivergent :: Diverged }
 
 instance Outputable PartialResult where
-  ppr (PartialResult c vsa d) = text "PartialResult" <+> ppr c
+  ppr (PartialResult prov c vsa d)
+           = text "PartialResult" <+> ppr prov <+> ppr c
                                   <+> ppr d <+> ppr vsa
 
 instance Monoid PartialResult where
-  mempty = PartialResult mempty [] mempty
-  (PartialResult cs1 vsa1 ds1)
-    `mappend` (PartialResult cs2 vsa2 ds2)
-      = PartialResult (cs1 `mappend` cs2)
+  mempty = PartialResult mempty mempty [] mempty
+  (PartialResult prov1 cs1 vsa1 ds1)
+    `mappend` (PartialResult prov2 cs2 vsa2 ds2)
+      = PartialResult (prov1 `mappend` prov2)
+                      (cs1 `mappend` cs2)
                       (vsa1 `mappend` vsa2)
                       (ds1 `mappend` ds2)
 
@@ -217,7 +236,8 @@ instance Monoid PartialResult where
 -- * Clauses with inaccessible RHS
 data PmResult =
   PmResult {
-    pmresultRedundant :: [Located [LPat Id]]
+      pmresultProvenance :: Provenance
+    , pmresultRedundant :: [Located [LPat Id]]
     , pmresultUncovered :: Uncovered
     , pmresultInaccessible :: [Located [LPat Id]] }
 
@@ -246,11 +266,11 @@ checkSingle' locn var p = do
   clause    <- liftD $ translatePat fam_insts p
   missing   <- mkInitialUncovered [var]
   tracePm "checkSingle: missing" (vcat (map pprValVecDebug missing))
-  PartialResult cs us ds <- runMany (pmcheckI clause []) missing -- no guards
+  PartialResult prov cs us ds <- runMany (pmcheckI clause []) missing -- no guards
   return $ case (cs,ds) of
-    (Covered,  _    )         -> PmResult [] us [] -- useful
-    (NotCovered, NotDiverged) -> PmResult m us []  -- redundant
-    (NotCovered, Diverged )   -> PmResult [] us m  -- inaccessible rhs
+    (Covered,  _    )         -> PmResult prov [] us [] -- useful
+    (NotCovered, NotDiverged) -> PmResult prov m us []  -- redundant
+    (NotCovered, Diverged )   -> PmResult prov [] us m  -- inaccessible rhs
   where m = [L locn [L locn p]]
 
 -- | Check a matchgroup (case, functions, etc.)
@@ -270,29 +290,30 @@ checkMatches dflags ctxt vars matches = do
 -- | Check a matchgroup (case, functions, etc.)
 checkMatches' :: [Id] -> [LMatch Id (LHsExpr Id)] -> PmM PmResult
 checkMatches' vars matches
-  | null matches = return $ PmResult [] [] []
+  | null matches = return $ PmResult FromBuiltin [] [] []
   | otherwise = do
       liftD resetPmIterDs -- set the iter-no to zero
       missing    <- mkInitialUncovered vars
       tracePm "checkMatches: missing" (vcat (map pprValVecDebug missing))
-      (rs,us,ds) <- go matches missing
-      return $ PmResult (map hsLMatchToLPats rs) us (map hsLMatchToLPats ds)
+      (prov, rs,us,ds) <- go matches missing
+      return $ PmResult prov (map hsLMatchToLPats rs) us (map hsLMatchToLPats ds)
   where
     go :: [LMatch Id (LHsExpr Id)] -> Uncovered
-       -> PmM ([LMatch Id (LHsExpr Id)] , Uncovered , [LMatch Id (LHsExpr Id)])
-    go []     missing = return ([], missing, [])
+       -> PmM (Provenance, [LMatch Id (LHsExpr Id)] , Uncovered , [LMatch Id (LHsExpr Id)])
+    go []     missing = return (mempty, [], missing, [])
     go (m:ms) missing = do
       tracePm "checMatches': go" (ppr m $$ ppr missing)
       fam_insts          <- liftD dsGetFamInstEnvs
       (clause, guards)   <- liftD $ translateMatch fam_insts m
-      r@(PartialResult cs missing' ds)
+      r@(PartialResult prov cs missing' ds)
         <- runMany (pmcheckI clause guards) missing
       tracePm "checMatches': go: res" (ppr r)
-      (rs, final_u, is)  <- go ms missing'
+      (ms_prov, rs, final_u, is)  <- go ms missing'
+      let final_prov = prov `mappend` ms_prov
       return $ case (cs, ds) of
-        (Covered,  _    )        -> (  rs, final_u,   is) -- useful
-        (NotCovered, NotDiverged) -> (m:rs, final_u,   is) -- redundant
-        (NotCovered, Diverged )   -> (  rs, final_u, m:is) -- inaccessible
+        (Covered,  _    )        -> (final_prov,  rs, final_u,   is) -- useful
+        (NotCovered, NotDiverged) -> (final_prov, m:rs, final_u,is) -- redundant
+        (NotCovered, Diverged )   -> (final_prov,  rs, final_u, m:is) -- inaccessible
 
     hsLMatchToLPats :: LMatch id body -> Located [LPat id]
     hsLMatchToLPats (L l (Match _ pats _ _)) = L l pats
@@ -888,16 +909,17 @@ singleConstructor (RealDataCon dc) =
     _   -> False
 singleConstructor _ = False
 
-allCompleteMatches :: ConLike -> DsM [CompleteMatch]
+allCompleteMatches :: ConLike -> DsM [(Provenance, CompleteMatch)]
 allCompleteMatches cl = do
   let fam = case cl of
            RealDataCon dc ->
-            [CompleteMatch $ map RealDataCon (tyConDataCons (dataConTyCon dc))]
+            [( FromBuiltin
+             , CompleteMatch $ map RealDataCon (tyConDataCons (dataConTyCon dc)))]
            PatSynCon _    -> []
 
-  from_pragma <- dsGetCompleteMatches
+  from_pragma <- map (FromComplete,) <$> dsGetCompleteMatches
 
-  let final_groups = fam ++ filter (relevantMatch cl) from_pragma
+  let final_groups = fam ++ filter (relevantMatch cl . snd) from_pragma
   tracePmD "allCompleteMatches" (ppr final_groups)
   return final_groups
 
@@ -993,11 +1015,8 @@ Main functions are:
 -- value set abstraction, but calling it on every vector and the combining the
 -- results.
 runMany :: (ValVec -> PmM PartialResult) -> (Uncovered -> PmM PartialResult)
-runMany _ [] = return $ PartialResult mempty mempty mempty
-runMany pm (m:ms) = do
-  (PartialResult c v d) <- pm m
-  (PartialResult cs vs ds) <- runMany pm ms
-  return (PartialResult (c `mappend` cs) (v `mappend` vs) (d `mappend` ds))
+runMany _ [] = return mempty
+runMany pm (m:ms) = mappend <$> pm m <*> runMany pm ms
 {-# INLINE runMany #-}
 
 -- | Generate the initial uncovered set. It initializes the
@@ -1082,9 +1101,12 @@ pmcheck (p:ps) guards (ValVec (va:vva) delta)
 pmcheckGuards :: [PatVec] -> ValVec -> PmM PartialResult
 pmcheckGuards []       vva = return (usimple [vva])
 pmcheckGuards (gv:gvs) vva = do
-  (PartialResult cs vsa ds) <- pmcheckI gv [] vva
-  (PartialResult css vsas dss) <- runMany (pmcheckGuardsI gvs) vsa
-  return $ PartialResult (cs `mappend` css) vsas (ds `mappend` dss)
+  (PartialResult prov1 cs vsa ds) <- pmcheckI gv [] vva
+  (PartialResult prov2 css vsas dss) <- runMany (pmcheckGuardsI gvs) vsa
+  return $ PartialResult (prov1 `mappend` prov2)
+                         (cs `mappend` css)
+                         vsas
+                         (ds `mappend` dss)
 
 -- | Worker function: Implements all cases described in the paper for all three
 -- functions (`covered`, `uncovered` and `divergent`) apart from the `Guard`
@@ -1117,7 +1139,7 @@ pmcheckHd (PmLit l1) ps guards (va@(PmLit l2)) vva =
 pmcheckHd (p@(PmCon { pm_con_con = con }))
           ps guards
           (PmVar x) (ValVec vva delta) = do
-  (CompleteMatch complete_match) <- select =<< liftD (allCompleteMatches con)
+  (prov, CompleteMatch complete_match) <- select =<< liftD (allCompleteMatches con)
 
   cons_cs <- mapM (liftD . mkOneConFull x) complete_match
 
@@ -1129,8 +1151,9 @@ pmcheckHd (p@(PmCon { pm_con_con = con }))
       (True, Just tm_state) -> [ValVec (va:vva) (MkDelta ty_state tm_state)]
       _ty_or_tm_failed      -> []
 
-  force_if (canDiverge (idName x) (delta_tm_cs delta)) <$>
-    runMany (pmcheckI (p:ps) guards) inst_vsa
+  set_provenance prov .
+    force_if (canDiverge (idName x) (delta_tm_cs delta)) <$>
+      runMany (pmcheckI (p:ps) guards) inst_vsa
 
 -- LitVar
 pmcheckHd (p@(PmLit l)) ps guards (PmVar x) (ValVec vva delta)
@@ -1258,6 +1281,9 @@ forces pres = pres { presultDivergent = Diverged }
 force_if :: Bool -> PartialResult -> PartialResult
 force_if True  pres = forces pres
 force_if False pres = pres
+
+set_provenance :: Provenance -> PartialResult -> PartialResult
+set_provenance prov pr = pr { presultProvenence = prov }
 
 -- ----------------------------------------------------------------------------
 -- * Propagation of term constraints inwards when checking nested matches
@@ -1396,8 +1422,8 @@ wrapUpTmState (residual, (_, subst)) = (residual, flattenPmVarEnv subst)
 dsPmWarn :: DynFlags -> DsMatchContext -> PmResult -> DsM ()
 dsPmWarn dflags ctx@(DsMatchContext kind loc) pm_result
   = when (flag_i || flag_u) $ do
-      let exists_r = flag_i && notNull redundant
-          exists_i = flag_i && notNull inaccessible
+      let exists_r = flag_i && notNull redundant && onlyBuiltin
+          exists_i = flag_i && notNull inaccessible && onlyBuiltin
           exists_u = flag_u && notNull uncovered
       when exists_r $ forM_ redundant $ \(L l q) -> do
         putSrcSpanDs l (warnDs (Reason Opt_WarnOverlappingPatterns)
@@ -1409,13 +1435,16 @@ dsPmWarn dflags ctx@(DsMatchContext kind loc) pm_result
         putSrcSpanDs loc (warnDs flag_u_reason (pprEqns uncovered))
   where
     PmResult
-      { pmresultRedundant = redundant
+      { pmresultProvenance = prov
+      , pmresultRedundant = redundant
       , pmresultUncovered = uncovered
       , pmresultInaccessible = inaccessible } = pm_result
 
     flag_i = wopt Opt_WarnOverlappingPatterns dflags
     flag_u = exhaustive dflags kind
     flag_u_reason = maybe NoReason Reason (exhaustiveWarningFlag kind)
+
+    onlyBuiltin = prov == FromBuiltin
 
     maxPatterns = maxUncoveredPatterns dflags
 

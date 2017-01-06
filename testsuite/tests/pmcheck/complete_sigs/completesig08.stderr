@@ -1,4 +1,0 @@
-
-completesig08.hs:30:1: warning: [-Woverlapping-patterns (in -Wdefault)]
-    Pattern match is redundant
-    In an equation for ‘m4’: m4 E = ...
