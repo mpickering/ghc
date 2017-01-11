@@ -15,7 +15,7 @@ import DynFlags
 import UniqFM
 import PprCmm ()
 
-import Data.List (partition)
+import Data.List (partition, foldl')
 import qualified Data.Set as Set
 import Data.Maybe
 
@@ -258,7 +258,7 @@ findJoinPoints blocks = mapFilter (>1) succ_counts
   all_succs = concatMap successors blocks
 
   succ_counts :: LabelMap Int
-  succ_counts = foldr (\l -> mapInsertWith (+) l 1) mapEmpty all_succs
+  succ_counts = foldl' (\acc l -> mapInsertWith (+) l 1 acc) mapEmpty all_succs
 
 --
 -- filter the list of assignments to remove any assignments that

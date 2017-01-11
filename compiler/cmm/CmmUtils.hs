@@ -77,6 +77,7 @@ import DynFlags
 import Util
 import CodeGen.Platform
 
+import Data.Foldable (foldl')
 import Data.Word
 import Data.Maybe
 import Data.Bits
@@ -533,7 +534,7 @@ toBlockListEntryFirstFalseFallthrough g
 ofBlockList :: BlockId -> [CmmBlock] -> CmmGraph
 ofBlockList entry blocks = CmmGraph { g_entry = entry
                                     , g_graph = GMany NothingO body NothingO }
-  where body = foldr addBlock emptyBody blocks
+  where body = foldl' (flip addBlock) emptyBody blocks
 
 bodyToBlockList :: Body CmmNode -> [CmmBlock]
 bodyToBlockList body = mapElems body

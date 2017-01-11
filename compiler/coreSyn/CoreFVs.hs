@@ -83,6 +83,8 @@ import BasicTypes( Activation )
 import Outputable
 import FV
 
+import Data.Foldable ( foldl' )
+
 {-
 ************************************************************************
 *                                                                      *
@@ -407,7 +409,7 @@ orphNamesOfAxiom axiom
 
 orphNamesOfCoAxBranches :: Branches br -> NameSet
 orphNamesOfCoAxBranches
-  = foldr (unionNameSet . orphNamesOfCoAxBranch) emptyNameSet . fromBranches
+  = foldl' (flip $ unionNameSet . orphNamesOfCoAxBranch) emptyNameSet . fromBranches
 
 orphNamesOfCoAxBranch :: CoAxBranch -> NameSet
 orphNamesOfCoAxBranch (CoAxBranch { cab_lhs = lhs, cab_rhs = rhs })
@@ -585,7 +587,7 @@ unionFVss :: [DVarSet] -> DVarSet
 unionFVss = unionDVarSets
 
 delBindersFV :: [Var] -> DVarSet -> DVarSet
-delBindersFV bs fvs = foldr delBinderFV fvs bs
+delBindersFV bs fvs = foldl' (flip delBinderFV) fvs bs
 
 delBinderFV :: Var -> DVarSet -> DVarSet
 -- This way round, so we can do it multiple times using foldr
@@ -783,7 +785,7 @@ freeVars = go
         (binders, rhss) = unzip binds
 
         rhss2        = map go rhss
-        rhs_body_fvs = foldr (unionFVs . freeVarsOf) body_fvs rhss2
+        rhs_body_fvs = foldl' (flip $ unionFVs . freeVarsOf) body_fvs rhss2
         binders_fvs  = fvDVarSet $ mapUnionFV idRuleAndUnfoldingFVs binders
         all_fvs      = rhs_body_fvs `unionFVs` binders_fvs
             -- The "delBinderFV" happens after adding the idSpecVars,

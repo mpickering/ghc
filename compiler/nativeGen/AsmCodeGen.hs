@@ -860,7 +860,7 @@ shortcutBranches dflags ncgImpl tops
   | otherwise           = map (apply_mapping ncgImpl mapping) tops'
   where
     (tops', mappings) = mapAndUnzip (build_mapping ncgImpl) tops
-    mapping = foldr plusUFM emptyUFM mappings
+    mapping = foldl' plusUFM emptyUFM mappings
 
 build_mapping :: NcgImpl statics instr jumpDest
               -> GenCmmDecl d (LabelMap t) (ListGraph instr)

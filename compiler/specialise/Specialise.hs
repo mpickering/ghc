@@ -39,6 +39,7 @@ import UniqDFM
 import TrieMap
 
 import Control.Monad
+import Data.Foldable   ( foldl' )
 #if __GLASGOW_HASKELL__ > 710
 import qualified Control.Monad.Fail as MonadFail
 #endif
@@ -1842,7 +1843,7 @@ callDetailsFVs calls =
 
 callInfoFVs :: CallInfoSet -> VarSet
 callInfoFVs (CIS _ call_info) =
-  foldrBag (\(_, (_,fv)) vs -> unionVarSet fv vs) emptyVarSet call_info
+  foldlBag (\vs (_, (_,fv)) -> unionVarSet fv vs) emptyVarSet call_info
 
 ------------------------------------------------------------
 singleCall :: Id -> [Maybe Type] -> [DictExpr] -> UsageDetails
@@ -1994,7 +1995,7 @@ plusUDs (MkUD {ud_binds = db1, ud_calls = calls1})
          , ud_calls = calls1 `unionCalls`  calls2 }
 
 plusUDList :: [UsageDetails] -> UsageDetails
-plusUDList = foldr plusUDs emptyUDs
+plusUDList = foldl' plusUDs emptyUDs
 
 -----------------------------
 _dictBindBndrs :: Bag DictBind -> [Id]

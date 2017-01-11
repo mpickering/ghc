@@ -63,6 +63,8 @@ import Module
 import TyCon ( TyCon )
 import GHC.Exts( SpecConstrAnnotation(..) )
 
+import Data.Foldable    ( foldl' )
+
 {-
 -----------------------------------------------------
                         Game plan
@@ -1464,7 +1466,7 @@ specRec top_lvl env body_usg rhs_infos
        = (calls_in_body, [SI [] 0 (Just (ri_rhs_usg ri)) | ri <- rhs_infos])
 
     calls_in_body = scu_calls body_usg
-    calls_in_rhss = foldr (combineCalls . scu_calls . ri_rhs_usg) emptyVarEnv rhs_infos
+    calls_in_rhss = foldl' (flip $ combineCalls . scu_calls . ri_rhs_usg) emptyVarEnv rhs_infos
     all_calls = calls_in_rhss `combineCalls` calls_in_body
 
     -- Loop, specialising, until you get no new specialisations

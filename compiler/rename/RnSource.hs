@@ -56,7 +56,7 @@ import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
 import Control.Arrow ( first )
-import Data.List ( sortBy, mapAccumL )
+import Data.List     ( sortBy, mapAccumL, foldl' )
 import Data.Maybe ( isJust )
 import qualified Data.Set as Set ( difference, fromList, toList, null )
 
@@ -1316,8 +1316,8 @@ rnTyClDecls tycl_ds
                 = mapAccumL mk_group (rest_inst_ds, role_annot_env) tycl_sccs
 
 
-             all_fvs = plusFV (foldr (plusFV . snd) emptyFVs tycls_w_fvs)
-                              (foldr (plusFV . snd) emptyFVs instds_w_fvs)
+             all_fvs = plusFV (foldl' (flip $ plusFV . snd) emptyFVs tycls_w_fvs)
+                              (foldl' (flip $ plusFV . snd) emptyFVs instds_w_fvs)
 
              all_groups = first_group ++ groups
 

@@ -46,6 +46,7 @@ import Demand           ( isUsedOnce )
 import PrimOp           ( PrimCall(..) )
 import UniqFM
 
+import Data.Foldable (foldl')
 import Data.Maybe    (isJust, fromMaybe)
 import Control.Monad (liftM, ap)
 
@@ -1011,10 +1012,10 @@ unionFVInfo :: FreeVarsInfo -> FreeVarsInfo -> FreeVarsInfo
 unionFVInfo fv1 fv2 = plusVarEnv_C plusFVInfo fv1 fv2
 
 unionFVInfos :: [FreeVarsInfo] -> FreeVarsInfo
-unionFVInfos fvs = foldr unionFVInfo emptyFVInfo fvs
+unionFVInfos fvs = foldl' unionFVInfo emptyFVInfo fvs
 
 minusFVBinders :: [Id] -> FreeVarsInfo -> FreeVarsInfo
-minusFVBinders vs fv = foldr minusFVBinder fv vs
+minusFVBinders vs fv = foldl' (flip minusFVBinder) fv vs
 
 minusFVBinder :: Id -> FreeVarsInfo -> FreeVarsInfo
 minusFVBinder v fv = fv `delVarEnv` v

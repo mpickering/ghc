@@ -1709,7 +1709,7 @@ tyCoVarsOfCtsList = fvVarList . tyCoFVsOfCts
 -- | Returns free variables of a bag of constraints as a composable FV
 -- computation. See Note [Deterministic FV] in FV.
 tyCoFVsOfCts :: Cts -> FV
-tyCoFVsOfCts = foldrBag (unionFV . tyCoFVsOfCt) emptyFV
+tyCoFVsOfCts = foldlBag (flip $ unionFV . tyCoFVsOfCt) emptyFV
 
 -- | Returns free variables of WantedConstraints as a non-deterministic
 -- set. See Note [Deterministic FV] in FV.
@@ -1742,7 +1742,7 @@ tyCoFVsOfImplic (Implic { ic_skols = skols
       (tyCoFVsOfWC wanted `unionFV` tyCoFVsOfTypes (map evVarPred givens))
 
 tyCoFVsOfBag :: (a -> FV) -> Bag a -> FV
-tyCoFVsOfBag tvs_of = foldrBag (unionFV . tvs_of) emptyFV
+tyCoFVsOfBag tvs_of = foldlBag (flip $ unionFV . tvs_of) emptyFV
 
 --------------------------
 dropDerivedSimples :: Cts -> Cts

@@ -34,6 +34,7 @@ module UniqSet (
 
 import UniqFM
 import Unique
+import Data.Foldable (foldl')
 
 {-
 ************************************************************************
@@ -101,8 +102,7 @@ delOneFromUniqSet_Directly = delFromUFM_Directly
 delListFromUniqSet = delListFromUFM
 
 unionUniqSets = plusUFM
-unionManyUniqSets [] = emptyUniqSet
-unionManyUniqSets sets = foldr1 unionUniqSets sets
+unionManyUniqSets = foldl' (flip unionUniqSets) emptyUniqSet
 minusUniqSet = minusUFM
 intersectUniqSets = intersectUFM
 

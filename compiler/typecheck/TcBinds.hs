@@ -63,6 +63,7 @@ import Unique (getUnique)
 import UniqFM
 import qualified GHC.LanguageExtensions as LangExt
 
+import Data.Foldable (foldl')
 import Control.Monad
 
 #include "HsVersions.h"
@@ -78,9 +79,9 @@ addTypecheckedBinds tcg_env binds
   | isHsBootOrSig (tcg_src tcg_env) = tcg_env
     -- Do not add the code for record-selector bindings
     -- when compiling hs-boot files
-  | otherwise = tcg_env { tcg_binds = foldr unionBags
-                                            (tcg_binds tcg_env)
-                                            binds }
+  | otherwise = tcg_env { tcg_binds = foldl' unionBags
+                                             (tcg_binds tcg_env)
+                                             binds }
 
 {-
 ************************************************************************
@@ -292,7 +293,7 @@ tcValBinds top_lvl binds sigs thing_inside
         ; (poly_ids, sig_fn) <- tcAddPatSynPlaceholders patsyns $
                                 tcTySigs sigs
 
-        ; let prag_fn = mkPragEnv sigs (foldr (unionBags . snd) emptyBag binds)
+        ; let prag_fn = mkPragEnv sigs (unionManyBags $ map snd binds)
 
                 -- Extend the envt right away with all the Ids
                 -- declared with complete type signatures

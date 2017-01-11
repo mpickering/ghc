@@ -456,7 +456,7 @@ slurpReloadCoalesce live
         getSlotMap blockId
          = do   map             <- get
                 let slotMaps    = fromMaybe [] (lookupUFM map blockId)
-                return          $ foldr mergeSlotMaps emptyUFM slotMaps
+                return          $ foldl' mergeSlotMaps emptyUFM slotMaps
 
         mergeSlotMaps :: UniqFM Reg -> UniqFM Reg -> UniqFM Reg
         mergeSlotMaps map1 map2

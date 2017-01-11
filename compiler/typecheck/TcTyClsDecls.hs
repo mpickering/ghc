@@ -230,13 +230,13 @@ zipRecTyClss tc_tycons rec_tycons
   = [ (name, ATyCon (get name)) | tc_tycon <- tc_tycons, let name = getName tc_tycon ]
   where
     rec_tc_env :: NameEnv TyCon
-    rec_tc_env = foldr add_tc emptyNameEnv rec_tycons
+    rec_tc_env = foldl' add_tc emptyNameEnv rec_tycons
 
-    add_tc :: TyCon -> NameEnv TyCon -> NameEnv TyCon
-    add_tc tc env = foldr add_one_tc env (tc : tyConATs tc)
+    add_tc :: NameEnv TyCon -> TyCon -> NameEnv TyCon
+    add_tc env tc = foldl' add_one_tc env (tc : tyConATs tc)
 
-    add_one_tc :: TyCon -> NameEnv TyCon -> NameEnv TyCon
-    add_one_tc tc env = extendNameEnv env (tyConName tc) tc
+    add_one_tc :: NameEnv TyCon -> TyCon -> NameEnv TyCon
+    add_one_tc env tc = extendNameEnv env (tyConName tc) tc
 
     get name = case lookupNameEnv rec_tc_env name of
                  Just tc -> tc

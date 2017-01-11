@@ -62,6 +62,7 @@ import FV
 import Module
 
 import Control.Monad
+import Data.Foldable (foldl')
 
 {-
 ************************************************************************
@@ -134,8 +135,8 @@ synonymTyConsOfType ty
 
      go_tc tc | isTypeSynonymTyCon tc = unitNameEnv (tyConName tc) tc
               | otherwise             = emptyNameEnv
-     go_s tys = foldr (plusNameEnv . go) emptyNameEnv tys
-     go_co_s cos = foldr (plusNameEnv . go_co) emptyNameEnv cos
+     go_s tys = foldl' (flip $ plusNameEnv . go) emptyNameEnv tys
+     go_co_s cos = foldl' (flip $ plusNameEnv . go_co) emptyNameEnv cos
 
 -- | A monad for type synonym cycle checking, which keeps
 -- track of the TyCons which are known to be acyclic, or

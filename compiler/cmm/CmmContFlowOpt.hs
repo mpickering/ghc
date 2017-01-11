@@ -17,6 +17,7 @@ import Maybes
 import Panic
 
 import Control.Monad
+import Data.Foldable (foldl')
 import Prelude hiding (succ, unzip, zip)
 
 
@@ -171,7 +172,7 @@ blockConcat splitting_procs g@CmmGraph { g_entry = entry_id }
      -- a map of blocks. We process each element from blocks and update
      -- blockmap accordingly
      blocks = postorderDfs g
-     blockmap = foldr addBlock emptyBody blocks
+     blockmap = foldl' (flip addBlock) emptyBody blocks
 
      -- Accumulator contains three components:
      --  * map of blocks in a graph
@@ -384,10 +385,10 @@ mkCmmCondBranch p t f l =
 
 -- Build a map from a block to its set of predecessors.
 predMap :: [CmmBlock] -> LabelMap Int
-predMap blocks = foldr add_preds mapEmpty blocks
+predMap blocks = foldl' add_preds mapEmpty blocks
   where
-    add_preds block env = foldr add env (successors block)
-      where add lbl env = mapInsertWith (+) lbl 1 env
+    add_preds env block = foldl' add env (successors block)
+      where add env lbl = mapInsertWith (+) lbl 1 env
 
 -- Removing unreachable blocks
 removeUnreachableBlocksProc :: CmmDecl -> CmmDecl
@@ -412,4 +413,4 @@ removeUnreachableBlocksProc proc@(CmmProc info lbl live g)
      used_blocks = postorderDfs g
 
      used_lbls :: LabelSet
-     used_lbls = foldr (setInsert . entryLabel) setEmpty used_blocks
+     used_lbls = foldl' (flip $ setInsert . entryLabel) setEmpty used_blocks

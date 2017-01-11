@@ -230,6 +230,7 @@ import OccName ( OccName )
 import Name    ( mkInternalName )
 
 import Maybes           ( orElse )
+import Data.Foldable    ( foldl' )
 import Data.Maybe       ( isJust, mapMaybe )
 import Control.Monad    ( guard )
 import Control.Arrow    ( first, second )
@@ -2211,8 +2212,8 @@ tyConsOfType ty
         -- this last case can happen from the tyConsOfType used from
         -- checkTauTvUpdate
 
-     go_s tys     = foldr (plusNameEnv . go)     emptyNameEnv tys
-     go_cos cos   = foldr (plusNameEnv . go_co)  emptyNameEnv cos
+     go_s tys     = foldl' (flip $ plusNameEnv . go)     emptyNameEnv tys
+     go_cos cos   = foldl' (flip $ plusNameEnv . go_co)  emptyNameEnv cos
 
      go_tc tc = unitNameEnv (tyConName tc) tc
      go_ax ax = go_tc $ coAxiomTyCon ax

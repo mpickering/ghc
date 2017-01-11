@@ -36,7 +36,7 @@ import UniqSupply
 import Control.Monad
 import Data.List
 import Data.Maybe
-import Prelude (($),Int,Bool,Eq(..)) -- avoid importing (<*>)
+import Prelude (($), Int, Bool, Eq(..), flip) -- avoid importing (<*>)
 
 #include "HsVersions.h"
 
@@ -77,7 +77,8 @@ flattenCmmAGraph id (stmts_t, tscope) =
     CmmGraph { g_entry = id,
                g_graph = GMany NothingO body NothingO }
   where
-  body = foldr addBlock emptyBody $ flatten id stmts_t tscope []
+  body = foldl' (flip addBlock) emptyBody
+         $ flatten id stmts_t tscope []
 
   --
   -- flatten: given an entry label and a CmmAGraph, make a list of blocks.

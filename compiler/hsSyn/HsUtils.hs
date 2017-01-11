@@ -1098,7 +1098,7 @@ lStmtsImplicits :: [LStmtLR Name idR (Located (body idR))] -> NameSet
 lStmtsImplicits = hs_lstmts
   where
     hs_lstmts :: [LStmtLR Name idR (Located (body idR))] -> NameSet
-    hs_lstmts = foldr (\stmt rest -> unionNameSet (hs_stmt (unLoc stmt)) rest) emptyNameSet
+    hs_lstmts = unionNameSets . map (hs_stmt . unLoc)
 
     hs_stmt :: StmtLR Name idR (Located (body idR)) -> NameSet
     hs_stmt (BindStmt pat _ _ _ _) = lPatImplicits pat
@@ -1118,7 +1118,7 @@ lStmtsImplicits = hs_lstmts
 
 hsValBindsImplicits :: HsValBindsLR Name idR -> NameSet
 hsValBindsImplicits (ValBindsOut binds _)
-  = foldr (unionNameSet . lhsBindsImplicits . snd) emptyNameSet binds
+  = unionNameSets $ map (lhsBindsImplicits . snd) binds
 hsValBindsImplicits (ValBindsIn binds _)
   = lhsBindsImplicits binds
 
@@ -1133,7 +1133,7 @@ lPatImplicits = hs_lpat
   where
     hs_lpat (L _ pat) = hs_pat pat
 
-    hs_lpats = foldr (\pat rest -> hs_lpat pat `unionNameSet` rest) emptyNameSet
+    hs_lpats = unionNameSets . map hs_lpat
 
     hs_pat (LazyPat pat)       = hs_lpat pat
     hs_pat (BangPat pat)       = hs_lpat pat
