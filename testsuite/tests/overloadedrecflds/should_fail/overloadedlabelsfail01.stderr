@@ -1,12 +1,12 @@
 
 overloadedlabelsfail01.hs:6:5: error:
-    • No instance for (IsLabel "x" t2)
+    • No instance for (IsLabel "x" t0)
         arising from the overloaded label ‘#x’
     • In the expression: #x
       In an equation for ‘a’: a = #x
 
 overloadedlabelsfail01.hs:9:5: error:
-    • No instance for (IsLabel "x" (t1 -> t0))
+    • No instance for (IsLabel "x" (t1 -> t2))
         arising from the overloaded label ‘#x’
         (maybe you haven't applied a function to enough arguments?)
     • In the expression: #x

@@ -66,14 +66,14 @@ Defer01.hs:39:17: warning: [-Wdeferred-type-errors (in -Wdefault)]
         i :: a -> () (bound at Defer01.hs:39:1)
 
 Defer01.hs:43:5: warning: [-Wdeferred-type-errors (in -Wdefault)]
-    • No instance for (MyClass a1) arising from a use of ‘myOp’
+    • No instance for (MyClass a0) arising from a use of ‘myOp’
     • In the expression: myOp 23
       In an equation for ‘j’: j = myOp 23
 
 Defer01.hs:43:10: warning: [-Wdeferred-type-errors (in -Wdefault)]
-    • Ambiguous type variable ‘a1’ arising from the literal ‘23’
-      prevents the constraint ‘(Num a1)’ from being solved.
-      Probable fix: use a type annotation to specify what ‘a1’ should be.
+    • Ambiguous type variable ‘a0’ arising from the literal ‘23’
+      prevents the constraint ‘(Num a0)’ from being solved.
+      Probable fix: use a type annotation to specify what ‘a0’ should be.
       These potential instances exist:
         instance Num Integer -- Defined in ‘GHC.Num’
         instance Num Double -- Defined in ‘GHC.Float’
@@ -89,7 +89,7 @@ Defer01.hs:47:1: warning: [-Woverlapping-patterns (in -Wdefault)]
     In an equation for ‘k’: k x = ...
 
 Defer01.hs:50:5: warning: [-Wdeferred-type-errors (in -Wdefault)]
-    • Couldn't match expected type ‘IO a0’
+    • Couldn't match expected type ‘IO a1’
                   with actual type ‘Char -> IO ()’
     • Probable cause: ‘putChar’ is applied to too few arguments
       In the first argument of ‘(>>)’, namely ‘putChar’
@@ -158,7 +158,7 @@ Defer01.hs:50:5: warning: [-Wdeferred-type-errors (in -Wdefault)]
         i :: a -> () (bound at Defer01.hs:39:1)
 (deferred type error)
 *** Exception: Defer01.hs:43:5: error:
-    • No instance for (MyClass a1) arising from a use of ‘myOp’
+    • No instance for (MyClass a0) arising from a use of ‘myOp’
     • In the expression: myOp 23
       In an equation for ‘j’: j = myOp 23
 (deferred type error)
@@ -169,7 +169,7 @@ Defer01.hs:50:5: warning: [-Wdeferred-type-errors (in -Wdefault)]
       In the expression: print (k 2)
       In an equation for ‘it’: it = print (k 2)
 *** Exception: Defer01.hs:50:5: error:
-    • Couldn't match expected type ‘IO a0’
+    • Couldn't match expected type ‘IO a1’
                   with actual type ‘Char -> IO ()’
     • Probable cause: ‘putChar’ is applied to too few arguments
       In the first argument of ‘(>>)’, namely ‘putChar’

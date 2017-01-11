@@ -25,6 +25,9 @@ Dependent packages: [base-4.10.0.0, ghc-prim-0.5.0.0,
                      integer-gmp-1.0.0.1]
 
 ==================== Typechecker ====================
+Roles1.$trModule
+  = GHC.Types.Module
+      (GHC.Types.TrNameS "main"#) (GHC.Types.TrNameS "Roles1"#)
 Roles1.$tcT7
   = GHC.Types.TyCon
       12795488517584970699##
@@ -109,7 +112,4 @@ Roles1.$tc'K1
       3576433963139282451##
       Roles1.$trModule
       (GHC.Types.TrNameS "'K1"#)
-Roles1.$trModule
-  = GHC.Types.Module
-      (GHC.Types.TrNameS "main"#) (GHC.Types.TrNameS "Roles1"#)
 
