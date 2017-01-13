@@ -275,7 +275,8 @@ checkSingle' locn var p = do
   clause    <- liftD $ translatePat fam_insts p
   missing   <- mkInitialUncovered [var]
   tracePm "checkSingle: missing" (vcat (map pprValVecDebug missing))
-  PartialResult prov cs us ds <- runMany (pmcheckI clause []) missing -- no guards
+                                 -- no guards
+  PartialResult prov cs us ds <- runMany (pmcheckI clause []) missing
   return $ case (cs,ds) of
     (Covered,  _    )         -> PmResult prov [] us [] -- useful
     (NotCovered, NotDiverged) -> PmResult prov m us []  -- redundant
@@ -305,10 +306,14 @@ checkMatches' vars matches
       missing    <- mkInitialUncovered vars
       tracePm "checkMatches: missing" (vcat (map pprValVecDebug missing))
       (prov, rs,us,ds) <- go matches missing
-      return $ PmResult prov (map hsLMatchToLPats rs) us (map hsLMatchToLPats ds)
+      return
+        $ PmResult prov (map hsLMatchToLPats rs) us (map hsLMatchToLPats ds)
   where
     go :: [LMatch Id (LHsExpr Id)] -> Uncovered
-       -> PmM (Provenance, [LMatch Id (LHsExpr Id)] , Uncovered , [LMatch Id (LHsExpr Id)])
+       -> PmM (Provenance
+              , [LMatch Id (LHsExpr Id)]
+              , Uncovered
+              , [LMatch Id (LHsExpr Id)])
     go []     missing = return (mempty, [], missing, [])
     go (m:ms) missing = do
       tracePm "checMatches': go" (ppr m $$ ppr missing)
@@ -320,9 +325,12 @@ checkMatches' vars matches
       (ms_prov, rs, final_u, is)  <- go ms missing'
       let final_prov = prov `mappend` ms_prov
       return $ case (cs, ds) of
-        (Covered,  _    )        -> (final_prov,  rs, final_u,   is) -- useful
-        (NotCovered, NotDiverged) -> (final_prov, m:rs, final_u,is) -- redundant
-        (NotCovered, Diverged )   -> (final_prov,  rs, final_u, m:is) -- inaccessible
+        -- useful
+        (Covered,  _    )        -> (final_prov,  rs, final_u,   is)
+        -- redundant
+        (NotCovered, NotDiverged) -> (final_prov, m:rs, final_u,is)
+        -- inaccessible
+        (NotCovered, Diverged )   -> (final_prov,  rs, final_u, m:is)
 
     hsLMatchToLPats :: LMatch id body -> Located [LPat id]
     hsLMatchToLPats (L l (Match _ pats _ _)) = L l pats
