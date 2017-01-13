@@ -398,7 +398,7 @@ calculateAvails dflags iface mod_safe' want_boot =
           imp_orphs      = orphans,
           imp_finsts     = finsts,
           imp_dep_mods   = mkModDeps dependent_mods,
-          imp_dep_pkgs   = map fst $ dependent_pkgs,
+          imp_dep_pkgs   = S.fromList . map fst $ dependent_pkgs,
           -- Add in the imported modules trusted package
           -- requirements. ONLY do this though if we import the
           -- module as a safe import.

@@ -114,7 +114,7 @@ import Class
 import BasicTypes hiding( SuccessFlag(..) )
 import CoAxiom
 import Annotations
-import Data.List ( sortBy )
+import Data.List ( sort, sortBy )
 import Data.Ord
 import FastString
 import Maybes
@@ -122,6 +122,7 @@ import Util
 import Bag
 import Inst (tcGetInsts)
 import qualified GHC.LanguageExtensions as LangExt
+import qualified Data.Set as S
 
 import Control.Monad
 
@@ -2438,7 +2439,7 @@ pprTcGblEnv (TcGblEnv { tcg_type_env  = type_env,
          , text "Dependent modules:" <+>
                 pprUDFM (imp_dep_mods imports) ppr
          , text "Dependent packages:" <+>
-                ppr (sortBy compare $ imp_dep_pkgs imports)]
+                ppr (sort . S.toList $ imp_dep_pkgs imports)]
   where         -- The use of sortBy is just to reduce unnecessary
                 -- wobbling in testsuite output
 
