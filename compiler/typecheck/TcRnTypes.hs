@@ -180,6 +180,7 @@ import Control.Monad (ap, liftM, msum)
 import qualified Control.Monad.Fail as MonadFail
 #endif
 import Data.Set      ( Set )
+import qualified Data.Set as S
 
 import Data.Map      ( Map )
 import Data.Dynamic  ( Dynamic )
@@ -1213,7 +1214,7 @@ data ImportAvails
           -- or via other modules in this package, or via modules imported
           -- from other packages.
 
-        imp_trust_pkgs :: [InstalledUnitId],
+        imp_trust_pkgs :: Set InstalledUnitId,
           -- ^ This is strictly a subset of imp_dep_pkgs and records the
           -- packages the current module needs to trust for Safe Haskell
           -- compilation to succeed. A package is required to be trusted if
@@ -1249,7 +1250,7 @@ emptyImportAvails :: ImportAvails
 emptyImportAvails = ImportAvails { imp_mods          = emptyModuleEnv,
                                    imp_dep_mods      = emptyUDFM,
                                    imp_dep_pkgs      = [],
-                                   imp_trust_pkgs    = [],
+                                   imp_trust_pkgs    = S.empty,
                                    imp_trust_own_pkg = False,
                                    imp_orphs         = [],
                                    imp_finsts        = [] }
@@ -1272,7 +1273,7 @@ plusImportAvails
   = ImportAvails { imp_mods          = plusModuleEnv_C (++) mods1 mods2,
                    imp_dep_mods      = plusUDFM_C plus_mod_dep dmods1 dmods2,
                    imp_dep_pkgs      = dpkgs1 `unionLists` dpkgs2,
-                   imp_trust_pkgs    = tpkgs1 `unionLists` tpkgs2,
+                   imp_trust_pkgs    = tpkgs1 `S.union` tpkgs2,
                    imp_trust_own_pkg = tself1 || tself2,
                    imp_orphs         = orphs1 `unionLists` orphs2,
                    imp_finsts        = finsts1 `unionLists` finsts2 }

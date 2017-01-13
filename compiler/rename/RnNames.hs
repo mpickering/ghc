@@ -55,8 +55,10 @@ import Data.Map         ( Map )
 import qualified Data.Map as Map
 import Data.Ord         ( comparing )
 import Data.List        ( partition, (\\), find, sortBy )
+import qualified Data.Set as S
 -- import qualified Data.Set as Set
 import System.FilePath  ((</>))
+
 import System.IO
 
 {-
@@ -403,8 +405,8 @@ calculateAvails dflags iface mod_safe' want_boot =
           -- See Note [Tracking Trust Transitively]
           -- and Note [Trust Transitive Property]
           imp_trust_pkgs = if mod_safe'
-                               then map fst $ filter snd dependent_pkgs
-                               else [],
+                               then S.fromList . map fst $ filter snd dependent_pkgs
+                               else S.empty,
           -- Do we require our own pkg to be trusted?
           -- See Note [Trust Own Package]
           imp_trust_own_pkg = pkg_trust_req
