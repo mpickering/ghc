@@ -2056,7 +2056,7 @@ isTcTyCon _            = False
 -- Precondition: The fully-applied TyCon has kind (TYPE blah)
 isTcLevPoly :: TyCon -> Bool
 isTcLevPoly FunTyCon{}           = False
-isTcLevPoly (AlgTyCon { algTcParent = UnboxedAlgTyCon }) = True
+isTcLevPoly (AlgTyCon { algTcParent = UnboxedAlgTyCon _ }) = True
 isTcLevPoly AlgTyCon{}           = False
 isTcLevPoly SynonymTyCon{}       = True
 isTcLevPoly FamilyTyCon{}        = True
