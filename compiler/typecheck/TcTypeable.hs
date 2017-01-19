@@ -8,7 +8,7 @@
 module TcTypeable(mkTypeableBinds) where
 
 
-import BasicTypes ( SourceText(..) )
+import BasicTypes ( SourceText(..), Boxity(..) )
 import TcBinds( addTypecheckedBinds )
 import IfaceEnv( newGlobalBinder )
 import TyCoRep( Type(..) )
@@ -17,7 +17,7 @@ import TcEvidence ( mkWpTyApps )
 import TcRnMonad
 import HscTypes ( lookupId )
 import PrelNames
-import TysPrim ( primTyCons, primTypeableTyCons )
+import TysPrim ( primTyCons )
 import TysWiredIn ( tupleTyCon, runtimeRepTyCon, vecCountTyCon, vecElemTyCon
                   , nilDataCon, consDataCon )
 import Id
@@ -28,13 +28,11 @@ import DataCon
 import Name ( getOccName )
 import OccName
 import Module
-import NameEnv
 import HsSyn
 import DynFlags
 import Bag
 import Var ( TyVarBndr(..) )
 import VarEnv
-import BasicTypes ( Boxity(..) )
 import Constants  ( mAX_TUPLE_SIZE )
 import Fingerprint(Fingerprint(..), fingerprintString)
 import Outputable
@@ -223,18 +221,12 @@ mkPrimTypeableBinds
 -- don't want to include them in the original name cache. See
 -- Note [Built-in syntax and the OrigNameCache] in IfaceEnv for more.
 ghcPrimTypeableTyCons :: [TyCon]
-ghcPrimTypeableTyCons = filter (not . definedManually) $ concat
+ghcPrimTypeableTyCons = concat
     [ [ runtimeRepTyCon, vecCountTyCon, vecElemTyCon
       , funTyCon, tupleTyCon Unboxed 0]
     , map (tupleTyCon Unboxed) [2..mAX_TUPLE_SIZE]
     , primTyCons
     ]
-  where
-    -- Some things, like TYPE, have mutually recursion kind relationships and
-    -- therefore have manually-defined representations. See Note [Mutually
-    -- recursive representations of primitive types] in Data.Typeable.Internal
-    -- and Note [Grand plan for Typeable] for details.
-    definedManually tc = tyConName tc `elemNameEnv` primTypeableTyCons
 
 data TypeableStuff
     = Stuff { dflags         :: DynFlags

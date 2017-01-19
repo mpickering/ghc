@@ -2202,8 +2202,8 @@ doTyConApp clas ty tc kind_args
 -- polymorphism, but no more.
 onlyNamedBndrsApplied :: TyCon -> [KindOrType] -> Bool
 onlyNamedBndrsApplied tc ks
- = all isNamedBinder used_bndrs &&
-   not (any isNamedBinder leftover_bndrs)
+ = all isNamedTyConBinder used_bndrs &&
+   not (any isNamedTyConBinder leftover_bndrs)
  where
    bndrs                        = tyConBinders tc
    (used_bndrs, leftover_bndrs) = splitAtList ks bndrs
