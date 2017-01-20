@@ -615,7 +615,7 @@ zonkLExprs env exprs = mapM (zonkLExpr env) exprs
 zonkLExpr  env expr  = wrapLocM (zonkExpr env) expr
 
 zonkExpr env (HsVar (L l id))
-  = ASSERT( isNothing (isDataConId_maybe id) )
+  = ASSERT2( isNothing (isDataConId_maybe id), ppr id )
     return (HsVar (L l (zonkIdOcc env id)))
 
 zonkExpr _ e@(HsConLikeOut {}) = return e
