@@ -371,8 +371,7 @@ which looks like,
 
 Note how $trProxyType encodes only the kind variables of the TyCon
 instantiation. To compute the kind (Proxy Int) we need to have a recipe to
-compute the kind of a concrete instantiation of Proxy. We call"inplace/bin/ghc-stage1" -hisuf hi -osuf  o -hcsuf hc -static  -O -H64m -Wall      -this-unit-id ghc-prim-0.5.0.0 -hide-all-packages -i -ilibraries/ghc-prim/. -ilibraries/ghc-prim/dist-install/build -Ilibraries/ghc-prim/dist-install/build -ilibraries/ghc-prim/dist-install/build/./autogen -Ilibraries/ghc-prim/dist-install/build/./autogen -Ilibraries/ghc-prim/.    -optP-include -optPlibraries/ghc-prim/dist-install/build/./autogen/cabal_macros.h -package-id rts -this-unit-id ghc-prim -XHaskell2010 -O -dcore-lint  -no-user-package-db -rtsopts -Wno-trustworthy-safe -Wno-deprecated-flags     -Wnoncanonical-monad-instances  -odir libraries/ghc-prim/dist-install/build -hidir libraries/ghc-prim/dist-install/build -stubdir libraries/ghc-prim/dist-install/build  -split-sections -dynamic-too -c libraries/ghc-prim/./GHC/Types.hs -o libraries/ghc-prim/dist-install/build/GHC/Types.o -dyno libraries/ghc-prim/dist-install/build/GHC/Types.dyn_o
- this recipe a
+compute the kind of a concrete instantiation of Proxy. We call this recipe a
 KindRep and store it in the TyCon produced for Proxy,
 
     type KindBndr = Int   -- de Bruijn index
