@@ -100,7 +100,7 @@ module HscTypes (
         WhetherHasOrphans, IsBootInterface, Usage(..),
         Dependencies(..), noDependencies,
         updNameCacheIO,
-        IfaceExport,
+        IfaceExport(..), ifaceAvailNames, ifaceAvailName, ifacePlusAvail,
 
         -- * Warnings
         Warnings(..), WarningTxt(..), plusWarns,
@@ -200,6 +200,8 @@ import Exception
 import System.FilePath
 import Control.Concurrent
 import System.Process   ( ProcessHandle )
+
+import ListSetOps
 
 -- -----------------------------------------------------------------------------
 -- Compilation state
@@ -1082,7 +1084,53 @@ instance Binary ModIface where
                  mi_hash_fn     = mkIfaceHashCache decls })
 
 -- | The original names declared of a certain module that are exported
-type IfaceExport = AvailInfo
+-- This is exactly like AvailInfo but we use lists instead of sets
+data IfaceExport = IfaceAvail Name | IfaceAvailTC Name IsExported [Name] [FieldLabel]
+
+instance Outputable IfaceExport where
+  ppr _ = text "Export"
+
+ifacePlusAvail :: IfaceExport -> IfaceExport -> IfaceExport
+ifacePlusAvail a1@(IfaceAvail {})         (IfaceAvail {})        = a1
+ifacePlusAvail (IfaceAvailTC n1 ic ss1 fs1) (IfaceAvailTC _n2 ic' ss2 fs2)
+  = IfaceAvailTC n1 (combIsExported ic ic')
+               (ss1 `unionLists` ss2)
+               (fs1 `unionLists` fs2)
+ifacePlusAvail a1 a2 = pprPanic "RnEnv.plusAvail" (hsep [ppr a1,ppr a2])
+
+-- | Just the main name made available, i.e. not the available pieces
+-- of type or class brought into scope by the 'GenAvailInfo'
+ifaceAvailName :: IfaceExport -> Name
+ifaceAvailName (IfaceAvail n)     = n
+ifaceAvailName (IfaceAvailTC n _ _ _) = n
+
+-- | All names made available by the availability information (excluding overloaded selectors)
+ifaceAvailNames :: IfaceExport -> [Name]
+ifaceAvailNames (IfaceAvail n)         = [n]
+ifaceAvailNames (IfaceAvailTC _ _ ns fs) = ns ++ [ flSelector f | f <- fs, not (flIsOverloaded f) ]
+
+instance Binary IfaceExport where
+    put_ bh (IfaceAvail aa) = do
+            putByte bh 0
+            put_ bh aa
+    put_ bh (IfaceAvailTC ab ic ac ad) = do
+            putByte bh 1
+            put_ bh ab
+            put_ bh ic
+            put_ bh ac
+            put_ bh ad
+    get bh = do
+            h <- getByte bh
+            case h of
+              0 -> do aa <- get bh
+                      return (IfaceAvail aa)
+              _ -> do ab <- get bh
+                      ic <- get bh
+                      ac <- get bh
+                      ad <- get bh
+                      return (IfaceAvailTC ic ab ac ad)
+
+
 
 -- | Constructs an empty ModIface
 emptyModIface :: Module -> ModIface
@@ -1929,11 +1977,11 @@ tyThingsTyCoVars tts =
 tyThingAvailInfo :: TyThing -> [AvailInfo]
 tyThingAvailInfo (ATyCon t)
    = case tyConClass_maybe t of
-        Just c  -> [AvailTC n (n : map getName (classMethods c)
-                                 ++ map getName (classATs c))
+        Just c  -> [AvailTC n IsExported (mkNameSet (map getName (classMethods c)
+                                 ++ map getName (classATs c)))
                              [] ]
              where n = getName c
-        Nothing -> [AvailTC n (n : map getName dcs) flds]
+        Nothing -> [AvailTC n IsExported (mkNameSet $ map getName dcs) flds]
              where n    = getName t
                    dcs  = tyConDataCons t
                    flds = tyConFieldLabels t

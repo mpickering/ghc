@@ -213,7 +213,7 @@ import qualified Language.Haskell.TH as TH
 -- start pulling in too many DynFlags things.
 data NameShape = NameShape {
         ns_mod_name :: ModuleName,
-        ns_exports :: [AvailInfo],
+        ns_exports :: [IfaceExport],
         ns_map :: OccEnv Name
     }
 

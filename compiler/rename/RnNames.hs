@@ -5,6 +5,7 @@
 -}
 
 {-# LANGUAGE CPP, NondecreasingIndentation, MultiWayIf, NamedFieldPuns #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module RnNames (
         rnImports, getLocalNonValBinders, newRecordSelector,
@@ -621,7 +622,7 @@ getLocalNonValBinders fixity_env
              ; let fld_env = case unLoc tc_decl of
                      DataDecl { tcdDataDefn = d } -> mk_fld_env d names flds'
                      _                            -> []
-             ; return (AvailTC main_name names flds', fld_env) }
+             ; return (AvailTC main_name IsExported (mkNameSet sub_names) flds', fld_env) }
 
 
     -- Calculate the mapping from constructor names to fields, which
@@ -686,7 +687,7 @@ getLocalNonValBinders fixity_env
              ; let (bndrs, flds) = hsDataFamInstBinders ti_decl
              ; sub_names <- mapM newTopSrcBinder bndrs
              ; flds' <- mapM (newRecordSelector overload_ok sub_names) flds
-             ; let avail    = AvailTC (unLoc main_name) sub_names flds'
+             ; let avail    = AvailTC (unLoc main_name) NotExported (mkNameSet sub_names) flds'
                                   -- main_name is not bound here!
                    fld_env  = mk_fld_env (dfid_defn ti_decl) sub_names flds'
              ; return (avail, fld_env) }
@@ -920,14 +921,10 @@ filterImports iface decl_spec (Just (want_hiding, L l import_items))
 
         IEThingWith (L l rdr_tc) wc rdr_ns rdr_fs ->
           ASSERT2(null rdr_fs, ppr rdr_fs) do
-           (name, AvailTC _ ns subflds, mb_parent) <- lookup_name rdr_tc
+           (name, AvailTC _ _ ns subflds, mb_parent) <- lookup_name rdr_tc
 
            -- Look up the children in the sub-names of the parent
-           let subnames = case ns of   -- The tc is first in ns,
-                            [] -> []   -- if it is there at all
-                                       -- See the AvailTC Invariant in Avail.hs
-                            (n1:ns1) | n1 == name -> ns1
-                                     | otherwise  -> ns
+           let subnames = ns
            case lookupChildren (map Left subnames ++ map Right subflds) rdr_ns of
              Nothing                      -> failLookupWith BadImport
              Just (childnames, childflds) ->
@@ -935,14 +932,14 @@ filterImports iface decl_spec (Just (want_hiding, L l import_items))
                  -- non-associated ty/cls
                  Nothing
                    -> return ([(IEThingWith (L l name) wc childnames childflds,
-                               AvailTC name (name:map unLoc childnames) (map unLoc childflds))],
+                               AvailTC name IsExported (mkNameSet $ map unLoc childnames) (map unLoc childflds))],
                               [])
                  -- associated ty
                  Just parent
                    -> return ([(IEThingWith (L l name) wc childnames childflds,
-                                AvailTC name (map unLoc childnames) (map unLoc childflds)),
+                                AvailTC name (mkNameSet $ map unLoc childnames) (map unLoc childflds)),
                                (IEThingWith (L l name) wc childnames childflds,
-                                AvailTC parent [name] [])],
+                                AvailTC parent NotExported [name] [])],
                               [])
 
         _other -> failLookupWith IllegalImport
@@ -953,7 +950,7 @@ filterImports iface decl_spec (Just (want_hiding, L l import_items))
         mkIEThingAbs l (n, av, Nothing    ) = (IEThingAbs (L l n),
                                                trimAvail av n)
         mkIEThingAbs l (n, _,  Just parent) = (IEThingAbs (L l n),
-                                               AvailTC parent [n] [])
+                                               AvailTC parent (unitNameSet n) [])
 
         handle_bad_import m = catchIELookup m $ \err -> case err of
           BadImport | want_hiding -> return ([], [BadImportW])
@@ -1244,7 +1241,7 @@ findImportUsage imports used_gres
         used_avails = Map.lookup (srcSpanEnd loc) import_usage `orElse` []
                       -- srcSpanEnd: see Note [The ImportMap]
         used_names   = availsToNameSetWithSelectors used_avails
-        used_parents = mkNameSet [n | AvailTC n _ _ <- used_avails]
+        used_parents = mkNameSet [n | AvailTC n _ _ _ <- used_avails]
 
         unused_imps   -- Not trivial; see eg Trac #7454
           = case imps of
@@ -1397,22 +1394,22 @@ printMinimalImports imports_w_usage
     -- to say "T(A,B,C)".  So we have to find out what the module exports.
     to_ie _ (Avail n)
        = [IEVar (noLoc n)]
-    to_ie _ (AvailTC n [m] [])
-       | n==m = [IEThingAbs (noLoc n)]
-    to_ie iface (AvailTC n ns fs)
-      = case [(xs,gs) |  AvailTC x xs gs <- mi_exports iface
+    to_ie _ (AvailTC n IsExported (isEmptyNameSet -> True) []) = [IEThingAbs (noLoc n)]
+    to_ie iface (AvailTC n ic ns fs)
+      = case [(xs,gs) |  IfaceAvailTC x IsExported xs gs <- mi_exports iface
                  , x == n
-                 , x `elem` xs    -- Note [Partial export]
                  ] of
            [xs] | all_used xs -> [IEThingAll (noLoc n)]
                 | otherwise   -> [IEThingWith (noLoc n) NoIEWildcard
-                                              (map noLoc (filter (/= n) ns))
+                                              (map noLoc (nameSetElemsStable ns))
                                               (map noLoc fs)]
                                           -- Note [Overloaded field import]
            _other | all_non_overloaded fs
-                              -> map (IEVar . noLoc) $ ns ++ map flSelector fs
+                              -> map (IEVar . noLoc) $ nameSetElemsStable ns
+                                  ++ map flSelector fs
                   | otherwise -> [IEThingWith (noLoc n) NoIEWildcard
-                                              (map noLoc (filter (/= n) ns)) (map noLoc fs)]
+                                              (map noLoc $ nameSetElemsStable ns)
+                                              (map noLoc fs)]
         where
           fld_lbls = map flLabel fs
 
@@ -1512,8 +1509,8 @@ badImportItemErr iface decl_spec ie avails
       Just con -> badImportItemErrDataCon (availOccName con) iface decl_spec ie
       Nothing  -> badImportItemErrStd iface decl_spec ie
   where
-    checkIfDataCon (AvailTC _ ns _) =
-      case find (\n -> importedFS == nameOccNameFS n) ns of
+    checkIfDataCon (AvailTC _ _ ns _) =
+      case find (\n -> importedFS == nameOccNameFS n) (nameSetElemsStable ns) of
         Just n  -> isDataConName n
         Nothing -> False
     checkIfDataCon _ = False

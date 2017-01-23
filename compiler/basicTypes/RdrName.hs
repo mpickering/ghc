@@ -606,7 +606,7 @@ That's why plusParent picks the "best" case.
 
 -- | make a 'GlobalRdrEnv' where all the elements point to the same
 -- Provenance (useful for "hiding" imports, or imports with no details).
-gresFromAvails :: Maybe ImportSpec -> [AvailInfo] -> [GlobalRdrElt]
+gresFromAvails :: Maybe ImportSpec -> [IfaceExport] -> [GlobalRdrElt]
 -- prov = Nothing   => locally bound
 --        Just spec => imported as described by spec
 gresFromAvails prov avails
@@ -616,7 +616,7 @@ localGREsFromAvail :: AvailInfo -> [GlobalRdrElt]
 -- Turn an Avail into a list of LocalDef GlobalRdrElts
 localGREsFromAvail = gresFromAvail (const Nothing)
 
-gresFromAvail :: (Name -> Maybe ImportSpec) -> AvailInfo -> [GlobalRdrElt]
+gresFromAvail :: (Name -> Maybe ImportSpec) -> IfaceExport -> [GlobalRdrElt]
 gresFromAvail prov_fn avail
   = map mk_gre (availNonFldNames avail) ++ map mk_fld_gre (availFlds avail)
   where
@@ -686,8 +686,8 @@ greSrcSpan gre@(GRE { gre_name = name, gre_lcl = lcl, gre_imp = iss } )
 
 mkParent :: Name -> AvailInfo -> Parent
 mkParent _ (Avail _)           = NoParent
-mkParent n (AvailTC m _ _) | n == m    = NoParent
-                         | otherwise = ParentIs m
+mkParent n (AvailTC m _ _ _) | n == m    = NoParent
+                             | otherwise = ParentIs m
 
 greParentName :: GlobalRdrElt -> Maybe Name
 greParentName gre = case gre_par gre of
@@ -712,33 +712,22 @@ gresToAvailInfo gres
                                (greParentName gre)) gre
 
       where
-        -- We want to insert the child `k` into a list of children but
-        -- need to maintain the invariant that the parent is first.
-        --
-        -- We also use the invariant that `k` is not already in `ns`.
-        insertChildIntoChildren :: Name -> [Name] -> Name -> [Name]
-        insertChildIntoChildren _ [] k = [k]
-        insertChildIntoChildren p (n:ns) k
-          | p == k = k:n:ns
-          | otherwise = n:k:ns
-
         comb :: GlobalRdrElt -> AvailInfo -> AvailInfo
         comb _ (Avail n) = Avail n -- Duplicated name
-        comb gre (AvailTC m ns fls) =
+        comb gre (AvailTC m ic ns fls) =
           let n = gre_name gre
           in case gre_par gre of
-              NoParent -> AvailTC m (n:ns) fls -- Not sure this ever happens
-              ParentIs {} -> AvailTC m (insertChildIntoChildren m ns n) fls
-              FldParent _ mb_lbl ->  AvailTC m ns (mkFieldLabel n mb_lbl : fls)
+              NoParent -> AvailTC m ic ns fls -- Not sure this ever happens
+              ParentIs {} -> AvailTC m ic (extendNameSet ns n) fls
+              FldParent _ mb_lbl ->  AvailTC m ic ns (mkFieldLabel n mb_lbl : fls)
 
 availFromGRE :: GlobalRdrElt -> AvailInfo
 availFromGRE (GRE { gre_name = me, gre_par = parent })
   = case parent of
-      ParentIs p                  -> AvailTC p [me] []
-      NoParent   | isTyConName me -> AvailTC me [me] []
+      ParentIs p                  -> AvailTC p  NotExported (unitNameSet me) []
+      NoParent   | isTyConName me -> AvailTC me IsExported emptyNameSet []
                  | otherwise      -> avail   me
-      FldParent p mb_lbl -> AvailTC p [] [mkFieldLabel me mb_lbl]
-        where
+      FldParent p mb_lbl -> AvailTC p NotExported emptyNameSet [mkFieldLabel me mb_lbl]
 
 mkFieldLabel :: Name -> Maybe FastString -> FieldLabel
 mkFieldLabel me mb_lbl =

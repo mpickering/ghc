@@ -16,7 +16,6 @@ import Outputable
 import HscTypes
 import Module
 import UniqFM
-import Avail
 import FieldLabel
 
 import Name
@@ -63,7 +62,7 @@ import Control.Monad
 {-
 data NameShape = NameShape {
         ns_mod_name :: ModuleName,
-        ns_exports :: [AvailInfo],
+        ns_exports :: [IfaceExport],
         ns_map :: OccEnv Name
     }
 -}
@@ -78,15 +77,15 @@ emptyNameShape :: ModuleName -> NameShape
 emptyNameShape mod_name = NameShape mod_name [] emptyOccEnv
 
 -- | Create a 'NameShape' corresponding to an implementing
--- module for the hole @mod_name@ that exports a list of 'AvailInfo's.
-mkNameShape :: ModuleName -> [AvailInfo] -> NameShape
+-- module for the hole @mod_name@ that exports a list of 'IfaceExport's.
+mkNameShape :: ModuleName -> [IfaceExport] -> NameShape
 mkNameShape mod_name as =
     NameShape mod_name as $ mkOccEnv $ do
         a <- as
-        n <- availName a : availNames a
+        n <- ifaceAvailName a : ifaceAvailNames a
         return (occName n, n)
 
--- | Given an existing 'NameShape', merge it with a list of 'AvailInfo's
+-- | Given an existing 'NameShape', merge it with a list of 'IfaceExport's
 -- with Backpack style mix-in linking.  This is used solely when merging
 -- signatures together: we successively merge the exports of each
 -- signature until we have the final, full exports of the merged signature.
@@ -102,27 +101,27 @@ mkNameShape mod_name as =
 -- restricted notion of shaping than in Backpack'14: we do shaping
 -- *as* we do type-checking.  Thus, once we shape a signature, its
 -- exports are *final* and we're not allowed to refine them further,
-extendNameShape :: HscEnv -> NameShape -> [AvailInfo] -> IO (Either SDoc NameShape)
+extendNameShape :: HscEnv -> NameShape -> [IfaceExport] -> IO (Either SDoc NameShape)
 extendNameShape hsc_env ns as =
-    case uAvailInfos (ns_mod_name ns) (ns_exports ns) as of
+    case uIfaceExports (ns_mod_name ns) (ns_exports ns) as of
         Left err -> return (Left err)
         Right nsubst -> do
-            as1 <- mapM (liftIO . substNameAvailInfo hsc_env nsubst) (ns_exports ns)
-            as2 <- mapM (liftIO . substNameAvailInfo hsc_env nsubst) as
+            as1 <- mapM (liftIO . substNameIfaceExport hsc_env nsubst) (ns_exports ns)
+            as2 <- mapM (liftIO . substNameIfaceExport hsc_env nsubst) as
             let new_avails = mergeAvails as1 as2
             return . Right $ ns {
                 ns_exports = new_avails,
                 -- TODO: stop repeatedly rebuilding the OccEnv
                 ns_map = mkOccEnv $ do
                             a <- new_avails
-                            n <- availName a : availNames a
+                            n <- ifaceAvailName a : ifaceAvailNames a
                             return (occName n, n)
                 }
 
 -- | The export list associated with this 'NameShape' (i.e., what
 -- the exports of an implementing module which induces this 'NameShape'
 -- would be.)
-nameShapeExports :: NameShape -> [AvailInfo]
+nameShapeExports :: NameShape -> [IfaceExport]
 nameShapeExports = ns_exports
 
 -- | Given a 'Name', substitute it according to the 'NameShape' implied
@@ -172,15 +171,16 @@ substName :: ShNameSubst -> Name -> Name
 substName env n | Just n' <- lookupNameEnv env n = n'
                 | otherwise                      = n
 
--- | Substitute names in an 'AvailInfo'.  This has special behavior
+-- | Substitute names in an 'IfaceExport'.  This has special behavior
 -- for type constructors, where it is sufficient to substitute the 'availName'
 -- to induce a substitution on 'availNames'.
-substNameAvailInfo :: HscEnv -> ShNameSubst -> AvailInfo -> IO AvailInfo
-substNameAvailInfo _ env (Avail n) = return (Avail (substName env n))
-substNameAvailInfo hsc_env env (AvailTC n ns fs) =
+substNameIfaceExport :: HscEnv -> ShNameSubst -> IfaceExport -> IO IfaceExport
+substNameIfaceExport _ env (IfaceAvail n) = return (IfaceAvail (substName env n))
+substNameIfaceExport hsc_env env (IfaceAvailTC n ic ns fs) =
     let mb_mod = fmap nameModule (lookupNameEnv env n)
-    in AvailTC (substName env n)
-        <$> mapM (initIfaceLoad hsc_env . setNameModule mb_mod) ns
+    in IfaceAvailTC (substName env n)
+        <$> pure ic
+        <*> mapM (initIfaceLoad hsc_env . setNameModule mb_mod) ns
         <*> mapM (setNameFieldSelector hsc_env mb_mod) fs
 
 -- | Set the 'Module' of a 'FieldSelector'
@@ -193,44 +193,46 @@ setNameFieldSelector hsc_env mb_mod (FieldLabel l b sel) = do
 {-
 ************************************************************************
 *                                                                      *
-                        AvailInfo merging
+                        IfaceExport merging
 *                                                                      *
 ************************************************************************
 -}
 
--- | Merges to 'AvailInfo' lists together, assuming the 'AvailInfo's have
--- already been unified ('uAvailInfos').
-mergeAvails :: [AvailInfo] -> [AvailInfo] -> [AvailInfo]
+-- | Merges to 'IfaceExport' lists together, assuming the 'IfaceExport's have
+-- already been unified ('uIfaceExports').
+mergeAvails :: [IfaceExport] -> [IfaceExport] -> [IfaceExport]
 mergeAvails as1 as2 =
-    let mkNE as = mkNameEnv [(availName a, a) | a <- as]
-    in nameEnvElts (plusNameEnv_C plusAvail (mkNE as1) (mkNE as2))
+    let mkNE as = mkNameEnv [(ifaceAvailName a, a) | a <- as]
+    in nameEnvElts (plusNameEnv_C ifacePlusAvail (mkNE as1) (mkNE as2))
+
 
 {-
 ************************************************************************
 *                                                                      *
-                        AvailInfo unification
+                        IfaceExport unification
 *                                                                      *
 ************************************************************************
 -}
 
--- | Unify two lists of 'AvailInfo's, given an existing substitution @subst@,
+-- | Unify two lists of 'IfaceExport's, given an existing substitution @subst@,
 -- with only name holes from @flexi@ unifiable (all other name holes rigid.)
-uAvailInfos :: ModuleName -> [AvailInfo] -> [AvailInfo] -> Either SDoc ShNameSubst
-uAvailInfos flexi as1 as2 = -- pprTrace "uAvailInfos" (ppr as1 $$ ppr as2) $
+uIfaceExports :: ModuleName -> [IfaceExport] -> [IfaceExport] -> Either SDoc ShNameSubst
+uIfaceExports flexi as1 as2 = -- pprTrace "uIfaceExports" (ppr as1 $$ ppr as2) $
     let mkOE as = listToUFM $ do a <- as
-                                 n <- availNames a
+                                 n <- ifaceAvailNames a
                                  return (nameOccName n, a)
-    in foldM (\subst (a1, a2) -> uAvailInfo flexi subst a1 a2) emptyNameEnv
+    in foldM (\subst (a1, a2) -> uIfaceExport flexi subst a1 a2) emptyNameEnv
              (eltsUFM (intersectUFM_C (,) (mkOE as1) (mkOE as2)))
              -- Edward: I have to say, this is pretty clever.
 
--- | Unify two 'AvailInfo's, given an existing substitution @subst@,
+
+-- | Unify two 'IfaceExport's, given an existing substitution @subst@,
 -- with only name holes from @flexi@ unifiable (all other name holes rigid.)
-uAvailInfo :: ModuleName -> ShNameSubst -> AvailInfo -> AvailInfo
+uIfaceExport :: ModuleName -> ShNameSubst -> IfaceExport -> IfaceExport
            -> Either SDoc ShNameSubst
-uAvailInfo flexi subst (Avail n1) (Avail n2) = uName flexi subst n1 n2
-uAvailInfo flexi subst (AvailTC n1 _ _) (AvailTC n2 _ _) = uName flexi subst n1 n2
-uAvailInfo _ _ a1 a2 = Left $ text "While merging export lists, could not combine"
+uIfaceExport flexi subst (IfaceAvail n1) (IfaceAvail n2) = uName flexi subst n1 n2
+uIfaceExport flexi subst (IfaceAvailTC n1 _ _ _) (IfaceAvailTC n2 _ _ _) = uName flexi subst n1 n2
+uIfaceExport _ _ a1 a2 = Left $ text "While merging export lists, could not combine"
                            <+> ppr a1 <+> text "with" <+> ppr a2
                            <+> parens (text "one is a type, the other is a plain identifier")
 

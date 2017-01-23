@@ -1146,7 +1146,7 @@ lookupQualifiedNameGHCi rdr_name
                 Succeeded iface
                   -> return [ name
                             | avail <- mi_exports iface
-                            , name  <- availNames avail
+                            , name  <- ifaceAvailNames avail
                             , nameOccName name == occ ]
 
                 _ -> -- Either we couldn't load the interface, or

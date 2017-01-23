@@ -20,7 +20,7 @@ import Outputable
 import HscTypes
 import Module
 import UniqFM
-import Avail
+--import Avail
 import IfaceSyn
 import FieldLabel
 import Var
@@ -57,7 +57,7 @@ tcRnModIface x y z = do
     hsc_env <- getTopEnv
     tcRnMsgMaybe $ rnModIface hsc_env x y z
 
-tcRnModExports :: [(ModuleName, Module)] -> ModIface -> TcM [AvailInfo]
+tcRnModExports :: [(ModuleName, Module)] -> ModIface -> TcM [IfaceExport]
 tcRnModExports x y = do
     hsc_env <- getTopEnv
     tcRnMsgMaybe $ rnModExports hsc_env x y
@@ -115,7 +115,7 @@ rnModIface hsc_env insts nsubst iface = do
 
 -- | Rename just the exports of a 'ModIface'.  Useful when we're doing
 -- shaping prior to signature merging.
-rnModExports :: HscEnv -> [(ModuleName, Module)] -> ModIface -> IO (Either ErrorMessages [AvailInfo])
+rnModExports :: HscEnv -> [(ModuleName, Module)] -> ModIface -> IO (Either ErrorMessages [IfaceExport])
 rnModExports hsc_env insts iface
     = initRnIface hsc_env iface insts Nothing
     $ mapM rnAvailInfo (mi_exports iface)
@@ -184,9 +184,9 @@ rnModule mod = do
     dflags <- getDynFlags
     return (renameHoleModule dflags hmap mod)
 
-rnAvailInfo :: Rename AvailInfo
-rnAvailInfo (Avail n) = Avail <$> rnIfaceGlobal n
-rnAvailInfo (AvailTC n ns fs) = do
+rnAvailInfo :: Rename IfaceExport
+rnAvailInfo (IfaceAvail n) = IfaceAvail <$> rnIfaceGlobal n
+rnAvailInfo (IfaceAvailTC n ic ns fs) = do
     -- Why don't we rnIfaceGlobal the availName itself?  It may not
     -- actually be exported by the module it putatively is from, in
     -- which case we won't be able to tell what the name actually
@@ -198,7 +198,7 @@ rnAvailInfo (AvailTC n ns fs) = do
         [] -> panic "rnAvailInfoEmpty AvailInfo"
         (rep:rest) -> ASSERT2( all ((== nameModule rep) . nameModule) rest, ppr rep $$ hcat (map ppr rest) ) do
                          n' <- setNameModule (Just (nameModule rep)) n
-                         return (AvailTC n' ns' fs')
+                         return (IfaceAvailTC n' ic ns' fs')
 
 rnFieldLabel :: Rename FieldLabel
 rnFieldLabel (FieldLabel l b sel) = do

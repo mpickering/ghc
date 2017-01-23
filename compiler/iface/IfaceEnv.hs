@@ -35,6 +35,7 @@ import IfaceType
 import NameCache
 import UniqSupply
 import SrcLoc
+import NameSet
 
 import Outputable
 import Data.List     ( partition )
@@ -118,7 +119,11 @@ allocateGlobalBinder name_supply mod occ loc
                     new_name_supply = name_supply {nsUniqs = us', nsNames = new_cache}
 
 ifaceExportNames :: [IfaceExport] -> TcRnIf gbl lcl [AvailInfo]
-ifaceExportNames exports = return exports
+ifaceExportNames exports = return $ map ifaceExport exports
+
+ifaceExport :: IfaceExport -> AvailInfo
+ifaceExport (IfaceAvail n) = Avail n
+ifaceExport (IfaceAvailTC n ic ns fls) = AvailTC n ic (mkNameSet ns) fls
 
 -- | A function that atomically updates the name cache given a modifier
 -- function.  The second result of the modifier function will be the result
