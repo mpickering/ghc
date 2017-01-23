@@ -578,6 +578,16 @@ list.
     that have an INLINABLE pragma (:ref:`inlinable-pragma`) will be
     specialised as well.
 
+.. ghc-flag:: -fspecialise-aggressively
+
+    By default only type class methods and methods marked ``INLINABLE`` or
+    ``INLINE`` are specialised. This flag will specialise any overloaded function
+    regardless of size if its unfolding is availible. This flag is not
+    included in any optimisation level as it can massively increase code
+    size. It can be used in conjunction with :ghc-flag:`-fexpose-all-unfoldings`
+    if you want to ensure all calls are specialised.`
+
+
 .. ghc-flag:: -fcross-module-specialise
 
     :default: on
