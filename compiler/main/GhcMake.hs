@@ -1216,7 +1216,6 @@ upsweep mHscMessage old_hpt stable_mods cleanup sccs = do
    = do -- putStrLn ("UPSWEEP_MOD: hpt = " ++
         --           show (map (moduleUserString.moduleName.mi_module.hm_iface)
         --                     (moduleEnvElts (hsc_HPT hsc_env)))
-        dflags <- getDynFlags
         let logger _mod = defaultWarnErrLogger
 
         hsc_env <- getSession

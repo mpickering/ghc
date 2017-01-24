@@ -128,10 +128,9 @@ module HscTypes (
         HsParsedModule(..),
 
         -- * Compilation errors and warnings
-        SourceError, GhcApiError, mkSrcErr,  srcErrorMessages, mkApiErr,
+        SourceError, GhcApiError, mkSrcErr, srcErrorMessages, mkApiErr,
         throwOneError, handleSourceError,
         handleFlagWarnings, printOrThrowWarnings,
-
     ) where
 
 #include "HsVersions.h"
