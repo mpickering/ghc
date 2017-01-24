@@ -178,6 +178,7 @@ import Foreign.C        ( CInt(..) )
 import System.IO.Unsafe ( unsafeDupablePerformIO )
 import {-# SOURCE #-} ErrUtils ( Severity(..), MsgDoc, mkLocMessageAnn
                                , getCaretDiagnostic )
+import Json
 import SysTools.Terminal ( stderrSupportsAnsiColors )
 
 import System.IO.Unsafe ( unsafePerformIO )
@@ -409,6 +410,7 @@ data GeneralFlag
    | Opt_PrintExpandedSynonyms
    | Opt_PrintPotentialInstances
    | Opt_PrintTypecheckerElaboration
+   | Opt_Json
 
    -- optimisation opts
    | Opt_CallArity
@@ -568,6 +570,10 @@ data WarnReason = NoReason | Reason !WarningFlag
 
 instance Outputable WarnReason where
   ppr = text . show
+
+instance ToJson WarnReason where
+  json NoReason = JSNull
+  json (Reason wf) = JSString (show wf)
 
 data WarningFlag =
 -- See Note [Updating flag description in the User's Guide]
@@ -1696,6 +1702,16 @@ type LogAction = DynFlags
 defaultFatalMessager :: FatalMessager
 defaultFatalMessager = hPutStrLn stderr
 
+jsonLogAction :: LogAction
+jsonLogAction dflags reason severity srcSpan style msg
+  = (\m -> defaultLogActionHPrintDoc  dflags stdout m style) . text . renderJSON $
+      JSObject [ ( "span", json srcSpan )
+               , ( "doc" , JSString (showSDoc dflags msg) )
+              -- , ( "shortString", JSString errMsgShortString)
+               , ( "severity", json severity )
+               , ( "reason" ,   json reason )
+               ]
+
 defaultLogAction :: LogAction
 defaultLogAction dflags reason severity srcSpan style msg
     = case severity of
@@ -2062,6 +2078,10 @@ setHcSuf        f d = d { hcSuf        = f}
 setOutputFile f d = d { outputFile = f}
 setDynOutputFile f d = d { dynOutputFile = f}
 setOutputHi   f d = d { outputHi   = f}
+
+setJsonLogAction, setDefaultLogAction :: DynFlags -> DynFlags
+setJsonLogAction d = d { log_action = jsonLogAction }
+setDefaultLogAction d = d { log_action = defaultLogAction }
 
 thisComponentId :: DynFlags -> ComponentId
 thisComponentId dflags =
@@ -3520,6 +3540,8 @@ fFlagsDeps = [
   flagSpec "ignore-interface-pragmas"         Opt_IgnoreInterfacePragmas,
   flagGhciSpec "implicit-import-qualified"    Opt_ImplicitImportQualified,
   flagSpec "irrefutable-tuples"               Opt_IrrefutableTuples,
+  flagSpec' "json"                            Opt_Json
+    (\b -> if b then upd setJsonLogAction else upd setDefaultLogAction),
   flagSpec "kill-absence"                     Opt_KillAbsence,
   flagSpec "kill-one-shot"                    Opt_KillOneShot,
   flagSpec "late-dmd-anal"                    Opt_LateDmdAnal,
