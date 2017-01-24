@@ -1728,8 +1728,8 @@ jsonLogOutput = do
   return $ LogOutput (jsonLogAction ref) (jsonLogFinaliser ref)
 
 jsonLogAction :: IORef [SDoc] -> LogAction
-jsonLogAction iref dflags reason severity srcSpan style msg
-  = addMessage . withPprStyle style . renderJSON $
+jsonLogAction iref dflags reason severity srcSpan _style msg
+  = addMessage . withPprStyle (mkCodeStyle CStyle) . renderJSON $
       JSObject [ ( "span", json srcSpan )
                , ( "doc" , JSString (showSDoc dflags msg) )
               -- , ( "shortString", JSString errMsgShortString)
@@ -1743,9 +1743,12 @@ jsonLogFinaliser :: IORef [SDoc] -> DynFlags -> IO ()
 jsonLogFinaliser iref dflags = do
   msgs <- readIORef iref
   let fmt_msgs = brackets $ pprWithCommas (blankLine $$) msgs
-  defaultLogActionHPutStrDoc dflags stdout fmt_msgs defaultDumpStyle
+  output fmt_msgs
   -- It doesn't matter what style we choose as the right style for each
   -- message is baked in.
+  --
+  where
+    output doc = printSDoc Pretty.LeftMode dflags stdout defaultDumpStyle doc
 
 defaultLogAction :: LogAction
 defaultLogAction dflags reason severity srcSpan style msg
