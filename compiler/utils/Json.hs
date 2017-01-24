@@ -20,7 +20,7 @@ renderJSON d =
     JSNull -> text "null"
     JSBool b -> text $ if b then "true" else "false"
     JSInt    n -> ppr n
-    JSString s -> text $ escapeJsonString s
+    JSString s -> doubleQuotes $ text $ escapeJsonString s
     JSArray as -> brackets $ pprWithCommas renderJSON as
     JSObject fs -> braces $ pprWithCommas renderField fs
   where
@@ -35,8 +35,8 @@ escapeJsonString = concatMap escapeChar
     escapeChar '\n' = "\\n"
     escapeChar '\r' = "\\r"
     escapeChar '\t' = "\\t"
-    escapeChar '"'  = "\"'
-    escapeChar '\'  = "\\"
+    escapeChar '"'  = "\""
+    escapeChar '\\'  = "\\\\"
     escapeChar c    = [c]
 
 class ToJson a where
