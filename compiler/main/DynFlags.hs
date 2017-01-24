@@ -868,7 +868,9 @@ data DynFlags = DynFlags {
   ghciHistSize          :: Int,
 
   -- | MsgDoc output action: use "ErrUtils" instead of this if you can
+  initLogAction         :: IO LogOutput,
   log_action            :: LogAction,
+  log_finaliser         :: LogFinaliser,
   flushOut              :: FlushOut,
   flushErr              :: FlushErr,
 
@@ -1475,6 +1477,8 @@ initDynFlags dflags = do
                              return (str == str'))
                          `catchIOError` \_ -> return False
  canUseColor <- stderrSupportsAnsiColors
+
+
  return dflags{
         canGenerateDynamicToo = refCanGenerateDynamicToo,
         nextTempSuffix = refNextTempSuffix,
@@ -1635,7 +1639,13 @@ defaultDynFlags mySettings =
 
         ghciHistSize = 50, -- keep a log of length 50 by default
 
+        -- Logging
+
+        initLogAction = defaultLogOutput,
+
         log_action = defaultLogAction,
+        log_finaliser = \ _ -> return (),
+
         flushOut = defaultFlushOut,
         flushErr = defaultFlushErr,
         pprUserLength = 5,
@@ -1691,6 +1701,14 @@ interpreterDynamic dflags
 
 type FatalMessager = String -> IO ()
 
+data LogOutput = LogOutput
+               { getLogAction :: LogAction
+               , getLogFinaliser :: LogFinaliser
+               }
+
+defaultLogOutput :: IO LogOutput
+defaultLogOutput = return $ LogOutput defaultLogAction (\_ -> return ())
+
 type LogAction = DynFlags
               -> WarnReason
               -> Severity
@@ -1699,18 +1717,35 @@ type LogAction = DynFlags
               -> MsgDoc
               -> IO ()
 
+type LogFinaliser = DynFlags -> IO ()
+
 defaultFatalMessager :: FatalMessager
 defaultFatalMessager = hPutStrLn stderr
 
-jsonLogAction :: LogAction
-jsonLogAction dflags reason severity srcSpan style msg
-  = (\m -> defaultLogActionHPrintDoc  dflags stdout m style) . text . renderJSON $
+jsonLogOutput :: IO LogOutput
+jsonLogOutput = do
+  ref <- newIORef []
+  return $ LogOutput (jsonLogAction ref) (jsonLogFinaliser ref)
+
+jsonLogAction :: IORef [SDoc] -> LogAction
+jsonLogAction iref dflags reason severity srcSpan style msg
+  = addMessage . withPprStyle style . renderJSON $
       JSObject [ ( "span", json srcSpan )
                , ( "doc" , JSString (showSDoc dflags msg) )
               -- , ( "shortString", JSString errMsgShortString)
                , ( "severity", json severity )
                , ( "reason" ,   json reason )
                ]
+  where
+    addMessage m = modifyIORef iref (m:)
+
+jsonLogFinaliser :: IORef [SDoc] -> DynFlags -> IO ()
+jsonLogFinaliser iref dflags = do
+  msgs <- readIORef iref
+  let fmt_msgs = brackets $ pprWithCommas (blankLine $$) msgs
+  defaultLogActionHPutStrDoc dflags stdout fmt_msgs defaultDumpStyle
+  -- It doesn't matter what style we choose as the right style for each
+  -- message is baked in.
 
 defaultLogAction :: LogAction
 defaultLogAction dflags reason severity srcSpan style msg
@@ -2080,8 +2115,8 @@ setDynOutputFile f d = d { dynOutputFile = f}
 setOutputHi   f d = d { outputHi   = f}
 
 setJsonLogAction, setDefaultLogAction :: DynFlags -> DynFlags
-setJsonLogAction d = d { log_action = jsonLogAction }
-setDefaultLogAction d = d { log_action = defaultLogAction }
+setJsonLogAction d = d { initLogAction = jsonLogOutput }
+setDefaultLogAction d = d { initLogAction = defaultLogOutput }
 
 thisComponentId :: DynFlags -> ComponentId
 thisComponentId dflags =
@@ -2306,9 +2341,20 @@ parseDynamicFlagsFull activeFlags cmdline dflags0 args = do
     Just x -> liftIO (setHeapSize x)
     _      -> return ()
 
-  liftIO $ setUnsafeGlobalDynFlags dflags6
+  dflags7 <- liftIO $ setLogAction dflags6
 
-  return (dflags6, leftover, consistency_warnings ++ sh_warns ++ warns)
+  liftIO $ setUnsafeGlobalDynFlags dflags7
+
+  return (dflags7, leftover, consistency_warnings ++ sh_warns ++ warns)
+
+setLogAction :: DynFlags -> IO DynFlags
+setLogAction dflags = do
+ logger <- initLogAction dflags
+ return $ dflags
+            { log_action    = getLogAction logger
+            , log_finaliser = getLogFinaliser logger
+            }
+
 
 updateWays :: DynFlags -> DynFlags
 updateWays dflags

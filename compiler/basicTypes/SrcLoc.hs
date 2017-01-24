@@ -249,7 +249,7 @@ data SrcSpan =
                            -- derive Show for Token
 
 instance ToJson SrcSpan where
-  json (UnhelpfulSpan fs) = JSNull --JSObject [( "type", "unhelpful")]
+  json (UnhelpfulSpan {} ) = JSNull --JSObject [( "type", "unhelpful")]
   json (RealSrcSpan rss)  = json rss
 
 instance ToJson RealSrcSpan where

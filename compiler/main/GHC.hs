@@ -456,6 +456,7 @@ withCleanupSession ghc = ghc `gfinally` cleanup
       hsc_env <- getSession
       let dflags = hsc_dflags hsc_env
       liftIO $ do
+          log_finaliser dflags dflags
           cleanTempFiles dflags
           cleanTempDirs dflags
           stopIServ hsc_env -- shut down the IServ

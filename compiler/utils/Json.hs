@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 module Json where
 
-import Data.List
+import Outputable
 
 -- | Simply data type to represent JSON documents.
 data JsonDoc where
@@ -14,18 +14,18 @@ data JsonDoc where
 
 
 -- This is simple and slow as it is only used for error reporting
-renderJSON :: JsonDoc -> String
+renderJSON :: JsonDoc -> SDoc
 renderJSON d =
   case d of
-    JSNull -> "null"
-    JSBool b -> if b then "true" else "false"
-    JSInt    n -> show n
-    JSString s -> show s
-    JSArray as -> "[" ++ unwords (map renderJSON as) ++ "]"
-    JSObject fs -> "{" ++ intercalate ", " (map renderField fs) ++ "}"
+    JSNull -> text "null"
+    JSBool b -> text $ if b then "true" else "false"
+    JSInt    n -> ppr n
+    JSString s -> text $ show s -- Show the string for escaping. This is probably wrong
+    JSArray as -> brackets $ pprWithCommas renderJSON as
+    JSObject fs -> braces $ pprWithCommas renderField fs
   where
-    renderField :: (String, JsonDoc) -> String
-    renderField (s, j) = s ++ ": " ++ renderJSON j
+    renderField :: (String, JsonDoc) -> SDoc
+    renderField (s, j) = text s <>  colon <+> renderJSON j
 
 class ToJson a where
   json :: a -> JsonDoc
