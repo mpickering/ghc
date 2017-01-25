@@ -177,7 +177,7 @@ import Outputable
 import Foreign.C        ( CInt(..) )
 import System.IO.Unsafe ( unsafeDupablePerformIO )
 import {-# SOURCE #-} ErrUtils ( Severity(..), MsgDoc, mkLocMessageAnn
-                               , getCaretDiagnostic )
+                               , getCaretDiagnostic, dumpSDoc )
 import Json
 import SysTools.Terminal ( stderrSupportsAnsiColors )
 
@@ -380,6 +380,7 @@ data DumpFlag
    | Opt_D_dump_view_pattern_commoning
    | Opt_D_verbose_core2core
    | Opt_D_dump_debug
+   | Opt_D_dump_json
 
    deriving (Eq, Show, Enum)
 
@@ -410,7 +411,6 @@ data GeneralFlag
    | Opt_PrintExpandedSynonyms
    | Opt_PrintPotentialInstances
    | Opt_PrintTypecheckerElaboration
-   | Opt_Json
 
    -- optimisation opts
    | Opt_CallArity
@@ -1739,16 +1739,15 @@ jsonLogAction iref dflags reason severity srcSpan _style msg
   where
     addMessage m = modifyIORef iref (m:)
 
+
 jsonLogFinaliser :: IORef [SDoc] -> DynFlags -> IO ()
 jsonLogFinaliser iref dflags = do
   msgs <- readIORef iref
   let fmt_msgs = brackets $ pprWithCommas (blankLine $$) msgs
   output fmt_msgs
-  -- It doesn't matter what style we choose as the right style for each
-  -- message is baked in.
-  --
   where
-    output doc = printSDoc Pretty.LeftMode dflags stdout defaultDumpStyle doc
+    output doc = dumpSDoc dflags neverQualify Opt_D_dump_json "" doc
+
 
 defaultLogAction :: LogAction
 defaultLogAction dflags reason severity srcSpan style msg
@@ -2117,9 +2116,8 @@ setOutputFile f d = d { outputFile = f}
 setDynOutputFile f d = d { dynOutputFile = f}
 setOutputHi   f d = d { outputHi   = f}
 
-setJsonLogAction, setDefaultLogAction :: DynFlags -> DynFlags
+setJsonLogAction :: DynFlags -> DynFlags
 setJsonLogAction d = d { initLogAction = jsonLogOutput }
-setDefaultLogAction d = d { initLogAction = defaultLogOutput }
 
 thisComponentId :: DynFlags -> ComponentId
 thisComponentId dflags =
@@ -2960,6 +2958,9 @@ dynamic_flags_deps = [
         (NoArg (setGeneralFlag Opt_NoLlvmMangler)) -- hidden flag
   , make_ord_flag defGhcFlag "ddump-debug"        (setDumpFlag Opt_D_dump_debug)
 
+  , make_ord_flag defGhcFlag "ddump-json"
+        (noArg (flip dopt_set Opt_D_dump_json . setJsonLogAction ) )
+
         ------ Machine dependent (-m<blah>) stuff ---------------------------
 
   , make_ord_flag defGhcFlag "msse"         (noArg (\d ->
@@ -3589,8 +3590,6 @@ fFlagsDeps = [
   flagSpec "ignore-interface-pragmas"         Opt_IgnoreInterfacePragmas,
   flagGhciSpec "implicit-import-qualified"    Opt_ImplicitImportQualified,
   flagSpec "irrefutable-tuples"               Opt_IrrefutableTuples,
-  flagSpec' "json"                            Opt_Json
-    (\b -> if b then upd setJsonLogAction else upd setDefaultLogAction),
   flagSpec "kill-absence"                     Opt_KillAbsence,
   flagSpec "kill-one-shot"                    Opt_KillOneShot,
   flagSpec "late-dmd-anal"                    Opt_LateDmdAnal,
