@@ -25,7 +25,7 @@ renderJSON d =
     JSObject fs -> braces $ pprWithCommas renderField fs
   where
     renderField :: (String, JsonDoc) -> SDoc
-    renderField (s, j) = text s <>  colon <+> renderJSON j
+    renderField (s, j) = doubleQuotes (text s) <>  colon <+> renderJSON j
 
 escapeJsonString :: String -> String
 escapeJsonString = concatMap escapeChar
