@@ -2,6 +2,9 @@
 module Json where
 
 import Outputable
+import Debug.Trace
+import Data.Char
+import Numeric
 
 -- | Simply data type to represent JSON documents.
 data JsonDoc where
@@ -37,7 +40,14 @@ escapeJsonString = concatMap escapeChar
     escapeChar '\t' = "\\t"
     escapeChar '"'  = "\""
     escapeChar '\\'  = "\\\\"
-    escapeChar c    = [c]
+    escapeChar c | isControl c || fromEnum c >= 0x7f  = uni_esc c
+    escapeChar c = [c]
+
+    uni_esc c = "\\u" ++ (pad 4 (showHex (fromEnum c) ""))
+
+    pad n cs  | len < n   = replicate (n-len) '0' ++ cs
+                          | otherwise = cs
+                                   where len = length cs
 
 class ToJson a where
   json :: a -> JsonDoc
