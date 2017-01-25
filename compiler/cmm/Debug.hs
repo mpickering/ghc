@@ -276,7 +276,7 @@ pseudo-code,
     sub rsp, 8            -- unwind: rsp = rsp
 
 We see that attached to each instruction there is an "unwind" annotation, which
-provides a relationship between the each updated register and its value at the
+provides a relationship between each updated register and its value at the
 time of entry to a_fun. This is the sort of information that allows gdb to give
 you a stack backtrace given the execution state of your program. This
 unwinding information is captured in various ways by various debug information
@@ -358,7 +358,7 @@ The flow of unwinding information is a bit convoluted:
  * CmmLayoutStack produces an unwinding node for the adjustment of the STG Sp
    register which it inserts at the end of blocks.
 
- * The unwind nodes are carried through the sinking pass. This one way be a
+ * The unwind nodes are carried through the sinking pass. This one may be a
    little delicate and in principle this pass probably ought to learn to update
    unwinding nodes, but in practice it doesn't seem to interfere.
 

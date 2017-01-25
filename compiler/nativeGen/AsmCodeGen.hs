@@ -164,10 +164,11 @@ data NcgImpl statics instr jumpDest = NcgImpl {
     ncgAllocMoreStack         :: Int -> NatCmmDecl statics instr -> UniqSM (NatCmmDecl statics instr),
     ncgMakeFarBranches        :: LabelMap CmmStatics
                               -> [NatBasicBlock instr] -> [NatBasicBlock instr],
-    generateUnwindTable       :: [instr] -> [UnwindPoint]
+    extractUnwindPoints       :: [instr] -> [UnwindPoint]
     -- ^ given the instruction sequence of a block, produce a list of
     -- the block's 'UnwindPoint's
-    -- See Note [What is this unwinding business?] in Debug.
+    -- See Note [What is this unwinding business?] in Debug
+    -- and Note [Unwinding information in the NCG] in this module.
     }
 
 --------------------
@@ -214,7 +215,7 @@ x86_64NcgImpl dflags
        ,ncgAllocMoreStack         = X86.Instr.allocMoreStack platform
        ,ncgExpandTop              = id
        ,ncgMakeFarBranches        = const id
-       ,generateUnwindTable       = X86.CodeGen.generateUnwindTable
+       ,extractUnwindPoints       = X86.CodeGen.extractUnwindPoints
    }
     where platform = targetPlatform dflags
 
@@ -234,7 +235,7 @@ ppcNcgImpl dflags
        ,ncgAllocMoreStack         = PPC.Instr.allocMoreStack platform
        ,ncgExpandTop              = id
        ,ncgMakeFarBranches        = PPC.Instr.makeFarBranches
-       ,generateUnwindTable       = const []
+       ,extractUnwindPoints       = const []
    }
     where platform = targetPlatform dflags
 
@@ -254,7 +255,7 @@ sparcNcgImpl dflags
        ,ncgAllocMoreStack         = noAllocMoreStack
        ,ncgExpandTop              = map SPARC.CodeGen.Expand.expandTop
        ,ncgMakeFarBranches        = const id
-       ,generateUnwindTable       = const []
+       ,extractUnwindPoints       = const []
    }
 
 --
@@ -307,7 +308,7 @@ requires that the stack pointer be aligned to 16 bytes, which in turn means that
 GHC must sometimes add padding to $sp prior to performing a foreign call. When
 this happens unwind information must be updated accordingly.
 For this reason, we make the NCG backends responsible for producing
-unwinding tables (with the generateUnwindTable function in NcgImpl).
+unwinding tables (with the extractUnwindPoints function in NcgImpl).
 
 We accumulate the produced unwind tables over CmmGroups in the ngs_unwinds
 field of NativeGenAcc. This is a label map which contains an entry for each
@@ -744,7 +745,7 @@ computeUnwinding _ ncgImpl (CmmProc _ _ _ (ListGraph blks)) =
     -- Sp. The fact that CmmLayoutStack already ensures that we have unwind
     -- information at the beginning of every block means that there is no need to
     -- perform this sort of push-down.
-    mapFromList [ (blk_lbl, generateUnwindTable ncgImpl instrs)
+    mapFromList [ (blk_lbl, extractUnwindPoints ncgImpl instrs)
                 | BasicBlock blk_lbl instrs <- blks ]
 
 -- | Build a doc for all the imports.

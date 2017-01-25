@@ -21,7 +21,7 @@
 module X86.CodeGen (
         cmmTopCodeGen,
         generateJumpTableForInstr,
-        generateUnwindTable,
+        extractUnwindPoints,
         InstrBlock
 )
 
@@ -2738,11 +2738,9 @@ createJumpTable dflags ids section lbl
             | otherwise = map (jumpTableEntry dflags) ids
       in CmmData section (1, Statics lbl jumpTable)
 
-generateUnwindTable :: [Instr] -> [UnwindPoint]
-generateUnwindTable instrs = mapMaybe instrToUnwind instrs
-  where
-    instrToUnwind (UNWIND lbl unwinds) = Just $ UnwindPoint lbl unwinds
-    instrToUnwind _                    = Nothing
+extractUnwindPoints :: [Instr] -> [UnwindPoint]
+extractUnwindPoints instrs =
+    [ UnwindPoint lbl unwinds | UNWIND lbl unwinds <- instrs]
 
 -- -----------------------------------------------------------------------------
 -- 'condIntReg' and 'condFltReg': condition codes into registers

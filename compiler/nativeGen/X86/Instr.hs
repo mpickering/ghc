@@ -181,6 +181,7 @@ data Instr
         | NEWBLOCK BlockId
 
         -- unwinding information
+        -- See Note [Unwinding information in the NCG].
         | UNWIND BlockId UnwindTable
 
         -- specify current stack offset for benefit of subsequent passes.
