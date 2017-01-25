@@ -1728,14 +1728,16 @@ jsonLogOutput = do
   return $ LogOutput (jsonLogAction ref) (jsonLogFinaliser ref)
 
 jsonLogAction :: IORef [SDoc] -> LogAction
-jsonLogAction iref dflags reason severity srcSpan _style msg
-  = addMessage . withPprStyle (mkCodeStyle CStyle) . renderJSON $
-      JSObject [ ( "span", json srcSpan )
-               , ( "doc" , JSString (showSDoc dflags msg) )
-              -- , ( "shortString", JSString errMsgShortString)
-               , ( "severity", json severity )
-               , ( "reason" ,   json reason )
-               ]
+jsonLogAction iref dflags reason severity srcSpan style msg
+  = do
+      addMessage . withPprStyle (mkCodeStyle CStyle) . renderJSON $
+        JSObject [ ( "span", json srcSpan )
+                 , ( "doc" , JSString (showSDoc dflags msg) )
+                -- , ( "shortString", JSString errMsgShortString)
+                 , ( "severity", json severity )
+                 , ( "reason" ,   json reason )
+                ]
+      defaultLogAction dflags reason severity srcSpan style msg
   where
     addMessage m = modifyIORef iref (m:)
 
