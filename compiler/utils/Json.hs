@@ -2,7 +2,6 @@
 module Json where
 
 import Outputable
-import Debug.Trace
 import Data.Char
 import Numeric
 
