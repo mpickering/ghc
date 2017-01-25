@@ -191,6 +191,7 @@ fi
 echo "Validating=YES"       >  mk/are-validating.mk
 echo "ValidateSpeed=$speed" >> mk/are-validating.mk
 echo "ValidateHpc=$hpc"     >> mk/are-validating.mk
+echo "GhcStage2HcOpts=-ddump-json -ddump-to-file -ddump-file-prefix=abcde"      >> mk/are-validating.mk
 
 # Note [Default build system verbosity].
 #
