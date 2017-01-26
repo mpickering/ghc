@@ -868,7 +868,7 @@ data DynFlags = DynFlags {
   ghciHistSize          :: Int,
 
   -- | MsgDoc output action: use "ErrUtils" instead of this if you can
-  initLogAction         :: IO LogOutput,
+  initLogAction         :: IO (Maybe LogOutput),
   log_action            :: LogAction,
   log_finaliser         :: LogFinaliser,
   flushOut              :: FlushOut,
@@ -1706,8 +1706,8 @@ data LogOutput = LogOutput
                , getLogFinaliser :: LogFinaliser
                }
 
-defaultLogOutput :: IO LogOutput
-defaultLogOutput = return $ LogOutput defaultLogAction (\_ -> return ())
+defaultLogOutput :: IO (Maybe LogOutput)
+defaultLogOutput = return $ Nothing
 
 type LogAction = DynFlags
               -> WarnReason
@@ -1722,10 +1722,10 @@ type LogFinaliser = DynFlags -> IO ()
 defaultFatalMessager :: FatalMessager
 defaultFatalMessager = hPutStrLn stderr
 
-jsonLogOutput :: IO LogOutput
+jsonLogOutput :: IO (Maybe LogOutput)
 jsonLogOutput = do
   ref <- newIORef []
-  return $ LogOutput (jsonLogAction ref) (jsonLogFinaliser ref)
+  return . Just $ LogOutput (jsonLogAction ref) (jsonLogFinaliser ref)
 
 jsonLogAction :: IORef [SDoc] -> LogAction
 jsonLogAction iref dflags reason severity srcSpan style msg
@@ -1748,7 +1748,9 @@ jsonLogFinaliser iref dflags = do
   let fmt_msgs = brackets $ pprWithCommas (blankLine $$) msgs
   output fmt_msgs
   where
-    output doc = dumpSDoc dflags neverQualify Opt_D_dump_json "" doc
+    -- dumpSDoc uses log_action to output the dump
+    dflags' = dflags { log_action = defaultLogAction }
+    output doc = dumpSDoc dflags' neverQualify Opt_D_dump_json "" doc
 
 
 defaultLogAction :: LogAction
@@ -2352,11 +2354,16 @@ parseDynamicFlagsFull activeFlags cmdline dflags0 args = do
 
 setLogAction :: DynFlags -> IO DynFlags
 setLogAction dflags = do
- logger <- initLogAction dflags
- return $ dflags
-            { log_action    = getLogAction logger
-            , log_finaliser = getLogFinaliser logger
-            }
+ mlogger <- initLogAction dflags
+ return $
+    maybe
+         dflags
+         (\logger ->
+            dflags
+              { log_action    = getLogAction logger
+              , log_finaliser = getLogFinaliser logger
+              })
+         mlogger
 
 
 updateWays :: DynFlags -> DynFlags

@@ -499,7 +499,7 @@ dumpSDoc dflags print_unqual flag hdr doc
               let (doc', severity)
                     | null hdr  = (doc, SevOutput)
                     | otherwise = (mkDumpDoc hdr doc, SevDump)
-              defaultLogAction dflags NoReason severity noSrcSpan dump_style doc'
+              log_action dflags dflags NoReason severity noSrcSpan dump_style doc'
 
 
 -- | Choose where to put a dump file based on DynFlags
