@@ -23,11 +23,13 @@ renderJSON d =
     JSBool b -> text $ if b then "true" else "false"
     JSInt    n -> ppr n
     JSString s -> doubleQuotes $ text $ escapeJsonString s
-    JSArray as -> brackets $ pprWithCommas renderJSON as
-    JSObject fs -> braces $ pprWithCommas renderField fs
+    JSArray as -> brackets $ pprList renderJSON as
+    JSObject fs -> braces $ pprList renderField fs
   where
     renderField :: (String, JsonDoc) -> SDoc
     renderField (s, j) = doubleQuotes (text s) <>  colon <+> renderJSON j
+
+    pprList pp xs = hcat (punctuate comma (map pp xs))
 
 escapeJsonString :: String -> String
 escapeJsonString = concatMap escapeChar
