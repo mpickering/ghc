@@ -1477,8 +1477,6 @@ initDynFlags dflags = do
                              return (str == str'))
                          `catchIOError` \_ -> return False
  canUseColor <- stderrSupportsAnsiColors
-
-
  return dflags{
         canGenerateDynamicToo = refCanGenerateDynamicToo,
         nextTempSuffix = refNextTempSuffix,
@@ -1698,6 +1696,19 @@ interpreterDynamic dflags
   | otherwise = dynamicGhc
 
 --------------------------------------------------------------------------
+--
+-- Note [JSON Error Messages]
+--
+-- When the user requests the compiler output to be dumped as json
+-- we modify the log_action to collect all the messages in an IORef
+-- and then finally in GHC.withCleanupSession the log_finaliser is
+-- called which prints out the messages together.
+--
+-- Before the compiler calls log_action, it has already turned the `ErrMsg`
+-- into a formatted message. This means that we lose some possible
+-- information to provide to the user but refactoring log_action is quite
+-- invasive as it is called in many places. So, for now I left it alone
+-- and we can refine its behaviour as users request different output.
 
 type FatalMessager = String -> IO ()
 
@@ -1722,6 +1733,8 @@ type LogFinaliser = DynFlags -> IO ()
 defaultFatalMessager :: FatalMessager
 defaultFatalMessager = hPutStrLn stderr
 
+
+-- See Note [JSON Error Messages]
 jsonLogOutput :: IO (Maybe LogOutput)
 jsonLogOutput = do
   ref <- newIORef []
@@ -1733,7 +1746,6 @@ jsonLogAction iref dflags reason severity srcSpan style msg
       addMessage . withPprStyle (mkCodeStyle CStyle) . renderJSON $
         JSObject [ ( "span", json srcSpan )
                  , ( "doc" , JSString (showSDoc dflags msg) )
-                -- , ( "shortString", JSString errMsgShortString)
                  , ( "severity", json severity )
                  , ( "reason" ,   json reason )
                 ]

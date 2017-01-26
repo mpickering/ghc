@@ -129,18 +129,6 @@ data ErrMsg = ErrMsg {
         }
         -- The SrcSpan is used for sorting errors into line-number order
 
-instance ToJson ErrMsg where
-  json ErrMsg{..} =
-    JSObject [ ( "span", json errMsgSpan )
-             , ( "doc" , json errMsgDoc )
-             , ( "shortString", JSString errMsgShortString)
-             , ( "severity", json errMsgSeverity )
-             , ( "reason" ,   json errMsgReason )
-             ]
-
-instance ToJson ErrDoc where
-  json _ = JSNull
-
 
 -- | Categorise error msgs by their importance.  This is so each section can
 -- be rendered visually distinct.  See Note [Error report] for where these come
