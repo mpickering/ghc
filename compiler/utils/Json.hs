@@ -5,7 +5,7 @@ import Outputable
 import Data.Char
 import Numeric
 
--- | Simply data type to represent JSON documents.
+-- | Simple data type to represent JSON documents.
 data JsonDoc where
   JSNull :: JsonDoc
   JSBool :: Bool -> JsonDoc
