@@ -2374,6 +2374,7 @@ setLogAction dflags = do
             dflags
               { log_action    = getLogAction logger
               , log_finaliser = getLogFinaliser logger
+              , initLogAction = return $ Nothing -- Don't initialise it twice
               })
          mlogger
 
