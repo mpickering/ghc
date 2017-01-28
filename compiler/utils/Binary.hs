@@ -80,7 +80,7 @@ import Data.Time
 import Type.Reflection
 import Type.Reflection.Unsafe
 import Data.Kind (Type)
-import GHC.Exts (TYPE, RuntimeRep)
+import GHC.Exts (RuntimeRep(..), VecCount(..), VecElem(..))
 #else
 import Data.Typeable
 #endif
@@ -571,17 +571,72 @@ instance Binary TyCon where
         put_ bh (tyConPackage tc)
         put_ bh (tyConModule tc)
         put_ bh (tyConName tc)
-    get bh = do
-        p <- get bh
-        m <- get bh
-        n <- get bh
+        put_ bh (tyConKindVars tc)
+        put_ bh (tyConKindRep tc)
+    get bh =
 #if MIN_VERSION_base(4,10,0)
-        return (mkTyCon p m n)
+        mkTyCon <$> get bh <*> get bh <*> get bh <*> get bh <*> get bh
 #else
-        return (mkTyCon3 p m n)
+        mkTyCon3 <$> get bh <*> get bh <*> get bh
 #endif
 
 #if MIN_VERSION_base(4,10,0)
+instance Binary VecCount where
+    put_ bh = putByte bh . fromIntegral . fromEnum
+    get bh = toEnum . fromIntegral <$> getByte bh
+
+instance Binary VecElem where
+    put_ bh = putByte bh . fromIntegral . fromEnum
+    get bh = toEnum . fromIntegral <$> getByte bh
+
+instance Binary RuntimeRep where
+    put_ bh (VecRep a b)    = putByte bh 0 >> put_ bh a >> put_ bh b
+    put_ bh (TupleRep reps) = putByte bh 1 >> put_ bh reps
+    put_ bh (SumRep reps)   = putByte bh 2 >> put_ bh reps
+    put_ bh LiftedRep       = putByte bh 3
+    put_ bh UnliftedRep     = putByte bh 4
+    put_ bh IntRep          = putByte bh 5
+    put_ bh WordRep         = putByte bh 6
+    put_ bh Int64Rep        = putByte bh 7
+    put_ bh Word64Rep       = putByte bh 8
+    put_ bh AddrRep         = putByte bh 9
+    put_ bh FloatRep        = putByte bh 10
+    put_ bh DoubleRep       = putByte bh 11
+
+    get bh = do
+        tag <- getByte bh
+        case tag of
+          0  -> VecRep <$> get bh <*> get bh
+          1  -> TupleRep <$> get bh
+          2  -> SumRep <$> get bh
+          3  -> pure LiftedRep
+          4  -> pure UnliftedRep
+          5  -> pure IntRep
+          6  -> pure WordRep
+          7  -> pure Int64Rep
+          8  -> pure Word64Rep
+          9  -> pure AddrRep
+          10 -> pure FloatRep
+          11 -> pure DoubleRep
+          _  -> fail "GHCi.TH.Binary.putRuntimeRep: invalid tag"
+
+instance Binary KindRep where
+    put_ bh (KindRepTyConApp tc k) = putByte bh 0 >> put_ bh tc >> put_ bh k
+    put_ bh (KindRepVar bndr) = putByte bh 1 >> put_ bh bndr
+    put_ bh (KindRepApp a b) = putByte bh 2 >> put_ bh a >> put_ bh b
+    put_ bh (KindRepFun a b) = putByte bh 3 >> put_ bh a >> put_ bh b
+    put_ bh (KindRepTYPE r) = putByte bh 4 >> put_ bh r
+
+    get bh = do
+        tag <- getByte bh
+        case tag of
+          0 -> KindRepTyConApp <$> get bh <*> get bh
+          1 -> KindRepVar <$> get bh
+          2 -> KindRepApp <$> get bh <*> get bh
+          3 -> KindRepFun <$> get bh <*> get bh
+          4 -> KindRepTYPE <$> get bh
+          _ -> fail "GHCi.TH.Binary.putKindRep: invalid tag"
+
 putTypeRep :: BinHandle -> TypeRep a -> IO ()
 -- Special handling for TYPE, (->), and RuntimeRep due to recursive kind
 -- relations.
@@ -589,7 +644,7 @@ putTypeRep :: BinHandle -> TypeRep a -> IO ()
 putTypeRep bh rep
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type)
   = put_ bh (0 :: Word8)
-putTypeRep bh rep@(TRCon' con ks) = do
+putTypeRep bh (TRCon' con ks) = do
     put_ bh (1 :: Word8)
     put_ bh con
     put_ bh ks
@@ -612,17 +667,10 @@ getSomeTypeRep bh = do
                 ks <- get bh :: IO [SomeTypeRep]
                 return $ SomeTypeRep $ mkTrCon con ks
 
-                case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
-                    Just HRefl -> pure $ SomeTypeRep $ mkTrCon con rep_k
-                    Nothing    -> failure "Kind mismatch in constructor application"
-                                          [ "    Type constructor: " ++ show con
-                                          , "    Applied to type : " ++ show rep_k
-                                          ]
-
         2 -> do SomeTypeRep f <- getSomeTypeRep bh
                 SomeTypeRep x <- getSomeTypeRep bh
                 case typeRepKind f of
-                  TRFun arg _ ->
+                  TRFun arg res ->
                       case arg `eqTypeRep` typeRepKind x of
                         Just HRefl ->
                             case typeRepKind res `eqTypeRep` (typeRep :: TypeRep Type) of
@@ -644,6 +692,7 @@ getSomeTypeRep bh = do
                       case typeRepKind res `eqTypeRep` (typeRep :: TypeRep Type) of
                         Just HRefl -> return $ SomeTypeRep $ TRFun arg res
                         Nothing -> failure "Kind mismatch" []
+                  _ -> failure "Kind mismatch" []
         _ -> failure "Invalid SomeTypeRep" []
   where
     failure description info =
