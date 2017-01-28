@@ -186,12 +186,14 @@ on f g = \ x y -> g x `f` g y
 
 -- | @since 2.01
 instance Eq (TypeRep a) where
-  (==) = (==) `on` typeRepFingerprint
+  TrTyCon a _ _ _ _ == TrTyCon b _ _ _ _  = a == b
+  {-# INLINABLE (==) #-}
 
 instance TestEquality TypeRep where
-  testEquality a b
-    | typeRepFingerprint a == typeRepFingerprint b = Just (unsafeCoerce# Refl)
-    | otherwise                                    = Nothing
+  testEquality (TrTyCon a _ _ _ _) (TrTyCon b _ _ _ _)
+    | a == b    = Just (unsafeCoerce# Refl)
+    | otherwise = Nothing
+  {-# INLINEABLE testEquality #-}
 
 -- | @since 4.4.0.0
 instance Ord (TypeRep a) where
@@ -253,10 +255,6 @@ mkTrApp a b = TrApp fpr a b
     fpr_b = typeRepFingerprint b
     fpr   = fingerprintFingerprints [fpr_a, fpr_b]
 
-
-data AppResult (t :: k) where
-    App :: TypeRep a -> TypeRep b -> AppResult (a b)
-
 -- | Pattern match on a type application
 pattern TRApp :: forall k2 (t :: k2). ()
               => forall k1 (a :: k1 -> k2) (b :: k1). (t ~ a b)
@@ -281,6 +279,9 @@ pattern TRCon con <- TrTyCon _ con _
 -- variables.
 pattern TRCon' :: forall k (a :: k). TyCon -> [SomeTypeRep] -> TypeRep a
 pattern TRCon' con ks <- TrTyCon _ con ks
+
+data AppResult (t :: k) where
+    App :: TypeRep a -> TypeRep b -> AppResult (a b)
 
 -- | Splits a type application.
 splitApp :: TypeRep a -> Maybe (AppResult a)
@@ -326,15 +327,20 @@ typeRepKind (TrApp _ f _)
 typeRepKind (TrFun _ _ _) = typeRep @Type
 typeRepKind _ = error "Ill-kinded type representation"
 
-tyConKind :: TyCon ->  [SomeTypeRep] -> SomeTypeRep
-tyConKind (TyCon _ _ _ _ nKindVars# kindRep) kindVars = go kindRep
-  where
-    kindVarsArr :: A.Array KindBndr SomeTypeRep
-    kindVarsArr = A.listArray (0, I# (nKindVars# -# 1#)) kindVars
+tyConKind :: TyCon -> [SomeTypeRep] -> SomeTypeRep
+tyConKind (TyCon _ _ _ _ nKindVars# kindRep) kindVars =
+    let kindVarsArr :: A.Array KindBndr SomeTypeRep
+        kindVarsArr = A.listArray (0, I# (nKindVars# -# 1#)) kindVars
+    in instantiateKindRep kindVarsArr kindRep
 
+instantiateKindRep :: A.Array KindBndr SomeTypeRep -> KindRep -> SomeTypeRep
+instantiateKindRep vars = go
+  where
     go :: KindRep -> SomeTypeRep
-    go (KindRepTyConApp tc args) = undefined -- tyConKind tc args
-    go (KindRepVar var) = kindVarsArr A.! var
+    go (KindRepTyConApp tc args)
+      = SomeTypeRep $ mkTrCon tc (map go args)
+    go (KindRepVar var)
+      = vars A.! var
     go (KindRepApp f a)
       = SomeTypeRep $ TRApp (unsafeCoerceRep $ go f) (unsafeCoerceRep $ go a)
     go (KindRepFun a b)
@@ -485,14 +491,16 @@ instance Show SomeTypeRep where
   showsPrec p (SomeTypeRep ty) = showsPrec p ty
 
 splitApps :: TypeRep a -> (TyCon, [SomeTypeRep])
-splitApps = undefined --go []
-    {-
+splitApps = go []
   where
     go :: [SomeTypeRep] -> TypeRep a -> (TyCon, [SomeTypeRep])
     go xs (TrTyCon _ tc _) = (tc, xs)
     go xs (TrApp _ f x)    = go (SomeTypeRep x : xs) f
-    go _  (TrFun _ _ _)    = error "splitApps: FunTy" -- TODO
--}
+    go [] (TrFun _ a b)    = (funTyCon, [SomeTypeRep a, SomeTypeRep b])
+    go _  (TrFun _ _ _)    = error "Data.Typeable.Internal.splitApps: Impossible"
+
+funTyCon :: TyCon
+funTyCon = typeRepTyCon (typeRep @(->))
 
 isListTyCon :: TyCon -> Bool
 isListTyCon tc = tc == typeRepTyCon (typeRep :: TypeRep [Int])
