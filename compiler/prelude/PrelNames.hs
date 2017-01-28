@@ -1799,7 +1799,7 @@ someTypeRepDataConKey = mkPreludeTyConUnique 186
 
 
 typeSymbolAppendFamNameKey :: Unique
-typeSymbolAppendFamNameKey = mkPreludeTyConUnique 185
+typeSymbolAppendFamNameKey = mkPreludeTyConUnique 187
 
 ---------------- Template Haskell -------------------
 --      THNames.hs: USES TyConUniques 200-299
