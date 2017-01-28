@@ -342,11 +342,11 @@ mkTyConRepTyConRHS stuff@(Stuff {..}) todo tycon
                      `nlHsApp` nlHsLit (word64 low)
                      `nlHsApp` mod_rep_expr todo
                      `nlHsApp` trNameLit (mkFastString tycon_str)
-                     `nlHsApp` nlHsLit (int 0) -- TODO
+                     `nlHsApp` nlHsLit (int n_kind_vars)
                      `nlHsApp` kind_rep
        return rep_rhs
   where
-
+    n_kind_vars = length $ filter isNamedTyConBinder (tyConBinders tycon)
     tycon_str = add_tick (occNameString (getOccName tycon))
     add_tick s | isPromotedDataCon tycon = '\'' : s
                | otherwise               = s

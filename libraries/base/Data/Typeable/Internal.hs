@@ -329,9 +329,8 @@ typeRepKind _ = error "Ill-kinded type representation"
 tyConKind :: TyCon ->  [SomeTypeRep] -> SomeTypeRep
 tyConKind (TyCon _ _ _ _ nKindVars# kindRep) kindVars = go kindRep
   where
-    nKindVars = I# nKindVars#
     kindVarsArr :: A.Array KindBndr SomeTypeRep
-    kindVarsArr = A.listArray (0,nKindVars) kindVars
+    kindVarsArr = A.listArray (0, I# (nKindVars# -# 1#)) kindVars
 
     go :: KindRep -> SomeTypeRep
     go (KindRepTyConApp tc args) = undefined -- tyConKind tc args
