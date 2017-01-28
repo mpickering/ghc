@@ -197,7 +197,7 @@ instance Ord (TypeRep a) where
 
 -- | A non-indexed type representation.
 data SomeTypeRep where
-    SomeTypeRep :: TypeRep a -> SomeTypeRep
+    SomeTypeRep :: forall k (a :: k). TypeRep a -> SomeTypeRep
 
 instance Eq SomeTypeRep where
   SomeTypeRep a == SomeTypeRep b =
