@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -73,6 +74,7 @@ module Data.Typeable.Internal (
   ) where
 
 import GHC.Base
+import qualified GHC.Arr as A
 import GHC.Types (TYPE)
 import Data.Type.Equality
 import GHC.Word
@@ -307,9 +309,112 @@ eqTypeRep a b
   | typeRepFingerprint a == typeRepFingerprint b = Just (unsafeCoerce# HRefl)
   | otherwise                                    = Nothing
 
+
+-------------------------------------------------------------
+--
+--      Computing kinds
+--
+-------------------------------------------------------------
+
 -- | Observe the kind of a type.
 typeRepKind :: TypeRep (a :: k) -> TypeRep k
-typeRepKind a = undefined
+typeRepKind (TrTyCon _ tc args)
+  = unsafeCoerceRep $ tyConKind tc args
+typeRepKind (TrApp _ f _)
+  | TRFun _ res <- typeRepKind f
+  = res
+typeRepKind (TrFun _ _ _) = typeRep @Type
+typeRepKind _ = error "Ill-kinded type representation"
+
+tyConKind :: TyCon ->  [SomeTypeRep] -> SomeTypeRep
+tyConKind (TyCon _ _ _ _ nKindVars# kindRep) kindVars = go kindRep
+  where
+    nKindVars = I# nKindVars#
+    kindVarsArr :: A.Array KindBndr SomeTypeRep
+    kindVarsArr = A.listArray (0,nKindVars) kindVars
+
+    go :: KindRep -> SomeTypeRep
+    go (KindRepTyConApp tc args) = undefined -- tyConKind tc args
+    go (KindRepVar var) = kindVarsArr A.! var
+    go (KindRepApp f a)
+      = SomeTypeRep $ TRApp (unsafeCoerceRep $ go f) (unsafeCoerceRep $ go a)
+    go (KindRepFun a b)
+      = SomeTypeRep $ TRFun (unsafeCoerceRep $ go a) (unsafeCoerceRep $ go b)
+    go (KindRepTYPE r) = unkindedTypeRep $ runtimeRepTypeRep r
+
+unsafeCoerceRep :: SomeTypeRep -> TypeRep a
+unsafeCoerceRep (SomeTypeRep r) = unsafeCoerce r
+
+unkindedTypeRep :: SomeKindedTypeRep k -> SomeTypeRep
+unkindedTypeRep (SomeKindedTypeRep x) = SomeTypeRep x
+
+data SomeKindedTypeRep k where
+    SomeKindedTypeRep :: forall (a :: k). TypeRep a -> SomeKindedTypeRep k
+
+kApp :: SomeKindedTypeRep (k -> k') -> SomeKindedTypeRep k -> SomeKindedTypeRep k'
+kApp (SomeKindedTypeRep f) (SomeKindedTypeRep a) = SomeKindedTypeRep (TRApp f a)
+
+kindedTypeRep :: forall (a :: k). Typeable a => SomeKindedTypeRep k
+kindedTypeRep = SomeKindedTypeRep (typeRep @a)
+
+buildList :: forall k. Typeable k => [SomeKindedTypeRep k] -> SomeKindedTypeRep [k]
+buildList = foldr cons nil
+  where
+    nil = kindedTypeRep @[k] @'[]
+    cons x rest = SomeKindedTypeRep (typeRep @'(:)) `kApp` x `kApp` rest
+
+runtimeRepTypeRep :: RuntimeRep -> SomeKindedTypeRep RuntimeRep
+runtimeRepTypeRep r =
+    case r of
+      LiftedRep   -> rep @'LiftedRep
+      UnliftedRep -> rep @'UnliftedRep
+      VecRep c e  -> kindedTypeRep @_ @'VecRep
+                     `kApp` vecCountTypeRep c
+                     `kApp` vecElemTypeRep e
+      TupleRep rs -> kindedTypeRep @_ @'TupleRep
+                     `kApp` buildList (map runtimeRepTypeRep rs)
+      SumRep rs   -> kindedTypeRep @_ @'SumRep
+                     `kApp` buildList (map runtimeRepTypeRep rs)
+      IntRep      -> rep @'IntRep
+      WordRep     -> rep @'WordRep
+      Int64Rep    -> rep @'Int64Rep
+      Word64Rep   -> rep @'Word64Rep
+      AddrRep     -> rep @'AddrRep
+      FloatRep    -> rep @'FloatRep
+      DoubleRep   -> rep @'DoubleRep
+  where
+    rep :: forall (a :: RuntimeRep). Typeable a => SomeKindedTypeRep RuntimeRep
+    rep = kindedTypeRep @RuntimeRep @a
+
+vecCountTypeRep :: VecCount -> SomeKindedTypeRep VecCount
+vecCountTypeRep c =
+    case c of
+      Vec2  -> rep @'Vec2
+      Vec4  -> rep @'Vec4
+      Vec8  -> rep @'Vec8
+      Vec16 -> rep @'Vec16
+      Vec32 -> rep @'Vec32
+      Vec64 -> rep @'Vec64
+  where
+    rep :: forall (a :: VecCount). Typeable a => SomeKindedTypeRep VecCount
+    rep = kindedTypeRep @VecCount @a
+
+vecElemTypeRep :: VecElem -> SomeKindedTypeRep VecElem
+vecElemTypeRep e =
+    case e of
+      Int8ElemRep     -> rep @'Int8ElemRep
+      Int16ElemRep    -> rep @'Int16ElemRep
+      Int32ElemRep    -> rep @'Int32ElemRep
+      Int64ElemRep    -> rep @'Int64ElemRep
+      Word8ElemRep    -> rep @'Word8ElemRep
+      Word16ElemRep   -> rep @'Word16ElemRep
+      Word32ElemRep   -> rep @'Word32ElemRep
+      Word64ElemRep   -> rep @'Word64ElemRep
+      FloatElemRep    -> rep @'FloatElemRep
+      DoubleElemRep   -> rep @'DoubleElemRep
+  where
+    rep :: forall (a :: VecElem). Typeable a => SomeKindedTypeRep VecElem
+    rep = kindedTypeRep @VecElem @a
 
 -------------------------------------------------------------
 --
@@ -319,7 +424,7 @@ typeRepKind a = undefined
 
 -- | The class 'Typeable' allows a concrete representation of a type to
 -- be calculated.
-class Typeable a where
+class Typeable (a :: k) where
   typeRep# :: TypeRep a
 
 typeRep :: Typeable a => TypeRep a

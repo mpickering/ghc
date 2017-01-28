@@ -39,7 +39,7 @@ module GHC.Types (
         VecCount(..), VecElem(..),
 
         -- * Runtime type representation
-        Module(..), TrName(..), TyCon(..), KindRep(..)
+        Module(..), TrName(..), TyCon(..), KindRep(..), KindBndr
     ) where
 
 import GHC.Prim
