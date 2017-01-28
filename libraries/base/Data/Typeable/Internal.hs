@@ -326,8 +326,10 @@ typeRepKind (TrTyCon _ tc args)
 typeRepKind (TrApp _ f _)
   | TRFun _ res <- typeRepKind f
   = res
+  | otherwise
+  = error ("Ill-kinded type application: " ++ show (typeRepKind f))
 typeRepKind (TrFun _ _ _) = typeRep @Type
-typeRepKind _ = error "Ill-kinded type representation"
+typeRepKind t = error ("Ill-kinded type representation: "++show t)
 
 tyConKind :: TyCon -> [SomeTypeRep] -> SomeTypeRep
 tyConKind (TyCon _ _ _ _ nKindVars# kindRep) kindVars =
@@ -347,7 +349,9 @@ instantiateKindRep vars = go
       = SomeTypeRep $ TRApp (unsafeCoerceRep $ go f) (unsafeCoerceRep $ go a)
     go (KindRepFun a b)
       = SomeTypeRep $ TRFun (unsafeCoerceRep $ go a) (unsafeCoerceRep $ go b)
-    go (KindRepTYPE r) = unkindedTypeRep $ runtimeRepTypeRep r
+    go (KindRepTYPE r) = unkindedTypeRep $ tYPE `kApp` runtimeRepTypeRep r
+
+    tYPE = kindedTypeRep @(RuntimeRep -> Type) @TYPE
 
 unsafeCoerceRep :: SomeTypeRep -> TypeRep a
 unsafeCoerceRep (SomeTypeRep r) = unsafeCoerce r
