@@ -434,6 +434,9 @@ mkTyConKindRep (Stuff {..}) tycon = do
   where
     -- Compute RHS
     go :: VarEnv Int -> Kind -> TcRn (LHsExpr Id)
+    go bndrs ty
+      | Just ty' <- coreView ty
+      = go bndrs ty'
     go bndrs (TyVarTy v)
       | Just idx <- lookupVarEnv bndrs v
       = return $ nlHsDataCon kindRepVarDataCon
@@ -456,7 +459,7 @@ mkTyConKindRep (Stuff {..}) tycon = do
                     `nlHsApp` nlHsVar rep_id
                     `nlHsApp` mkList (mkTyConTy kindRepTyCon) tys'
       | otherwise
-      = pprPanic "UnrepresentableThingy" empty
+      = pprPanic "UnrepresentableThingy" (ppr tycon)
     go _bndrs (ForAllTy (TvBndr var _) ty)
       = pprPanic "mkTyConKeyRepBinds(forall)" (ppr var $$ ppr ty)
     --  = let bndrs' = extendVarEnv (mapVarEnv (+1) bndrs) var 0
