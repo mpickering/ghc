@@ -186,13 +186,15 @@ on f g = \ x y -> g x `f` g y
 
 -- | @since 2.01
 instance Eq (TypeRep a) where
-  TrTyCon a _ _ _ _ == TrTyCon b _ _ _ _  = a == b
+  _ == _  = True
   {-# INLINABLE (==) #-}
 
 instance TestEquality TypeRep where
-  testEquality (TrTyCon a _ _ _ _) (TrTyCon b _ _ _ _)
-    | a == b    = Just (unsafeCoerce# Refl)
-    | otherwise = Nothing
+  a `testEquality` b
+    | Just HRefl <- eqTypeRep a b
+    = Just Refl
+    | otherwise
+    = Nothing
   {-# INLINEABLE testEquality #-}
 
 -- | @since 4.4.0.0
