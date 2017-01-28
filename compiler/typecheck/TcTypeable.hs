@@ -492,4 +492,3 @@ mkTyConKindRep (Stuff {..}) tycon = do
 
     consExpr :: Type -> LHsExpr Id
     consExpr ty = mkLHsWrap (mkWpTyApps [ty]) (nlHsDataCon consDataCon)
-
