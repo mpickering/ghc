@@ -429,8 +429,12 @@ F :: forall k. k -> forall k'. k' -> Type
 mkTyConKindRep :: TypeableStuff -> TyCon -> TcRn (LHsExpr Id)
 mkTyConKindRep (Stuff {..}) tycon = do
     let bndrs = mkVarEnv $ (`zip` [0..]) $ map binderVar
-                $ reverse $ filter isNamedTyConBinder (tyConBinders tycon)
-    pprTrace "mkTyConKeyRepBinds" (ppr tycon <+> pprType' (tyConKind tycon)) $ go bndrs (tyConResKind tycon)
+                $ filter isNamedTyConBinder (tyConBinders tycon)
+    pprTrace "mkTyConKindRepBinds"
+             (ppr tycon
+             $$ pprType' (tyConKind tycon)
+             $$ ppr (map binderVar $ filter isNamedTyConBinder $ tyConBinders tycon))
+        $ go bndrs (tyConResKind tycon)
   where
     -- Compute RHS
     go :: VarEnv Int -> Kind -> TcRn (LHsExpr Id)
