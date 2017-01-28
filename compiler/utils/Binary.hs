@@ -566,6 +566,7 @@ instance Binary (Bin a) where
 -- -----------------------------------------------------------------------------
 -- Instances for Data.Typeable stuff
 
+#if MIN_VERSION_base(4,10,0)
 instance Binary TyCon where
     put_ bh tc = do
         put_ bh (tyConPackage tc)
@@ -574,9 +575,14 @@ instance Binary TyCon where
         put_ bh (tyConKindVars tc)
         put_ bh (tyConKindRep tc)
     get bh =
-#if MIN_VERSION_base(4,10,0)
         mkTyCon <$> get bh <*> get bh <*> get bh <*> get bh <*> get bh
 #else
+instance Binary TyCon where
+    put_ bh tc = do
+        put_ bh (tyConPackage tc)
+        put_ bh (tyConModule tc)
+        put_ bh (tyConName tc)
+    get bh =
         mkTyCon3 <$> get bh <*> get bh <*> get bh
 #endif
 
