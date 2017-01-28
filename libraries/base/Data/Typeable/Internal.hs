@@ -69,7 +69,8 @@ module Data.Typeable.Internal (
 
     -- * Construction
     -- | These are for internal use only
-    mkTrCon, mkTrApp, mkTyCon, mkTyCon#,
+    mkTrCon, mkTrApp, mkTrFun,
+    mkTyCon, mkTyCon#,
     typeSymbolTypeRep, typeNatTypeRep,
   ) where
 
