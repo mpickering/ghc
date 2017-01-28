@@ -588,38 +588,30 @@ putTypeRep :: BinHandle -> TypeRep a -> IO ()
 -- See Note [Mutually recursive representations of primitive types]
 putTypeRep bh rep
   | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep Type)
-  = put_ bh (5 :: Word8)
-  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep TYPE)
   = put_ bh (0 :: Word8)
-  | Just HRefl <- rep `eqTypeRep` (typeRep :: TypeRep RuntimeRep)
-  = put_ bh (1 :: Word8)
-  | TRFun arg res <- rep
-  = do put_ bh (2 :: Word8)
-       putTypeRep bh arg
-       putTypeRep bh res
 putTypeRep bh rep@(TRCon' con ks) = do
-    put_ bh (3 :: Word8)
+    put_ bh (1 :: Word8)
     put_ bh con
     put_ bh ks
 putTypeRep bh (TRApp f x) = do
-    put_ bh (4 :: Word8)
+    put_ bh (2 :: Word8)
     putTypeRep bh f
     putTypeRep bh x
+putTypeRep bh (TRFun arg res) = do
+    put_ bh (3 :: Word8)
+    putTypeRep bh arg
+    putTypeRep bh res
 putTypeRep _ _ = fail "Binary.putTypeRep: Impossible"
 
 getSomeTypeRep :: BinHandle -> IO SomeTypeRep
 getSomeTypeRep bh = do
     tag <- get bh :: IO Word8
     case tag of
-        5 -> return $ SomeTypeRep (typeRep :: TypeRep Type)
-        0 -> return $ SomeTypeRep (typeRep :: TypeRep TYPE)
-        1 -> return $ SomeTypeRep (typeRep :: TypeRep RuntimeRep)
-        2 -> do arg <- getTypeRep bh
-                res <- getTypeRep bh
-                -- TODO: verify kind
-                return $ SomeTypeRep $ TRFun arg res
-        3 -> do con <- get bh :: IO TyCon
-                SomeTypeRep rep_k <- getSomeTypeRep bh
+        0 -> return $ SomeTypeRep (typeRep :: TypeRep Type)
+        1 -> do con <- get bh :: IO TyCon
+                ks <- get bh :: IO [SomeTypeRep]
+                return $ SomeTypeRep $ mkTrCon con ks
+
                 case typeRepKind rep_k `eqTypeRep` (typeRep :: TypeRep Type) of
                     Just HRefl -> pure $ SomeTypeRep $ mkTrCon con rep_k
                     Nothing    -> failure "Kind mismatch in constructor application"
@@ -627,22 +619,31 @@ getSomeTypeRep bh = do
                                           , "    Applied to type : " ++ show rep_k
                                           ]
 
-        4 -> do SomeTypeRep f <- getSomeTypeRep bh
+        2 -> do SomeTypeRep f <- getSomeTypeRep bh
                 SomeTypeRep x <- getSomeTypeRep bh
                 case typeRepKind f of
-                    TRFun arg _ ->
-                        case arg `eqTypeRep` typeRepKind x of
-                            Just HRefl ->
-                                pure $ SomeTypeRep $ mkTrApp f x
-                            _ -> failure "Kind mismatch in type application"
-                                         [ "    Found argument of kind: " ++ show (typeRepKind x)
-                                         , "    Where the constructor:  " ++ show f
-                                         , "    Expects kind:           " ++ show arg
-                                         ]
-                    _ -> failure "Applied non-arrow"
-                                 [ "    Applied type: " ++ show f
-                                 , "    To argument:  " ++ show x
-                                 ]
+                  TRFun arg _ ->
+                      case arg `eqTypeRep` typeRepKind x of
+                        Just HRefl ->
+                            case typeRepKind res `eqTypeRep` (typeRep :: TypeRep Type) of
+                              Just HRefl -> return $ SomeTypeRep $ mkTrApp f x
+                              _ -> failure "Kind mismatch in type application" []
+                        _ -> failure "Kind mismatch in type application"
+                             [ "    Found argument of kind: " ++ show (typeRepKind x)
+                             , "    Where the constructor:  " ++ show f
+                             , "    Expects kind:           " ++ show arg
+                             ]
+                  _ -> failure "Applied non-arrow"
+                       [ "    Applied type: " ++ show f
+                       , "    To argument:  " ++ show x
+                       ]
+        3 -> do SomeTypeRep arg <- getSomeTypeRep bh
+                SomeTypeRep res <- getSomeTypeRep bh
+                case typeRepKind arg `eqTypeRep` (typeRep :: TypeRep Type) of
+                  Just HRefl ->
+                      case typeRepKind res `eqTypeRep` (typeRep :: TypeRep Type) of
+                        Just HRefl -> return $ SomeTypeRep $ TRFun arg res
+                        Nothing -> failure "Kind mismatch" []
         _ -> failure "Invalid SomeTypeRep" []
   where
     failure description info =
