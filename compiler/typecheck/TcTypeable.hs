@@ -15,6 +15,7 @@ import TyCoRep( Type(..) )
 import TcEnv
 import TcEvidence ( mkWpTyApps )
 import TcRnMonad
+import TcMType ( zonkTcType )
 import HscTypes ( lookupId )
 import PrelNames
 import TysPrim ( primTyCons )
@@ -38,6 +39,7 @@ import Fingerprint(Fingerprint(..), fingerprintString, fingerprintFingerprints)
 import Outputable
 import FastString ( FastString, mkFastString )
 
+import Data.Maybe ( isJust )
 import Data.Word( Word64 )
 
 {- Note [Grand plan for Typeable]
@@ -120,7 +122,7 @@ mkTypeableBinds
                         Just mod_id -> mod_id
                         Nothing     -> pprPanic "tcMkTypeableBinds" (ppr tycons)
        ; traceTc "mkTypeableBinds" (ppr tycons)
-       ; let this_mod_todos = todoForTyCons mod mod_id tycons
+       ; this_mod_todos <- todoForTyCons mod mod_id tycons
        ; mkTypeableTyConBinds (this_mod_todos : prim_todos)
        } }
   where
@@ -167,20 +169,29 @@ mkModIdRHS mod
 *                                                                      *
 ********************************************************************* -}
 
-todoForTyCons :: Module -> Id -> [TyCon] -> TypeRepTodo
-todoForTyCons mod mod_id tycons =
-    TypeRepTodo { mod_rep_expr    = mod_rep_expr
-                , pkg_fingerprint = pkg_fpr
-                , mod_fingerprint = mod_fpr
-                , todo_tycons     =
-                  [ tc'
-                  | tc  <- tycons
-                  , tc' <- tc : tyConATs tc
-                    -- We need type representations for any associated types
-                  ]
-                }
+todoForTyCons :: Module -> Id -> [TyCon] -> TcM TypeRepTodo
+todoForTyCons mod mod_id tycons = do
+    tycons <- sequence
+              [ do kind <- zonkTcType $ tyConKind tc''
+                   return (tc'', kind)
+              | tc     <- tycons
+              , tc'    <- tc : tyConATs tc
+                -- We need type representations for any associated types
+              , let promoted = map promoteDataCon (tyConDataCons tc')
+              , tc''   <- tc' : promoted
+              , Just _ <- pure $ tyConRepName_maybe tc''
+              ]
+    --let typeable_tycons = filter (typeIsTypeable . dbg . dropForAlls . snd) tycons
+    let typeable_tycons = filter dbg tycons
+        dbg (tycon, kind) = pprTrace "todoForTycons" (ppr tycon $$ ppr bare_kind $$ ppr is_typeable) is_typeable
+          where is_typeable = typeIsTypeable bare_kind
+                bare_kind = dropForAlls kind
+    return TypeRepTodo { mod_rep_expr    = nlHsVar mod_id
+                       , pkg_fingerprint = pkg_fpr
+                       , mod_fingerprint = mod_fpr
+                       , todo_tycons     = typeable_tycons
+                       }
   where
-    mod_rep_expr = nlHsVar mod_id
     mod_fpr = fingerprintString $ moduleNameString $ moduleName mod
     pkg_fpr = fingerprintString $ unitIdString $ moduleUnitId mod
 
@@ -195,19 +206,10 @@ mkTypeableTyConBinds todos
        ; let tycon_rep_bndrs :: [Id]
              tycon_rep_bndrs = [ rep_id
                                | todo <- todos
-                               , tc <- todo_tycons todo
-                               , let promoted = map promoteDataCon (tyConDataCons tc)
-                               , tc' <- tc : promoted
-                               , Just rep_id <- pure $ tyConRepId stuff tc'
+                               , (tc, _) <- todo_tycons todo
+                               , Just rep_id <- pure $ tyConRepId stuff tc
                                ]
-       ; gbl_env <- pprTrace "typeable tycons" (ppr $ map (\x -> (x, tyConRepId stuff x)) (foldMap todo_tycons todos))
-                    $ pprTrace "typeable tycons'" (ppr [ (tc', promoted, tyConRepId stuff tc')
-                                                       | todo <- todos
-                                                       , tc <- todo_tycons todo
-                                                       , let promoted = map promoteDataCon (tyConDataCons tc)
-                                                       , tc' <- tc : promoted ])
-                    $ pprTrace "typeable binders" (ppr tycon_rep_bndrs) $
-                    tcExtendGlobalValEnv tycon_rep_bndrs getGblEnv
+       ; gbl_env <- tcExtendGlobalValEnv tycon_rep_bndrs getGblEnv
 
        ; setGblEnv gbl_env $ foldlM (mk_typeable_binds stuff) gbl_env todos }
 
@@ -216,12 +218,7 @@ mkTypeableTyConBinds todos
 mk_typeable_binds :: TypeableStuff -> TcGblEnv -> TypeRepTodo -> TcM TcGblEnv
 mk_typeable_binds stuff gbl_env todo
   = do binds <- unionManyBags <$> mapM (mkTyConRepBinds stuff todo) (todo_tycons todo)
-       let gbl_env' = pprTrace "mk_typeable_binds" (ppr binds) $ gbl_env `addTypecheckedBinds` [binds]
-       setGblEnv gbl_env' $ do
-            promoted_reps <- unionManyBags <$> mapM (mkTyConRepBinds stuff todo . promoteDataCon)
-                                                    (foldMap tyConDataCons $ todo_tycons todo)
-            return $ gbl_env' `addTypecheckedBinds` [promoted_reps]
-
+       return $ pprTrace "mk_typeable_binds" (ppr binds) $ gbl_env `addTypecheckedBinds` [binds]
 
 -- | Generate bindings for the type representation of a wired-in 'TyCon's defined
 -- by the virtual "GHC.Prim" module. This is where we inject the representation
@@ -243,8 +240,8 @@ mkPrimTypeableTodos
                    ; gbl_env <- tcExtendGlobalValEnv [ghc_prim_module_id] getGblEnv
                    ; let gbl_env' = gbl_env `addTypecheckedBinds`
                                     [unitBag ghc_prim_module_bind]
-                         todo = todoForTyCons gHC_PRIM ghc_prim_module_id
-                                              ghcPrimTypeableTyCons
+                   ; todo <- todoForTyCons gHC_PRIM ghc_prim_module_id
+                                           ghcPrimTypeableTyCons
                    ; return (gbl_env', [todo])
                    }
            else do gbl_env <- getGblEnv
@@ -269,11 +266,13 @@ ghcPrimTypeableTyCons = concat
 
 -- | A group of 'TyCon's in need of type-rep bindings.
 data TypeRepTodo
-    = TypeRepTodo { mod_rep_expr    :: LHsExpr Id   -- ^ Module's typerep binding
-                  , pkg_fingerprint :: !Fingerprint -- ^ Package name fingerprint
-                  , mod_fingerprint :: !Fingerprint -- ^ Module name fingerprint
-                  , todo_tycons     :: [TyCon]      -- ^ The 'TyCon's in need of bindings
-                  }
+    = TypeRepTodo
+      { mod_rep_expr    :: LHsExpr Id       -- ^ Module's typerep binding
+      , pkg_fingerprint :: !Fingerprint     -- ^ Package name fingerprint
+      , mod_fingerprint :: !Fingerprint     -- ^ Module name fingerprint
+      , todo_tycons     :: [(TyCon, Kind)]
+        -- ^ The 'TyCon's in need of bindings and their zonked kinds
+      }
 
 data TypeableStuff
     = Stuff { dflags         :: DynFlags
@@ -323,20 +322,47 @@ tyConRepId (Stuff {..}) tycon
     mkRepId rep_name = mkExportedVanillaId rep_name (mkTyConTy trTyConTyCon)
 
 -- | Make typeable bindings for the given 'TyCon'.
-mkTyConRepBinds :: TypeableStuff -> TypeRepTodo -> TyCon -> TcRn (LHsBinds Id)
-mkTyConRepBinds stuff@(Stuff {..}) todo tycon
+mkTyConRepBinds :: TypeableStuff -> TypeRepTodo -> (TyCon, Kind) -> TcRn (LHsBinds Id)
+mkTyConRepBinds stuff@(Stuff {..}) todo (tycon, tycon_kind)
   = pprTrace "mkTyConRepBinds" (ppr tycon) $
     case tyConRepId stuff tycon of
       Just tycon_rep_id -> do
-          tycon_rep_rhs <- mkTyConRepTyConRHS stuff todo tycon
+          tycon_rep_rhs <- mkTyConRepTyConRHS stuff todo tycon tycon_kind
           let tycon_rep = mkVarBind tycon_rep_id tycon_rep_rhs
           return $ unitBag tycon_rep
-      _ -> return emptyBag
+      _ -> pprPanic "mkTyConRepBind: We shouldn't be here" (ppr tycon)
+           -- We should have already excluded non-representable tycons in
+           -- mkTyConTodos.
+
+tyConIsTypeable :: TyCon -> Bool
+tyConIsTypeable tc =
+    (\x -> pprTrace "tyConIsTypeable" (ppr tc $$ ppr x) x) $
+       isJust (tyConRepName_maybe tc)
+    && typeIsTypeable (dropForAlls $ tyConKind tc)
+      -- Ensure that the kind of the TyCon, with its initial foralls removed,
+      -- is representable (e.g. has no higher-rank polymorphism or type synonyms).
+
+typeIsTypeable :: Type -> Bool
+-- We handle types of the form (TYPE rep) specifically to avoid
+-- looping on RuntimeRep
+typeIsTypeable ty
+  | Just ty' <- coreView ty   = typeIsTypeable ty'
+typeIsTypeable ty
+  | Just _ <- isTYPEApp ty    = True
+typeIsTypeable (TyVarTy _)    = True
+typeIsTypeable (AppTy a b)    = typeIsTypeable a && typeIsTypeable b
+typeIsTypeable (FunTy a b)    = typeIsTypeable a && typeIsTypeable b
+typeIsTypeable (TyConApp tc args)
+  = tyConIsTypeable tc && all typeIsTypeable args
+typeIsTypeable (ForAllTy{})   = False
+typeIsTypeable (LitTy{})      = True
+typeIsTypeable (CastTy{})     = panic "typeIsTypeable(Cast)"
+typeIsTypeable (CoercionTy{}) = panic "typeIsTypeable(Coercion)"
 
 -- | Produce the right-hand-side of a @TyCon@ representation.
-mkTyConRepTyConRHS :: TypeableStuff -> TypeRepTodo -> TyCon -> TcRn (LHsExpr Id)
-mkTyConRepTyConRHS stuff@(Stuff {..}) todo tycon
-  = do kind_rep <- mkTyConKindRep stuff tycon
+mkTyConRepTyConRHS :: TypeableStuff -> TypeRepTodo -> TyCon -> Kind -> TcRn (LHsExpr Id)
+mkTyConRepTyConRHS stuff@(Stuff {..}) todo tycon tycon_kind
+  = do kind_rep <- mkTyConKindRep stuff tycon tycon_kind
        let rep_rhs = nlHsDataCon trTyConDataCon
                      `nlHsApp` nlHsLit (word64 high)
                      `nlHsApp` nlHsLit (word64 low)
@@ -425,16 +451,17 @@ data Maybe a = Nothing | Just a
 F :: forall k. k -> forall k'. k' -> Type
 -}
 
--- | Produce a @KindRep@ expression for the given 'Kind'.
-mkTyConKindRep :: TypeableStuff -> TyCon -> TcRn (LHsExpr Id)
-mkTyConKindRep (Stuff {..}) tycon = do
-    let bndrs = mkVarEnv $ (`zip` [0..]) $ map binderVar
-                $ filter isNamedTyConBinder (tyConBinders tycon)
+-- | Produce a @KindRep@ expression for the kind of the given 'TyCon'.
+mkTyConKindRep :: TypeableStuff -> TyCon -> Kind -> TcRn (LHsExpr Id)
+mkTyConKindRep (Stuff {..}) tycon tycon_kind = do
+    let (bndrs, kind) = splitForAllTyVarBndrs tycon_kind
+        bndr_idxs = mkVarEnv $ (`zip` [0..]) $ map binderVar bndrs
     pprTrace "mkTyConKindRepBinds"
              (ppr tycon
-             $$ pprType' (tyConKind tycon)
-             $$ ppr (map binderVar $ filter isNamedTyConBinder $ tyConBinders tycon))
-        $ go bndrs (tyConResKind tycon)
+             $$ pprType' tycon_kind
+             $$ pprType' kind
+             $$ ppr bndr_idxs)
+        $ go bndr_idxs kind
   where
     -- Compute RHS
     go :: VarEnv Int -> Kind -> TcRn (LHsExpr Id)
@@ -453,21 +480,21 @@ mkTyConKindRep (Stuff {..}) tycon = do
            return $ nlHsDataCon kindRepAppDataCon
                     `nlHsApp` t1' `nlHsApp` t2'
     go _ ty | Just rr <- isTYPEApp ty
-      = pprTrace "mkTyConKeyRepBinds(type)" (ppr rr) $
+      = pprTrace "mkTyConKindRepBinds(type)" (ppr rr) $
         return $ nlHsDataCon kindRepTYPEDataCon `nlHsApp` nlHsDataCon rr
-    go bndrs (TyConApp tycon tys)
-      | Just rep_name <- tyConRepName_maybe tycon
+    go bndrs (TyConApp tc tys)
+      | Just rep_name <- tyConRepName_maybe tc
       = do rep_id <- lookupId rep_name
            tys' <- mapM (go bndrs) tys
            return $ nlHsDataCon kindRepTyConAppDataCon
                     `nlHsApp` nlHsVar rep_id
                     `nlHsApp` mkList (mkTyConTy kindRepTyCon) tys'
       | otherwise
-      = pprPanic "UnrepresentableThingy" (ppr tycon)
-    go _bndrs (ForAllTy (TvBndr var _) ty)
-      = pprPanic "mkTyConKeyRepBinds(forall)" (ppr var $$ ppr ty)
-    --  = let bndrs' = extendVarEnv (mapVarEnv (+1) bndrs) var 0
-    --    in go bndrs' ty
+      = pprPanic "mkTyConKindRepBinds(TyConApp)"
+                 (ppr tc $$ ppr tycon_kind)
+    go _ (ForAllTy (TvBndr var _) ty)
+      -- = let bndrs' = extendVarEnv (mapVarEnv (+1) bndrs) var 0 in go bndrs' ty
+      = pprPanic "mkTyConKindRepBinds(ForAllTy)" (ppr var $$ ppr ty)
     go bndrs (FunTy t1 t2)
       = do t1' <- go bndrs t1
            t2' <- go bndrs t2
@@ -475,8 +502,8 @@ mkTyConKindRep (Stuff {..}) tycon = do
                     `nlHsApp` t1' `nlHsApp` t2'
     go _ (LitTy lit)
       = pprPanic "mkTyConKindRepBinds.go(lit)" (ppr lit) -- TODO
-    go bndrs (CastTy ty _)
-      = go bndrs ty
+    go _ (CastTy ty co)
+      = pprPanic "mkTyConKindRepBinds.go(cast)" (ppr ty $$ ppr co)
     go _ (CoercionTy co)
       = pprPanic "mkTyConKindRepBinds.go(coercion)" (ppr co)
 
