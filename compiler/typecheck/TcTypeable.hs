@@ -11,7 +11,7 @@ module TcTypeable(mkTypeableBinds) where
 import BasicTypes ( SourceText(..), Boxity(..) )
 import TcBinds( addTypecheckedBinds )
 import IfaceEnv( newGlobalBinder )
-import TyCoRep( Type(..) )
+import TyCoRep( Type(..), TyLit(..) )
 import TcEnv
 import TcEvidence ( mkWpTyApps )
 import TcRnMonad
@@ -280,12 +280,15 @@ data TypeableStuff
             , trTyConDataCon :: DataCon         -- ^ of @TyCon@
             , trNameLit      :: FastString -> LHsExpr Id
                                                 -- ^ To construct @TrName@s
-            , kindRepTyCon   :: TyCon           -- ^ of @KindRep@
-            , kindRepTyConAppDataCon :: DataCon -- ^ of @KindRepTyConApp@
-            , kindRepVarDataCon :: DataCon      -- ^ of @KindRepVar@
-            , kindRepAppDataCon :: DataCon      -- ^ of @KindRepApp@
-            , kindRepFunDataCon :: DataCon      -- ^ of @KindRepFun@
-            , kindRepTYPEDataCon :: DataCon     -- ^ of @KindRepType@
+              -- The various TyCon and DataCons of KindRep
+            , kindRepTyCon           :: TyCon
+            , kindRepTyConAppDataCon :: DataCon
+            , kindRepVarDataCon      :: DataCon
+            , kindRepAppDataCon      :: DataCon
+            , kindRepFunDataCon      :: DataCon
+            , kindRepTYPEDataCon     :: DataCon
+            , kindRepSymbolSDataCon  :: DataCon
+            , kindRepNatDataCon      :: DataCon
             }
 
 -- | Collect various tidbits which we'll need to generate TyCon representations.
@@ -300,6 +303,8 @@ collect_stuff = do
     kindRepAppDataCon      <- tcLookupDataCon kindRepAppDataConName
     kindRepFunDataCon      <- tcLookupDataCon kindRepFunDataConName
     kindRepTYPEDataCon     <- tcLookupDataCon kindRepTYPEDataConName
+    kindRepSymbolSDataCon  <- tcLookupDataCon kindRepSymbolSDataConName
+    kindRepNatDataCon      <- tcLookupDataCon kindRepNatDataConName
     trNameLit              <- mkTrNameLit
     return Stuff {..}
 
@@ -346,26 +351,28 @@ typeIsTypeable :: Type -> Bool
 -- We handle types of the form (TYPE rep) specifically to avoid
 -- looping on RuntimeRep
 typeIsTypeable ty
-  | Just ty' <- coreView ty   = typeIsTypeable ty'
+  | Just ty' <- coreView ty         = typeIsTypeable ty'
 typeIsTypeable ty
-  | Just _ <- isTYPEApp ty    = True
-typeIsTypeable (TyVarTy _)    = True
-typeIsTypeable (AppTy a b)    = typeIsTypeable a && typeIsTypeable b
-typeIsTypeable (FunTy a b)    = typeIsTypeable a && typeIsTypeable b
-typeIsTypeable (TyConApp tc args)
-  = tyConIsTypeable tc && all typeIsTypeable args
-typeIsTypeable (ForAllTy{})   = False
-typeIsTypeable (LitTy{})      = True
-typeIsTypeable (CastTy{})     = panic "typeIsTypeable(Cast)"
-typeIsTypeable (CoercionTy{}) = panic "typeIsTypeable(Coercion)"
+  | Just _ <- isTYPEApp ty          = True
+typeIsTypeable (TyVarTy _)          = True
+typeIsTypeable (AppTy a b)          = typeIsTypeable a && typeIsTypeable b
+typeIsTypeable (FunTy a b)          = typeIsTypeable a && typeIsTypeable b
+typeIsTypeable (TyConApp tc args)   = tyConIsTypeable tc && all typeIsTypeable args
+typeIsTypeable (ForAllTy{})         = False
+typeIsTypeable (LitTy (NumTyLit n))
+  | n < 2^64                        = True  -- FIXME: Use target word size
+  | otherwise                       = False
+typeIsTypeable (LitTy (StrTyLit _)) = True
+typeIsTypeable (CastTy{})           = panic "typeIsTypeable(Cast)"
+typeIsTypeable (CoercionTy{})       = panic "typeIsTypeable(Coercion)"
 
 -- | Produce the right-hand-side of a @TyCon@ representation.
 mkTyConRepTyConRHS :: TypeableStuff -> TypeRepTodo -> TyCon -> Kind -> TcRn (LHsExpr Id)
 mkTyConRepTyConRHS stuff@(Stuff {..}) todo tycon tycon_kind
   = do kind_rep <- mkTyConKindRep stuff tycon tycon_kind
        let rep_rhs = nlHsDataCon trTyConDataCon
-                     `nlHsApp` nlHsLit (word64 high)
-                     `nlHsApp` nlHsLit (word64 low)
+                     `nlHsApp` nlHsLit (word64 dflags high)
+                     `nlHsApp` nlHsLit (word64 dflags low)
                      `nlHsApp` mod_rep_expr todo
                      `nlHsApp` trNameLit (mkFastString tycon_str)
                      `nlHsApp` nlHsLit (int n_kind_vars)
@@ -385,10 +392,10 @@ mkTyConRepTyConRHS stuff@(Stuff {..}) todo tycon tycon_kind
     int :: Int -> HsLit
     int n = HsIntPrim (SourceText $ show n) (toInteger n)
 
-    word64 :: Word64 -> HsLit
-    word64
-      | wORD_SIZE dflags == 4 = \n -> HsWord64Prim NoSourceText (toInteger n)
-      | otherwise             = \n -> HsWordPrim   NoSourceText (toInteger n)
+word64 :: DynFlags -> Word64 -> HsLit
+word64 dflags n
+  | wORD_SIZE dflags == 4 = HsWord64Prim NoSourceText (toInteger n)
+  | otherwise             = HsWordPrim   NoSourceText (toInteger n)
 
 pprType' :: Type -> SDoc
 pprType' (TyVarTy v) = text "tyvar" <+> ppr v
@@ -500,8 +507,12 @@ mkTyConKindRep (Stuff {..}) tycon tycon_kind = do
            t2' <- go bndrs t2
            return $ nlHsDataCon kindRepFunDataCon
                     `nlHsApp` t1' `nlHsApp` t2'
-    go _ (LitTy lit)
-      = pprPanic "mkTyConKindRepBinds.go(lit)" (ppr lit) -- TODO
+    go _ (LitTy (NumTyLit n))
+      = return $ nlHsDataCon kindRepNatDataCon
+                 `nlHsApp` nlHsLit (word64 dflags $ fromIntegral n)
+    go _ (LitTy (StrTyLit s))
+      = return $ nlHsDataCon kindRepSymbolSDataCon
+                 `nlHsApp` nlHsLit (mkHsStringPrimLit s)
     go _ (CastTy ty co)
       = pprPanic "mkTyConKindRepBinds.go(cast)" (ppr ty $$ ppr co)
     go _ (CoercionTy co)

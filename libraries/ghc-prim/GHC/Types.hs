@@ -46,10 +46,6 @@ import GHC.Prim
 
 infixr 5 :
 
--- Take note: All types defined here must have associated type representations
--- defined in Data.Typeable.Internal.
--- See Note [Representation of types defined in GHC.Types] below.
-
 {- *********************************************************************
 *                                                                      *
                   Kinds
@@ -446,6 +442,12 @@ data TrName
 -- | A de Bruijn index for a binder within a 'KindRep'.
 type KindBndr = Int
 
+#if WORD_SIZE_IN_BITS < 64
+#define WORD64_TY Word64#
+#else
+#define WORD64_TY Word#
+#endif
+
 -- | The representation produced by GHC for conjuring up the kind of a
 -- 'TypeRep'.
 data KindRep = KindRepTyConApp TyCon [KindRep]
@@ -453,18 +455,13 @@ data KindRep = KindRepTyConApp TyCon [KindRep]
              | KindRepApp KindRep KindRep
              | KindRepFun KindRep KindRep
              | KindRepTYPE !RuntimeRep
+             | KindRepSymbolS Addr#
+             | KindRepSymbolD [Char]
+             | KindRepNat WORD64_TY -- TODO: What about big nats?
 
 -- Show instance for TyCon found in GHC.Show
-#if WORD_SIZE_IN_BITS < 64
-data TyCon = TyCon Word64#  Word64#   -- Fingerprint
-                   Module             -- Module in which this is defined
-                   TrName             -- Type constructor name
-                   Int#               -- How many kind variables do we accept?
-                   KindRep            -- A representation of the type's kind
-#else
-data TyCon = TyCon Word#    Word#
-                   Module
-                   TrName
-                   Int#
-                   KindRep
-#endif
+data TyCon = TyCon WORD64_TY WORD64_TY   -- Fingerprint
+                   Module                -- Module in which this is defined
+                   TrName                -- Type constructor name
+                   Int#                  -- How many kind variables do we accept?
+                   KindRep               -- A representation of the type's kind

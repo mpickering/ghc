@@ -232,6 +232,8 @@ basicKnownKeyNames
         kindRepAppDataConName,
         kindRepFunDataConName,
         kindRepTYPEDataConName,
+        kindRepSymbolSDataConName,
+        kindRepNatDataConName,
         typeRepIdName,
         mkTrConName,
         mkTrAppName,
@@ -1181,6 +1183,9 @@ trModuleTyConName
   , kindRepVarDataConName
   , kindRepAppDataConName
   , kindRepFunDataConName
+  , kindRepTYPEDataConName
+  , kindRepSymbolSDataConName
+  , kindRepNatDataConName
   :: Name
 trModuleTyConName     = tcQual gHC_TYPES          (fsLit "Module")         trModuleTyConKey
 trModuleDataConName   = dcQual gHC_TYPES          (fsLit "Module")         trModuleDataConKey
@@ -1195,6 +1200,8 @@ kindRepVarDataConName = dcQual gHC_TYPES          (fsLit "KindRepVar")     kindR
 kindRepAppDataConName = dcQual gHC_TYPES          (fsLit "KindRepApp")     kindRepAppDataConKey
 kindRepFunDataConName = dcQual gHC_TYPES          (fsLit "KindRepFun")     kindRepFunDataConKey
 kindRepTYPEDataConName = dcQual gHC_TYPES         (fsLit "KindRepTYPE")    kindRepTYPEDataConKey
+kindRepSymbolSDataConName = dcQual gHC_TYPES      (fsLit "KindRepSymbolS") kindRepSymbolSDataConKey
+kindRepNatDataConName = dcQual gHC_TYPES          (fsLit "KindRepNat")     kindRepNatDataConKey
 
 -- Class Typeable, and functions for constructing `Typeable` dictionaries
 typeableClassName
@@ -1951,12 +1958,15 @@ vecElemDataConKeys = map mkPreludeDataConUnique [89..98]
 
 -- Typeable things
 kindRepTyConAppDataConKey, kindRepVarDataConKey, kindRepAppDataConKey,
-    kindRepFunDataConKey :: Unique
+    kindRepFunDataConKey, kindRepTYPEDataConKey,
+    kindRepSymbolSDataConKey, kindRepNatDataConKey :: Unique
 kindRepTyConAppDataConKey = mkPreludeDataConUnique 100
 kindRepVarDataConKey      = mkPreludeDataConUnique 101
 kindRepAppDataConKey      = mkPreludeDataConUnique 102
 kindRepFunDataConKey      = mkPreludeDataConUnique 103
 kindRepTYPEDataConKey     = mkPreludeDataConUnique 104
+kindRepSymbolSDataConKey  = mkPreludeDataConUnique 105
+kindRepNatDataConKey      = mkPreludeDataConUnique 106
 
 ---------------- Template Haskell -------------------
 --      THNames.hs: USES DataUniques 200-250
