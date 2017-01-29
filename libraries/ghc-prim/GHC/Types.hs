@@ -39,7 +39,8 @@ module GHC.Types (
         VecCount(..), VecElem(..),
 
         -- * Runtime type representation
-        Module(..), TrName(..), TyCon(..), KindRep(..), KindBndr
+        Module(..), TrName(..), TyCon(..), TypeLitSort(..),
+        KindRep(..), KindBndr
     ) where
 
 import GHC.Prim
@@ -455,9 +456,11 @@ data KindRep = KindRepTyConApp TyCon [KindRep]
              | KindRepApp KindRep KindRep
              | KindRepFun KindRep KindRep
              | KindRepTYPE !RuntimeRep
-             | KindRepSymbolS Addr#
-             | KindRepSymbolD [Char]
-             | KindRepNat WORD64_TY -- TODO: What about big nats?
+             | KindRepTypeLitS TypeLitSort Addr#
+             | KindRepTypeLitD TypeLitSort [Char]
+
+data TypeLitSort = TypeLitSymbol
+                 | TypeLitNat
 
 -- Show instance for TyCon found in GHC.Show
 data TyCon = TyCon WORD64_TY WORD64_TY   -- Fingerprint

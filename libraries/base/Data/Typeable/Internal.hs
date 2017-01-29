@@ -351,6 +351,10 @@ instantiateKindRep vars = go
     go (KindRepFun a b)
       = SomeTypeRep $ TRFun (unsafeCoerceRep $ go a) (unsafeCoerceRep $ go b)
     go (KindRepTYPE r) = unkindedTypeRep $ tYPE `kApp` runtimeRepTypeRep r
+    go (KindRepTypeLitS sort s)
+      = mkTypeLitFromString sort (unpackString# s)
+    go (KindRepTypeLitD sort s)
+      = mkTypeLitFromString sort s
 
     tYPE = kindedTypeRep @(RuntimeRep -> Type) @TYPE
 
@@ -586,12 +590,22 @@ mkTypeLitTyCon name kind_tycon
 -- | Used to make `'Typeable' instance for things of kind Nat
 typeNatTypeRep :: KnownNat a => Proxy# a -> TypeRep a
 typeNatTypeRep p = typeLitTypeRep (show (natVal' p)) tcNat
-  where tcNat = typeRepTyCon (typeRep @Nat)
 
 -- | Used to make `'Typeable' instance for things of kind Symbol
 typeSymbolTypeRep :: KnownSymbol a => Proxy# a -> TypeRep a
-typeSymbolTypeRep p = typeLitTypeRep (show (symbolVal' p)) tcSymbol
-  where tcSymbol = typeRepTyCon (typeRep @Symbol)
+typeSymbolTypeRep p = typeSymbolTypeRep (show (symbolVal' p)) tcSymbol
+
+mkTypeLitFromString :: TypeLitSort -> String -> SomeTypeRep
+mkTypeLitFromString TypeLitSymbol s =
+    SomeTypeRep $ (typeLitTypeRep s tcSymbol :: TypeRep Symbol)
+mkTypeLitFromString TypeLitNat s =
+    SomeTypeRep $ (typeLitTypeRep s tcSymbol :: TypeRep Nat)
+
+tcSymbol :: TyCon
+tcSymbol = typeRepTyCon typeRep
+
+tcNat :: TyCon
+tcNat = typeRepTyCon typeRep
 
 -- | An internal function, to make representations for type literals.
 typeLitTypeRep :: forall (a :: k). (Typeable k) => String -> TyCon -> TypeRep a

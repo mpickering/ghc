@@ -287,8 +287,9 @@ data TypeableStuff
             , kindRepAppDataCon      :: DataCon
             , kindRepFunDataCon      :: DataCon
             , kindRepTYPEDataCon     :: DataCon
-            , kindRepSymbolSDataCon  :: DataCon
-            , kindRepNatDataCon      :: DataCon
+            , kindRepTypeLitSDataCon :: DataCon
+            , typeLitSymbolDataCon   :: DataCon
+            , typeLitNatDataCon   :: DataCon
             }
 
 -- | Collect various tidbits which we'll need to generate TyCon representations.
@@ -303,8 +304,9 @@ collect_stuff = do
     kindRepAppDataCon      <- tcLookupDataCon kindRepAppDataConName
     kindRepFunDataCon      <- tcLookupDataCon kindRepFunDataConName
     kindRepTYPEDataCon     <- tcLookupDataCon kindRepTYPEDataConName
-    kindRepSymbolSDataCon  <- tcLookupDataCon kindRepSymbolSDataConName
-    kindRepNatDataCon      <- tcLookupDataCon kindRepNatDataConName
+    kindRepTypeLitSDataCon <- tcLookupDataCon kindRepTypeLitSDataConName
+    typeLitSymbolDataCon   <- tcLookupDataCon typeLitSymbolDataConName
+    typeLitNatDataCon      <- tcLookupDataCon typeLitNatDataConName
     trNameLit              <- mkTrNameLit
     return Stuff {..}
 
@@ -508,11 +510,13 @@ mkTyConKindRep (Stuff {..}) tycon tycon_kind = do
            return $ nlHsDataCon kindRepFunDataCon
                     `nlHsApp` t1' `nlHsApp` t2'
     go _ (LitTy (NumTyLit n))
-      = return $ nlHsDataCon kindRepNatDataCon
-                 `nlHsApp` nlHsLit (word64 dflags $ fromIntegral n)
+      = return $ nlHsDataCon kindRepTypeLitSDataCon
+                 `nlHsApp` nlHsDataCon typeLitNatDataCon
+                 `nlHsApp` nlHsLit (mkHsStringPrimLit $ mkFastString $ show n)
     go _ (LitTy (StrTyLit s))
-      = return $ nlHsDataCon kindRepSymbolSDataCon
-                 `nlHsApp` nlHsLit (mkHsStringPrimLit s)
+      = return $ nlHsDataCon kindRepTypeLitSDataCon
+                 `nlHsApp` nlHsDataCon typeLitSymbolDataCon
+                 `nlHsApp` nlHsLit (mkHsStringPrimLit $ mkFastString $ show s)
     go _ (CastTy ty co)
       = pprPanic "mkTyConKindRepBinds.go(cast)" (ppr ty $$ ppr co)
     go _ (CoercionTy co)
