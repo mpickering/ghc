@@ -2189,8 +2189,6 @@ doPrimRep rep_name ty
 -- | Representation for type constructor applied to some kinds. 'onlyNamedBndrsApplied'
 -- has ensured that this application results in a type of monomorphic kind (e.g. all
 -- kind variables have been instantiated).
---
--- TODO: Do we want to encode the applied kinds in the representation?
 doTyConApp :: Class -> Type -> TyCon -> [Kind] -> TcS LookupInstResult
 doTyConApp clas ty tc kind_args
   = return $ GenInst (map (mk_typeable_pred clas) kind_args)
