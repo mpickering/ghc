@@ -683,7 +683,7 @@ Note [Solving from instances when interacting Dicts]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 When we interact a [W] constraint with a [G] constraint that solves it, there is
 a possibility that we could produce better code if instead we solved from a
-top-level instance declaration (Trac #12791). For example:
+top-level instance declaration (See #12791, #5835). For example:
 
     class M a b where m :: a -> b
 
@@ -906,6 +906,8 @@ trySolveFromInstance dflags ev_w ctev_i
  -- If IncoherentInstances is on then we cannot rely on coherence of proofs
  -- in order to justify this optimization: The proof provided by the
  -- [G] constraint's superclass may be different from the top-level proof.
+ && gopt Opt_SolveConstantDicts dflags
+ -- Enabled by the -fsolve-constant-dicts flag
   = runMaybeT $ try_solve_from_instance emptyDictMap ev_w
 
   | otherwise = return Nothing
@@ -928,6 +930,12 @@ trySolveFromInstance dflags ev_w ctev_i
 
     -- MaybeT manages early failure if we find a subgoal that cannot be solved
     -- from instances.
+    -- Why do we need a local cache here?
+    -- 1. We can't use the global cache because it contains givens that
+    --    we specifically don't want to use to solve.
+    -- 2. We need to be able to handle recursive super classes. The
+    --    cache ensures that we remember what we have already tried to
+    --    solve to avoid looping.
     try_solve_from_instance
       :: DictMap CtEvidence -> CtEvidence
       -> MaybeT TcS [(EvTerm, CtEvidence, Class, [TcPredType])]
