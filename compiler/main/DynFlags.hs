@@ -3662,7 +3662,7 @@ fFlagsDeps = [
   flagSpec "vectorise"                        Opt_Vectorise,
   flagSpec "version-macros"                   Opt_VersionMacros,
   flagSpec "worker-wrapper"                   Opt_WorkerWrapper,
-  flagSpac "solve-constant-dicts"             Opt_SolveConstantDicts,
+  flagSpec "solve-constant-dicts"             Opt_SolveConstantDicts,
   flagSpec "show-warning-groups"              Opt_ShowWarnGroups,
   flagSpec "hide-source-paths"                Opt_HideSourcePaths,
   flagSpec "show-hole-constraints"            Opt_ShowHoleConstraints
