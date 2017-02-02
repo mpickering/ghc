@@ -278,12 +278,12 @@ extendWorkListDeriveds loc evs wl
 extendWorkListImplic :: Implication -> WorkList -> WorkList
 extendWorkListImplic implic wl = wl { wl_implics = implic `consBag` wl_implics wl }
 
-extendWorkListCt :: Ct -> WorkList -> WorkList
+extendWorkListCt :: HasCallStack => Ct -> WorkList -> WorkList
 -- Agnostic
 extendWorkListCt ct wl
  = case classifyPredType (ctPred ct) of
      EqPred NomEq ty1 _
-       | Just (tc,_) <- tcSplitTyConApp_maybe ty1
+       | Just tc <- tcTyConAppTyCon_maybe ty1
        , isTypeFamilyTyCon tc
        -> extendWorkListFunEq ct wl
 
