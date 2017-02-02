@@ -865,7 +865,7 @@ mk_tuple Unboxed arity = (tycon, tuple_con)
     tc_res_kind = unboxedTupleKind rr_tys
 
     tc_arity    = arity * 2
-    flavour     = UnboxedAlgTyCon
+    flavour     = UnboxedAlgTyCon (mkPrelTyConRepName tc_name)
 
     dc_tvs               = binderVars tc_binders
     (rr_tys, dc_arg_tys) = splitAt arity (mkTyVarTys dc_tvs)
@@ -974,7 +974,7 @@ mk_sum :: Arity -> (TyCon, Array ConTagZ DataCon)
 mk_sum arity = (tycon, sum_cons)
   where
     tycon   = mkSumTyCon tc_name tc_binders tc_res_kind (arity * 2) tyvars (elems sum_cons)
-                         UnboxedAlgTyCon
+                         (UnboxedAlgTyCon (mkPrelTyConRepName tc_name))
 
     tc_binders = mkTemplateTyConBinders (nOfThem arity runtimeRepTy)
                                         (\ks -> map tYPE ks)
@@ -1168,7 +1168,7 @@ liftedRepDataConTy, unliftedRepDataConTy,
   = map (mkTyConTy . promoteDataCon) runtimeRepSimpleDataCons
 
 vecCountTyCon :: TyCon
-vecCountTyCon = pcNonEnumTyCon vecCountTyConName Nothing []
+vecCountTyCon = pcTyCon True vecCountTyConName Nothing []
                         vecCountDataCons
 
 -- See Note [Wiring in RuntimeRep]
@@ -1187,7 +1187,7 @@ vec2DataConTy, vec4DataConTy, vec8DataConTy, vec16DataConTy, vec32DataConTy,
   vec64DataConTy] = map (mkTyConTy . promoteDataCon) vecCountDataCons
 
 vecElemTyCon :: TyCon
-vecElemTyCon = pcNonEnumTyCon vecElemTyConName Nothing [] vecElemDataCons
+vecElemTyCon = pcTyCon True vecElemTyConName Nothing [] vecElemDataCons
 
 -- See Note [Wiring in RuntimeRep]
 vecElemDataCons :: [DataCon]

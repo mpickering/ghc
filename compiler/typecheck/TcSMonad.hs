@@ -43,7 +43,7 @@ module TcSMonad (
     getTopEnv, getGblEnv, getLclEnv,
     getTcEvBindsVar, getTcLevel,
     getTcEvBindsAndTCVs, getTcEvBindsMap,
-    tcLookupClass,
+    tcLookupClass, tcLookupId,
 
     -- Inerts
     InertSet(..), InertCans(..),
@@ -125,7 +125,7 @@ import FamInstEnv
 import qualified TcRnMonad as TcM
 import qualified TcMType as TcM
 import qualified TcEnv as TcM
-       ( checkWellStaged, topIdLvl, tcGetDefaultTys, tcLookupClass )
+       ( checkWellStaged, topIdLvl, tcGetDefaultTys, tcLookupClass, tcLookupId )
 import PrelNames( heqTyConKey, eqTyConKey )
 import Kind
 import TcType
@@ -278,7 +278,7 @@ extendWorkListDeriveds loc evs wl
 extendWorkListImplic :: Implication -> WorkList -> WorkList
 extendWorkListImplic implic wl = wl { wl_implics = implic `consBag` wl_implics wl }
 
-extendWorkListCt :: HasCallStack => Ct -> WorkList -> WorkList
+extendWorkListCt :: Ct -> WorkList -> WorkList
 -- Agnostic
 extendWorkListCt ct wl
  = case classifyPredType (ctPred ct) of
@@ -2611,6 +2611,9 @@ getLclEnv = wrapTcS $ TcM.getLclEnv
 
 tcLookupClass :: Name -> TcS Class
 tcLookupClass c = wrapTcS $ TcM.tcLookupClass c
+
+tcLookupId :: Name -> TcS Id
+tcLookupId n = wrapTcS $ TcM.tcLookupId n
 
 -- Setting names as used (used in the deriving of Coercible evidence)
 -- Too hackish to expose it to TcS? In that case somehow extract the used

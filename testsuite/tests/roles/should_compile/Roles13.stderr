@@ -1,7 +1,7 @@
 
 ==================== Tidy Core ====================
 Result size of Tidy Core
-  = {terms: 63, types: 26, coercions: 5, joins: 0/0}
+  = {terms: 114, types: 43, coercions: 5, joins: 0/0}
 
 -- RHS size: {terms: 2, types: 2, coercions: 0, joins: 0/0}
 convert1 :: Wrap Age -> Wrap Age
@@ -42,26 +42,6 @@ Roles13.$trModule :: GHC.Types.Module
 Roles13.$trModule = GHC.Types.Module $trModule2 $trModule4
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
-$tc'MkAge1 :: GHC.Prim.Addr#
-[GblId, Caf=NoCafRefs]
-$tc'MkAge1 = "'MkAge"#
-
--- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-$tc'MkAge2 :: GHC.Types.TrName
-[GblId, Caf=NoCafRefs]
-$tc'MkAge2 = GHC.Types.TrNameS $tc'MkAge1
-
--- RHS size: {terms: 5, types: 0, coercions: 0, joins: 0/0}
-Roles13.$tc'MkAge :: GHC.Types.TyCon
-[GblId, Caf=NoCafRefs]
-Roles13.$tc'MkAge =
-  GHC.Types.TyCon
-    1226019810264079099##
-    12180888342844277416##
-    Roles13.$trModule
-    $tc'MkAge2
-
--- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 $tcAge1 :: GHC.Prim.Addr#
 [GblId, Caf=NoCafRefs]
 $tcAge1 = "Age"#
@@ -71,35 +51,63 @@ $tcAge2 :: GHC.Types.TrName
 [GblId, Caf=NoCafRefs]
 $tcAge2 = GHC.Types.TrNameS $tcAge1
 
--- RHS size: {terms: 5, types: 0, coercions: 0, joins: 0/0}
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tcAge3 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tcAge3 = GHC.Types.KindRepTYPE GHC.Types.LiftedRep
+
+-- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
 Roles13.$tcAge :: GHC.Types.TyCon
 [GblId, Caf=NoCafRefs]
 Roles13.$tcAge =
   GHC.Types.TyCon
-    18304088376370610314##
-    1954648846714895105##
+    3456257068627873222##
+    14056710845110756026##
     Roles13.$trModule
     $tcAge2
+    0#
+    $tcAge3
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
-$tc'MkWrap1 :: GHC.Prim.Addr#
+$tc'MkAge1 :: GHC.Prim.Addr#
 [GblId, Caf=NoCafRefs]
-$tc'MkWrap1 = "'MkWrap"#
+$tc'MkAge1 = "'MkAge"#
 
 -- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
-$tc'MkWrap2 :: GHC.Types.TrName
+$tc'MkAge2 :: GHC.Types.TrName
 [GblId, Caf=NoCafRefs]
-$tc'MkWrap2 = GHC.Types.TrNameS $tc'MkWrap1
+$tc'MkAge2 = GHC.Types.TrNameS $tc'MkAge1
 
--- RHS size: {terms: 5, types: 0, coercions: 0, joins: 0/0}
-Roles13.$tc'MkWrap :: GHC.Types.TyCon
+-- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
+$tc'MkAge3 :: GHC.Types.KindRep
+[GblId]
+$tc'MkAge3 =
+  GHC.Types.KindRepTyConApp
+    GHC.Types.$tcInt (GHC.Types.[] @ GHC.Types.KindRep)
+
+-- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
+$tc'MkAge4 :: GHC.Types.KindRep
 [GblId, Caf=NoCafRefs]
-Roles13.$tc'MkWrap =
+$tc'MkAge4 =
+  GHC.Types.KindRepTyConApp
+    Roles13.$tcAge (GHC.Types.[] @ GHC.Types.KindRep)
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$tc'MkAge5 :: GHC.Types.KindRep
+[GblId]
+$tc'MkAge5 = GHC.Types.KindRepFun $tc'MkAge3 $tc'MkAge4
+
+-- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
+Roles13.$tc'MkAge :: GHC.Types.TyCon
+[GblId]
+Roles13.$tc'MkAge =
   GHC.Types.TyCon
-    12402878715225676312##
-    13345418993613492500##
+    18264039750958872441##
+    1870189534242358050##
     Roles13.$trModule
-    $tc'MkWrap2
+    $tc'MkAge2
+    0#
+    $tc'MkAge5
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 $tcWrap1 :: GHC.Prim.Addr#
@@ -111,15 +119,81 @@ $tcWrap2 :: GHC.Types.TrName
 [GblId, Caf=NoCafRefs]
 $tcWrap2 = GHC.Types.TrNameS $tcWrap1
 
--- RHS size: {terms: 5, types: 0, coercions: 0, joins: 0/0}
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tcWrap3 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tcWrap3 = GHC.Types.KindRepTYPE GHC.Types.LiftedRep
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tcWrap4 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tcWrap4 = GHC.Types.KindRepTYPE GHC.Types.LiftedRep
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$tcWrap5 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tcWrap5 = GHC.Types.KindRepFun $tcWrap3 $tcWrap4
+
+-- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
 Roles13.$tcWrap :: GHC.Types.TyCon
 [GblId, Caf=NoCafRefs]
 Roles13.$tcWrap =
   GHC.Types.TyCon
-    5278920226786541118##
-    14554440859491798587##
+    13773534096961634492##
+    15591525585626702988##
     Roles13.$trModule
     $tcWrap2
+    0#
+    $tcWrap5
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+$tc'MkWrap1 :: GHC.Prim.Addr#
+[GblId, Caf=NoCafRefs]
+$tc'MkWrap1 = "'MkWrap"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tc'MkWrap2 :: GHC.Types.TrName
+[GblId, Caf=NoCafRefs]
+$tc'MkWrap2 = GHC.Types.TrNameS $tc'MkWrap1
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tc'MkWrap3 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tc'MkWrap3 = GHC.Types.KindRepVar 0#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tc'MkWrap4 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tc'MkWrap4 = GHC.Types.KindRepVar 0#
+
+-- RHS size: {terms: 3, types: 2, coercions: 0, joins: 0/0}
+$tc'MkWrap5 :: [GHC.Types.KindRep]
+[GblId, Caf=NoCafRefs]
+$tc'MkWrap5 =
+  GHC.Types.:
+    @ GHC.Types.KindRep $tc'MkWrap4 (GHC.Types.[] @ GHC.Types.KindRep)
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$tc'MkWrap6 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tc'MkWrap6 = GHC.Types.KindRepTyConApp Roles13.$tcWrap $tc'MkWrap5
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$tc'MkWrap7 :: GHC.Types.KindRep
+[GblId, Caf=NoCafRefs]
+$tc'MkWrap7 = GHC.Types.KindRepFun $tc'MkWrap3 $tc'MkWrap6
+
+-- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
+Roles13.$tc'MkWrap :: GHC.Types.TyCon
+[GblId, Caf=NoCafRefs]
+Roles13.$tc'MkWrap =
+  GHC.Types.TyCon
+    15580677875333883466##
+    808508687714473149##
+    Roles13.$trModule
+    $tc'MkWrap2
+    1#
+    $tc'MkWrap7
 
 
 

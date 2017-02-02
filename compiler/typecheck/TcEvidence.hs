@@ -488,19 +488,24 @@ data EvTerm
 -- | Instructions on how to make a 'Typeable' dictionary.
 -- See Note [Typeable evidence terms]
 data EvTypeable
-  = EvTypeableTyCon [EvTerm]  -- ^ Dictionary for @Typeable (T k1..kn)@.
-                              -- The EvTerms are for the arguments
+  = EvTypeableTyCon TyCon [EvTerm]
+    -- ^ Dictionary for @Typeable T@ where @T@ is a type constructor with all of
+    -- its kind variables saturated. The @[EvTerm]@ is @Typeable@ evidence for
+    -- the applied kinds..
 
   | EvTypeableTyApp EvTerm EvTerm
     -- ^ Dictionary for @Typeable (s t)@,
-    -- given a dictionaries for @s@ and @t@
+    -- given a dictionaries for @s@ and @t@.
+
+  | EvTypeableTrFun EvTerm EvTerm
+    -- ^ Dictionary for @Typeable (s -> t)@,
+    -- given a dictionaries for @s@ and @t@.
 
   | EvTypeableTyLit EvTerm
     -- ^ Dictionary for a type literal,
     -- e.g. @Typeable "foo"@ or @Typeable 3@
     -- The 'EvTerm' is evidence of, e.g., @KnownNat 3@
     -- (see Trac #10348)
-
   deriving Data.Data
 
 data EvLit
@@ -811,8 +816,9 @@ evVarsOfCallStack cs = case cs of
 evVarsOfTypeable :: EvTypeable -> VarSet
 evVarsOfTypeable ev =
   case ev of
-    EvTypeableTyCon es    -> evVarsOfTerms es
+    EvTypeableTyCon _ e   -> mapUnionVarSet evVarsOfTerm e
     EvTypeableTyApp e1 e2 -> evVarsOfTerms [e1,e2]
+    EvTypeableTrFun e1 e2 -> evVarsOfTerms [e1,e2]
     EvTypeableTyLit e     -> evVarsOfTerm e
 
 {-
@@ -901,8 +907,9 @@ instance Outputable EvCallStack where
     = ppr (name,loc) <+> text ":" <+> ppr tm
 
 instance Outputable EvTypeable where
-  ppr (EvTypeableTyCon ts)    = text "TC" <+> ppr ts
+  ppr (EvTypeableTyCon ts _)  = text "TyCon" <+> ppr ts
   ppr (EvTypeableTyApp t1 t2) = parens (ppr t1 <+> ppr t2)
+  ppr (EvTypeableTrFun t1 t2) = parens (ppr t1 <+> arrow <+> ppr t2)
   ppr (EvTypeableTyLit t1)    = text "TyLit" <> ppr t1
 
 

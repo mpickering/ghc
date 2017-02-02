@@ -96,6 +96,7 @@ import {-# SOURCE #-} TysWiredIn
 
 import Var              ( TyVar, TyVarBndr(TvBndr), mkTyVar )
 import Name
+import NameEnv
 import TyCon
 import SrcLoc
 import Unique
