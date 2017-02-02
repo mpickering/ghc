@@ -27,8 +27,8 @@ import PrelNames ( knownNatClassName, knownSymbolClassName,
                    typeableClassName, coercibleTyConKey,
                    heqTyConKey, ipClassKey )
 import TysWiredIn ( typeNatKind, typeSymbolKind, heqDataCon,
-                    coercibleDataCon, runtimeRepTy )
-import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon, tYPETyCon )
+                    coercibleDataCon )
+import TysPrim    ( eqPrimTyCon, eqReprPrimTyCon )
 import Id( idType )
 import CoAxiom ( TypeEqn, CoAxiom(..), CoAxBranch(..), fromBranches )
 import Class
