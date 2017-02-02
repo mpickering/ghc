@@ -135,6 +135,7 @@ instance Binary KindRep where
     put (KindRepFun a b) = putWord8 3 >> put a >> put b
     put (KindRepTYPE r) = putWord8 4 >> put r
     put (KindRepTypeLit sort r) = putWord8 5 >> put sort >> put r
+    put _ = fail "GHCi.TH.Binary.putKindRep: Impossible"
 
     get = do
         tag <- getWord8
@@ -144,14 +145,14 @@ instance Binary KindRep where
           2 -> KindRepApp <$> get <*> get
           3 -> KindRepFun <$> get <*> get
           4 -> KindRepTYPE <$> get
-          5 -> KindRepTypeList <$> get <*> get
+          5 -> KindRepTypeLit <$> get <*> get
           _ -> fail "GHCi.TH.Binary.putKindRep: invalid tag"
 
 instance Binary TypeLitSort where
     put TypeLitSymbol = putWord8 0
     put TypeLitNat = putWord8 1
-    get bh = do
-        tag <- getWord8 bh
+    get = do
+        tag <- getWord8
         case tag of
           0 -> pure TypeLitSymbol
           1 -> pure TypeLitNat
