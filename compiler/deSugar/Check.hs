@@ -1213,8 +1213,8 @@ mkInitialUncovered vars = do
   return $ case (sat_ty, tmOracle initialTmState tm_cs) of
     (True, Just tm_state) -> [ValVec patterns (MkDelta ty_cs tm_state)]
     -- If any of the term/type constraints are non
-    -- satisfiable, the initial uncovered set is empty
-    _non_satisfiable      -> []
+    -- satisfiable then return with the initialTmState. See #12957
+    _non_satisfiable      -> [ValVec patterns (MkDelta ty_cs initialTmState)]
   where
     patterns  = map PmVar vars
 
