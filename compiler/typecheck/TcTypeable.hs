@@ -196,7 +196,7 @@ todoForTyCons mod mod_id tycons = do
               , Just _ <- pure $ tyConRepName_maybe tc''
               ]
     let typeable_tycons = filter dbg tycons
-        dbg (tycon, kind) =
+        dbg (_tycon, kind) =
             --pprTrace "todoForTycons" (ppr tycon $$ ppr bare_kind $$ ppr is_typeable)
             is_typeable
           where is_typeable = typeIsTypeable bare_kind
