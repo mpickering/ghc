@@ -358,6 +358,8 @@ mkTyConRepBinds stuff@(Stuff {..}) todo (tycon, tycon_kind)
            -- We should have already excluded non-representable tycons in
            -- mkTyConTodos.
 
+-- | Here is where we define the set of Typeable types. These exclude type
+-- families and polytypes.
 tyConIsTypeable :: TyCon -> Bool
 tyConIsTypeable tc =
        isJust (tyConRepName_maybe tc)
@@ -366,9 +368,12 @@ tyConIsTypeable tc =
       -- is representable (e.g. has no higher-rank polymorphism or type
       -- synonyms).
 
+-- | Is a particular 'Type' representable by @Typeable@? Here we look for
+-- polytypes and types containing casts (which may be, for instance, a type
+-- family).
 typeIsTypeable :: Type -> Bool
 -- We handle types of the form (TYPE rep) specifically to avoid
--- looping on RuntimeRep
+-- looping on (tyConIsTypeable RuntimeRep)
 typeIsTypeable ty
   | Just ty' <- coreView ty         = typeIsTypeable ty'
 typeIsTypeable ty
