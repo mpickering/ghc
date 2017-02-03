@@ -673,7 +673,7 @@ instance Outputable SafeHaskellMode where
 -- information relating to the compilation of a single file or GHC session
 data DynFlags = DynFlags {
   ghcMode               :: GhcMode, HAHA
-  ghcLink               :: GhcLink,
+  ghcLink               :: GhcLink, HAHA2
   hscTarget             :: HscTarget,
   settings              :: Settings,
   verbosity             :: Int,         -- ^ Verbosity level: see Note [Verbosity levels]
