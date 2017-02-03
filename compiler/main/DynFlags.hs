@@ -672,7 +672,7 @@ instance Outputable SafeHaskellMode where
 -- | Contains not only a collection of 'GeneralFlag's but also a plethora of
 -- information relating to the compilation of a single file or GHC session
 data DynFlags = DynFlags {
-  ghcMode               :: GhcMode,
+  ghcMode               :: GhcMode, HAHA
   ghcLink               :: GhcLink,
   hscTarget             :: HscTarget,
   settings              :: Settings,
