@@ -520,6 +520,8 @@ tidy_bang_pat v _ p@(PArrPat {})   = tidy1 v p
 -- Data/newtype constructors
 tidy_bang_pat v l p@(ConPatOut { pat_con = L _ (RealDataCon dc), pat_args = args })
   | isNewTyCon (dataConTyCon dc)   -- Newtypes: push bang inwards (Trac #9844)
+    && not (null (hsConPatArgs args))
+    -- See #13215, there might be no arguments to push the bang onto.
   = tidy1 v (p { pat_args = push_bang_into_newtype_arg l args })
   | otherwise                      -- Data types: discard the bang
   = tidy1 v p
