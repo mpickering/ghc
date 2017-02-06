@@ -11,6 +11,6 @@ StreamSig.forever: <L,U>tm(,m(,m(,)))
 StreamSig.$tc'Stream: tm(t,t,tm(tm1,tm1),tm1)
 StreamSig.$tcStream: tm(t,t,tm(tm1,tm1),tm1)
 StreamSig.$trModule: tm(tm1,tm1)
-StreamSig.forever: <L,U>m(,m(,m(,)))
+StreamSig.forever: <L,U>tm(,m(,m(,)))
 
 
