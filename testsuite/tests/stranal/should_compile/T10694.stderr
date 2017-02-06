@@ -35,8 +35,8 @@ pm [InlPrag=INLINE[0]] :: Int -> Int -> (Int, Int)
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True,
          Guidance=ALWAYS_IF(arity=2,unsat_ok=True,boring_ok=False)
          Tmpl= \ (w_s1pY [Occ=Once] :: Int) (w1_s1pZ [Occ=Once] :: Int) ->
-                 case T10694.$wpm w_s1pY w1_s1pZ of { (# ww1_s1q4 [Occ=Once], ww2_s1q5 [Occ=Once] #) -> (ww1_s1q4, ww2_s1q5) }}]
-pm = \ (w_s1pY :: Int) (w1_s1pZ :: Int) -> case T10694.$wpm w_s1pY w1_s1pZ of { (# ww1_s1q4, ww2_s1q5 #) -> (ww1_s1q4, ww2_s1q5) }
+                 case T10694.$wpm w_s1pY w1_s1pZ of { (# ww1_s1q2 [Occ=Once], ww2_s1q3 [Occ=Once] #) -> (ww1_s1q2, ww2_s1q3) }}]
+pm = \ (w_s1pY :: Int) (w1_s1pZ :: Int) -> case T10694.$wpm w_s1pY w1_s1pZ of { (# ww1_s1q2, ww2_s1q3 #) -> (ww1_s1q2, ww2_s1q3) }
 
 -- RHS size: {terms: 8, types: 9, coercions: 0, joins: 0/0}
 m :: Int -> Int -> Int
@@ -47,7 +47,7 @@ m :: Int -> Int -> Int
          Guidance=ALWAYS_IF(arity=2,unsat_ok=True,boring_ok=False)
          Tmpl= \ (x_aXR [Occ=Once] :: Int) (y_aXS [Occ=Once] :: Int) ->
                  case pm x_aXR y_aXS of { (_ [Occ=Dead], mr_aXU [Occ=Once]) -> mr_aXU }}]
-m = \ (x_aXR :: Int) (y_aXS :: Int) -> case T10694.$wpm x_aXR y_aXS of { (# ww1_s1q4, ww2_s1q5 #) -> ww2_s1q5 }
+m = \ (x_aXR :: Int) (y_aXS :: Int) -> case T10694.$wpm x_aXR y_aXS of { (# ww1_s1q2, ww2_s1q3 #) -> ww2_s1q3 }
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 T10694.$trModule4 :: GHC.Prim.Addr#
