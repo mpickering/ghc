@@ -5,7 +5,7 @@ InfiniteCPR.$tc'Foo: tm(t,t,tm(tm1,tm1),tm1)
 InfiniteCPR.$tcRec1: tm(t,t,tm(tm1,tm1),tm1)
 InfiniteCPR.$tcRec2: tm(t,t,tm(tm1,tm1),tm1)
 InfiniteCPR.$trModule: tm(tm1,tm1)
-InfiniteCPR.f: <L,U>m(,tm(tm(,),tm(,)))
+InfiniteCPR.f: <L,U>m(,tm(m(,),m(,)))
 
 
 
@@ -15,6 +15,6 @@ InfiniteCPR.$tc'Foo: tm(t,t,tm(tm1,tm1),tm1)
 InfiniteCPR.$tcRec1: tm(t,t,tm(tm1,tm1),tm1)
 InfiniteCPR.$tcRec2: tm(t,t,tm(tm1,tm1),tm1)
 InfiniteCPR.$trModule: tm(tm1,tm1)
-InfiniteCPR.f: <L,U>m(,tm(tm(,),tm(,)))
+InfiniteCPR.f: <L,U>m(,tm(m(,),m(,)))
 
 
