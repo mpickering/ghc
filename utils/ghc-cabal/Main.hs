@@ -225,7 +225,7 @@ doRegister directory distDir ghc ghcpkg topdir
                 ghcPkgProgram' = ghcPkgProgram {
                     programPostConf = \_ cp -> return cp { programDefaultArgs =
                                                                 ["--global-package-db", ghcpkgconf]
-                                                                ++ ["--force" | not (null myDestDir) ] },
+                                                                ++ ["--force -v0" | not (null myDestDir) ] },
                     programFindLocation = \_ _ -> return (Just (ghcpkg,[])) }
                 configurePrograms ps conf = foldM (flip (configureProgram verbosity)) conf ps
 
