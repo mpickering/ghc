@@ -1117,8 +1117,9 @@ simplTick env tickish expr cont
   -- application context, allowing the normal case and application
   -- optimisations to fire.
   | tickish `tickishScopesLike` SoftScope
-  = do { (env', expr') <- simplExprF env expr cont
-       ; return (env', mkTick tickish expr')
+  = do { let (inc,outc) = splitCont cont
+       ; (env', expr') <- simplExprF env expr inc
+       ; rebuild env' expr' (TickIt tickish outc)
        }
 
   -- Push tick inside if the context looks like this will allow us to
@@ -1189,7 +1190,8 @@ simplTick env tickish expr cont
           = Breakpoint n (map (getDoneId . substId env) ids)
     | otherwise = tickish
 
-  -- Push type application and coercion inside a tick
+  -- Push type application and coercion inside a tick. We must always do this
+  -- due to the invariant described in Note [No ticks under type applications].
   splitCont :: SimplCont -> (SimplCont, SimplCont)
   splitCont cont@(ApplyToTy { sc_cont = tail }) = (cont { sc_cont = inc }, outc)
     where (inc,outc) = splitCont tail

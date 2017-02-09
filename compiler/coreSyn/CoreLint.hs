@@ -744,7 +744,12 @@ lintCoreExpr (Let (Rec pairs) body)
 
 lintCoreExpr e@(App _ _)
   = addLoc (AnExpr e) $
-    do { fun_ty <- lintCoreFun fun (length args)
+    do { case fun of
+           Tick{} | any isTypeArg args ->
+             failWithL $ text "Found tick inside applied expression: " <+>
+                         ppr fun
+           _ -> return ()
+       ; fun_ty <- lintCoreFun fun (length args)
        ; lintCoreArgs fun_ty args }
   where
     (fun, args) = collectArgs e

@@ -338,11 +338,7 @@ mkTick t orig_expr = mkTick' id id orig_expr
       | canSplit
       -> top $ Tick (mkNoScope t) $ rest $ Lam x $ mkTick (mkNoCount t) e
 
-    App f arg
-      -- Always float through type applications.
-      | not (isRuntimeArg arg)
-      -> mkTick' (top . flip App arg) rest f
-
+    App _ _
       -- We can also float through constructor applications, placement
       -- permitting. Again we can split.
       | isSaturatedConApp expr && (tickishPlace t==PlaceCostCentre || canSplit)

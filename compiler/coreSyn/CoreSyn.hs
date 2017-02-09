@@ -518,6 +518,31 @@ this exhaustive list can be empty!
   conversion; remember STG is un-typed, so there is no need for
   the empty case to do the type conversion.
 
+Note [No ticks under type applications]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Prior to the introduction of levity polymorphism we would allow ticks anywhere
+in a Core expression. However, levity polymorphism imposes a few constraints to
+avoid levity polymorphic expressions, which are forbidden. Consider, for
+instance, the case of an unboxed tuple expression. Recall that the unboxed
+1-tuple data constructor has type (including its kind variables),
+
+    (##) :: forall (r :: RuntimeRep) (a :: TYPE r). a -> (##) r1 a
+
+Consider the following (equivalent modulo ticks) expressions,
+
+    1. (##) @'LiftedRep @Int 42
+    2. (tick<t> ((##) @'LiftedRep @Int 42))
+    3. (tick<t> ((##) @'LiftedRep @Int)) 42
+    4. (tick<t> (##)) @'LiftedRep @Int 42
+
+Of these we allow all but (4). The difference is that (4) separates the (levity
+polymorphic) data constructor from its type applications. This means that when
+the code generator goes to produce code for this expression, it will mistakenly
+believe that the expression itself is levity polymorphic and consequently fail.
+
+More specifically, the invariant states that a type must not be applied to a
+ticked expression.
+
 Note [Join points]
 ~~~~~~~~~~~~~~~~~~
 In Core, a *join point* is a specially tagged function whose only occurrences
