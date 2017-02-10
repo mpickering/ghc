@@ -63,8 +63,17 @@ test('TH_reifyDecl2', normal, compile, ['-v0'])
 test('TH_reifyLocalDefs', normal, compile, ['-v0'])
 test('TH_reifyLocalDefs2', normal, compile, ['-v0'])
 
+
+# Filters the output of an appended command with the given pattern.
+def grep_stderr_of(pattern):
+    swap12 = '3>&1 1>&2 2>&3 3>&-' # Swap file descriptors 1 and 2.
+    # pipefail: fail if the command fails
+    return('bash -o pipefail -c \'"$@" {swap12} | grep {pattern} {swap12}\' --'.format(**locals()))
+
 test('TH_addCStub1', normal, compile_and_run, ['-v0'])
-test('TH_addCStub2', normal, compile_fail, ['-v0'])
+test('TH_addCStub2',
+     [normal, compile_cmd_prefix(grep_stderr_of('TH_addCStub2.hs:13:13:'))]
+     , compile_fail, ['-v0'])
 
 test('TH_reifyMkName', normal, compile, ['-v0'])
 
