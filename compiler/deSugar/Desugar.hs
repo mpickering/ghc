@@ -62,7 +62,6 @@ import MonadUtils
 import OrdList
 import UniqFM
 import UniqDFM
-import ListSetOps
 import Fingerprint
 import Maybes
 
@@ -71,6 +70,7 @@ import Data.IORef
 import Control.Monad( when )
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Set as S
 
 -- | Extract information from the rename and typecheck phases to produce
 -- a dependencies information for the module being compiled.
@@ -92,12 +92,12 @@ mkDependencies
                 --  on M.hi-boot, and hence that we should do the hi-boot consistency
                 --  check.)
 
-          pkgs | th_used   = insertList (toInstalledUnitId thUnitId) (imp_dep_pkgs imports)
+          pkgs | th_used   = S.insert (toInstalledUnitId thUnitId) (imp_dep_pkgs imports)
                | otherwise = imp_dep_pkgs imports
 
           -- Set the packages required to be Safe according to Safe Haskell.
           -- See Note [RnNames . Tracking Trust Transitively]
-          sorted_pkgs = sort pkgs
+          sorted_pkgs = S.toList pkgs
           trust_pkgs  = imp_trust_pkgs imports
           dep_pkgs'   = map (\x -> (x, x `elem` trust_pkgs)) sorted_pkgs
 
