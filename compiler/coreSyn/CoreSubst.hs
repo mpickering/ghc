@@ -34,7 +34,7 @@ module CoreSubst (
         -- ** Simple expression optimiser
         simpleOptPgm, simpleOptExpr, simpleOptExprWith,
         exprIsConApp_maybe, exprIsLiteral_maybe, exprIsLambda_maybe,
-        pushCoArg, pushCoValArg, pushCoTyArg
+        pushCoArg, pushCoValArg, pushCoTyArg, collectBindersPushingCo
     ) where
 
 #include "HsVersions.h"
@@ -1605,7 +1605,7 @@ exprIsLambda_maybe _ _e
 
 Here we implement the "push rules" from FC papers:
 
-* The push-argument ules, where we can move a coercion past an argument.
+* The push-argument rules, where we can move a coercion past an argument.
   We have
       (fun |> co) arg
   and we want to transform it to
@@ -1775,3 +1775,48 @@ pushCoDataCon dc dc_args co
 
   where
     Pair from_ty to_ty = coercionKind co
+
+collectBindersPushingCo :: CoreExpr -> ([Var], CoreExpr)
+-- Collect lambda binders, pushing coercions inside if possible
+-- E..g   (\x.e) |> g         g :: <Int> -> blah
+--        = (\x. e |> Nth 1 g)
+collectBindersPushingCo e
+  = go [] e
+  where
+    go :: [Var] -> CoreExpr -> ([Var], CoreExpr)
+    -- The accumulator is in reverse order
+    go bs (Lam b e)   = go (b:bs) e
+    go bs (Cast e co) = go_c bs e co
+    go bs e           = (reverse bs, e)
+
+    go_c :: [Var] -> CoreExpr -> Coercion -> ([Var], CoreExpr)
+    -- (go_c bs e c) is same as (go bs e (e |> c))
+    go_c bs (Cast e co1) co2 = go_c bs e (co1 `mkTransCo` co2)
+    go_c bs (Lam b e)    co  = go_lam bs b e co
+    go_c bs e            co  = (reverse bs, mkCast e co)
+
+    go_lam :: [Var] -> Var -> CoreExpr -> Coercion -> ([Var], CoreExpr)
+    -- (go_lam bs b e c) is same as (go_c bs (\b.e) c)
+    go_lam bs b e co
+      | isTyVar b
+      , let Pair tyL tyR = coercionKind co
+      , ASSERT( isForAllTy tyL )
+        isForAllTy tyR
+      , isReflCo (mkNthCo 0 co)  -- See Note [collectBindersPushingCo]
+      = go_c (b:bs) e (mkInstCo co (mkNomReflCo (mkTyVarTy b)))
+
+      | isId b
+      , let Pair tyL tyR = coercionKind co
+      , ASSERT( isFunTy tyL) isFunTy tyR
+      , isReflCo (mkNthCo 0 co)  -- See Note [collectBindersPushingCo]
+      = go_c (b:bs) e (mkNthCo 1 co)
+
+      | otherwise = (reverse bs, mkCast (Lam b e) co)
+
+{- Note [collectBindersPushingCo]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We just look for coercions of form
+   <type> -> blah
+(and similarly for foralls) to keep this function simple.  We could do
+more elaborate stuff, but it'd involve substitution etc.
+-}
