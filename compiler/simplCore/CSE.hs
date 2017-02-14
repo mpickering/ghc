@@ -392,7 +392,8 @@ cseExpr env (Case e bndr ty alts) = cseCase env e bndr ty alts
 
 cseCase :: CSEnv -> InExpr -> InId -> InType -> [InAlt] -> OutExpr
 cseCase env scrut bndr ty alts
-  = Case scrut1 bndr3 ty' (map cse_alt alts)
+  = Case scrut1 bndr3 ty' $
+    combineAlts alt_env (map cse_alt alts)
   where
     ty' = substTy (csEnvSubst env) ty
     scrut1 = tryForCSE False env scrut
@@ -429,7 +430,43 @@ cseCase env scrut bndr ty alts
         where
           (env', args') = addBinders alt_env args
 
-{-
+combineAlts :: CSEnv -> [InAlt] -> [InAlt]
+-- See Note [Combine case alternatives]
+combineAlts env ((_,bndrs1,rhs1) : rest_alts)
+  | all isDeadBinder bndrs1
+  , LT <- filtered_alts `compareLength` rest_alts
+  = (DEFAULT, [], rhs1) : filtered_alts
+  where
+    in_scope = substInScope (csEnvSubst env)
+    filtered_alts = filterOut identical rest_alts
+    identical (_con, bndrs, rhs) = all ok bndrs && eqExpr in_scope rhs1 rhs
+    ok bndr = isDeadBinder bndr || not (bndr `elemInScopeSet` in_scope)
+
+combineAlts _ alts = alts  -- Default case
+
+{- Note [Combine case alternatives]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+combineCaseAlts is just a more heavyweight version of the use of
+combineIdentialAlts in SimplUtils.prepareAlts.  The basic idea is
+to transform
+
+    DEFAULT -> e1
+    K x     -> e1
+    W y z   -> e2
+===>
+   DEFAULT -> e1
+   W y z   -> e2
+
+In the simplifier we use cheapEqExpr, because it is called a lot.
+But here in CSE we use the full eqExpr.  After all, two alterantives usually
+differ near the root, so it probably isn't expensive to compare the full
+alternative.  It seems like the the same kind of thing that CSE is supposed
+to be doing, which is why I put it here.
+
+I acutally saw some examples in the wild, where some inlining made e1 too
+big for cheapEqExpr to catch it.
+
+
 ************************************************************************
 *                                                                      *
 \section{The CSE envt}
