@@ -12,16 +12,18 @@ module CSE (cseProgram, cseOneExpr) where
 
 import CoreSubst
 import Var              ( Var, isJoinId )
-import Id               ( Id, idType, idUnfolding, idInlineActivation
-                        , zapIdOccInfo, zapIdUsageInfo )
-import CoreUtils        ( mkAltExpr
+import VarEnv           ( elemInScopeSet )
+import Id               ( Id, idType, idInlineActivation, isDeadBinder
+                        , zapIdOccInfo, zapIdUsageInfo, idInlinePragma )
+import CoreUtils        ( mkAltExpr, eqExpr
                         , exprIsLiteralString
                         , stripTicksE, stripTicksT, mkTicks )
 import Literal          ( litIsTrivial )
 import Type             ( tyConAppArgs )
 import CoreSyn
 import Outputable
-import BasicTypes       ( isAlwaysActive )
+import Util             ( compareLength, filterOut )
+import BasicTypes       ( isAlwaysActive, isAnyInlinePragma )
 import TrieMap
 import Data.List        ( mapAccumL )
 
@@ -258,6 +260,27 @@ We could try and be careful by tracking which join points are still valid at
 each subexpression, but since join points aren't allocated or shared, there's
 less to gain by trying to CSE them.
 
+Note [CSE for recursive bindings]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Consider
+  f = \x ... f....
+  g = \y ... g ...
+where the "..." are identical.  Could we CSE them?  In full generality
+with mutual recursion it's quite hard; but for self-recursive bindings
+(which are very common) it's rather easy:
+
+* Maintain a separate cs_rec_map, that maps
+      (\f. (\x. ...f...) ) -> f
+  Note the \f in the domain of the mapping!
+
+* When we come across the binding for 'g', look up (\g. (\y. ...g...))
+  Bingo we get a hit.  So we can repace the 'g' binding with
+     g = f
+
+We can't use cs_map for this, because the key isn't an expression of
+the program; it's a kind of synthetic key for recursive bindings.
+
+
 ************************************************************************
 *                                                                      *
 \section{Common subexpression}
@@ -275,6 +298,26 @@ cseBind toplevel env (NonRec b e)
     e1         = tryForCSE toplevel env e
     (env1, b1) = addBinder env b
     (env2, b2) = addBinding env1 b b1 e1
+
+cseBind _ env (Rec [(in_id, rhs)])
+  | noCSE in_id
+  = (env1, Rec [(out_id, rhs')])
+
+  -- See Note [CSE for recursive bindings]
+  | Just previous <- lookupCSRecEnv env out_id rhs''
+  , let previous' = mkTicks ticks previous
+  = (extendCSSubst env1 in_id previous', NonRec out_id previous')
+
+  | otherwise
+  = (extendCSRecEnv env1 out_id rhs'' id_expr', Rec [(zapped_id, rhs')])
+
+  where
+    (env1, [out_id]) = addRecBinders env [in_id]
+    rhs'  = cseExpr env1 rhs
+    rhs'' = stripTicksE tickishFloatable rhs'
+    ticks = stripTicksT tickishFloatable rhs'
+    id_expr'  = varToCoreExpr out_id
+    zapped_id = zapIdUsageInfo out_id
 
 cseBind toplevel env (Rec pairs)
   = (env2, Rec pairs')
@@ -296,9 +339,9 @@ addBinding :: CSEnv                      -- Includes InId->OutId cloning
 -- Extend the CSE env with a mapping [rhs -> out-id]
 -- unless we can instead just substitute [in-id -> rhs]
 addBinding env in_id out_id rhs'
-  | no_cse    = (env,                              out_id)
-  | use_subst = (extendCSSubst env in_id rhs',     out_id)
-  | otherwise = (extendCSEnv env rhs' id_expr', zapped_id)
+  | noCSE in_id = (env,                              out_id)
+  | use_subst   = (extendCSSubst env in_id rhs',     out_id)
+  | otherwise   = (extendCSEnv env rhs' id_expr', zapped_id)
   where
     id_expr'  = varToCoreExpr out_id
     zapped_id = zapIdUsageInfo out_id
@@ -312,19 +355,22 @@ addBinding env in_id out_id rhs'
        -- it is bad for performance if you don't do late demand
        -- analysis
 
-    no_cse = not (isAlwaysActive (idInlineActivation out_id))
-             -- See Note [CSE for INLINE and NOINLINE]
-          || isStableUnfolding (idUnfolding out_id)
-             -- See Note [CSE for stable unfoldings]
-          || isJoinId in_id
-             -- See Note [CSE for join points?]
-
     -- Should we use SUBSTITUTE or EXTEND?
     -- See Note [CSE for bindings]
     use_subst = case rhs' of
                    Var {} -> True
                    Lit l  -> litIsTrivial l
                    _      -> False
+
+noCSE :: InId -> Bool
+noCSE id = not (isAlwaysActive (idInlineActivation id))
+             -- See Note [CSE for INLINE and NOINLINE]
+         || isAnyInlinePragma (idInlinePragma id)
+             --isStableUnfolding (idUnfolding id)
+             -- See Note [CSE for stable unfoldings]
+         || isJoinId id
+             -- See Note [CSE for join points?]
+
 
 {-
 Note [Take care with literal strings]
@@ -373,7 +419,7 @@ tryForCSE toplevel env expr
     -- top of the replaced sub-expression. This is probably not too
     -- useful in practice, but upholds our semantics.
 
-cseOneExpr :: CoreExpr -> CoreExpr
+cseOneExpr :: InExpr -> OutExpr
 cseOneExpr = cseExpr emptyCSEnv
 
 cseExpr :: CSEnv -> InExpr -> OutExpr
@@ -482,10 +528,14 @@ data CSEnv
        , cs_map   :: CoreMap OutExpr   -- The reverse mapping
             -- Maps a OutExpr to a /trivial/ OutExpr
             -- The key of cs_map is stripped of all Ticks
+
+       , cs_rec_map :: CoreMap OutExpr
+            -- See Note [CSE for recursive bindings]
        }
 
 emptyCSEnv :: CSEnv
-emptyCSEnv = CS { cs_map = emptyCoreMap, cs_subst = emptySubst }
+emptyCSEnv = CS { cs_map = emptyCoreMap, cs_rec_map = emptyCoreMap
+                , cs_subst = emptySubst }
 
 lookupCSEnv :: CSEnv -> OutExpr -> Maybe OutExpr
 lookupCSEnv (CS { cs_map = csmap }) expr
@@ -496,6 +546,16 @@ extendCSEnv cse expr triv_expr
   = cse { cs_map = extendCoreMap (cs_map cse) sexpr triv_expr }
   where
     sexpr = stripTicksE tickishFloatable expr
+
+extendCSRecEnv :: CSEnv -> OutId -> OutExpr -> OutExpr -> CSEnv
+-- See Note [CSE for recursive bindings]
+extendCSRecEnv cse bndr expr triv_expr
+  = cse { cs_rec_map = extendCoreMap (cs_map cse) (Lam bndr expr) triv_expr }
+
+lookupCSRecEnv :: CSEnv -> OutId -> OutExpr -> Maybe OutExpr
+-- See Note [CSE for recursive bindings]
+lookupCSRecEnv (CS { cs_rec_map = csmap }) bndr expr
+  = lookupCoreMap csmap (Lam bndr expr)
 
 csEnvSubst :: CSEnv -> Subst
 csEnvSubst = cs_subst
