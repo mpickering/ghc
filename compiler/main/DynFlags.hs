@@ -432,6 +432,7 @@ data GeneralFlag
    | Opt_StgCSE
    | Opt_LiberateCase
    | Opt_SpecConstr
+   | Opt_SpecConstrKeen
    | Opt_DoLambdaEtaExpansion
    | Opt_IgnoreAsserts
    | Opt_DoEtaReduction
@@ -3680,6 +3681,7 @@ fFlagsDeps = [
     (useInstead "enable-rewrite-rules"),
   flagSpec "shared-implib"                    Opt_SharedImplib,
   flagSpec "spec-constr"                      Opt_SpecConstr,
+  flagSpec "spec-constr-keen"                 Opt_SpecConstrKeen,
   flagSpec "specialise"                       Opt_Specialise,
   flagSpec "specialize"                       Opt_Specialise,
   flagSpec "specialise-aggressively"          Opt_SpecialiseAggressively,
