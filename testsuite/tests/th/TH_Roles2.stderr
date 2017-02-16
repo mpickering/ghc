@@ -16,11 +16,10 @@ TH_Roles2.$tcT
       TH_Roles2.$trModule
       (GHC.Types.TrNameS "T"#)
       1
-      krep_a4im
-krep_a4im [InlPrag=[~]]
-  = GHC.Types.KindRepFun
-      (GHC.Types.KindRepVar 0)
-      (GHC.Types.KindRepTYPE GHC.Types.LiftedRep)
+      krep_a4bG
+krep_a4bH [InlPrag=[~]] = GHC.Types.KindRepVar 0
+krep_a4bG [InlPrag=[~]] = GHC.Types.KindRepFun krep_a4bH krep_a4bI
+krep_a4bI [InlPrag=[~]] = GHC.Types.KindRepTYPE GHC.Types.LiftedRep
 TH_Roles2.$trModule
   = GHC.Types.Module
       (GHC.Types.TrNameS "main"#) (GHC.Types.TrNameS "TH_Roles2"#)
