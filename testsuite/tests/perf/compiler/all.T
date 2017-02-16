@@ -424,7 +424,7 @@ test('T5631',
         # 2014-04-04:     346389856 (x86 Windows, 64 bit machine)
         # 2014-12-01:     390199244 (Windows laptop)
         # 2016-04-06:     570137436 (amd64/Linux) many reasons
-           (wordsize(64), 1517484488, 5)]),
+           (wordsize(64), 1090533760, 5)]),
         # expected value: 774595008 (amd64/Linux):
         # expected value: 735486328 (amd64/Linux) 2012/12/12:
         # expected value: 690742040 (amd64/Linux) Call Arity improvements
@@ -437,6 +437,7 @@ test('T5631',
         # 2016-10-19:     1024926024 (amd64/Linux) Refactor traceRn interface (#12617)
         # 2016-11-10:     1077429456 (amd64/Linux) Stop -dno-debug-output suppressing -ddump-tc-trace
         # 2017-02-17:     1517484488 (amd64/Linux) Type-indexed Typeable
+        # 2017-02-20:     1090533760 (amd64/Linux) Deduplicate Typeable bindings
        only_ways(['normal'])
       ],
      compile,
@@ -804,7 +805,7 @@ test('T9872c',
 test('T9872d',
      [ only_ways(['normal']),
        compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 535565128, 5),
+          [(wordsize(64), 496098088, 5),
           # 2014-12-18    796071864   Initally created
           # 2014-12-18    739189056   Reduce type families even more eagerly
           # 2015-01-07    687562440   TrieMap leaf compression
@@ -815,6 +816,7 @@ test('T9872d',
           # 2016-12-05    478169352   using tyConIsTyFamFree, I think, but only
           #                           a 1% improvement 482 -> 478
           # 2017-02-17    535565128   Type-indexed Typeable
+          # 2017-02-20    496098088   Deduplicate Typeable bindings
            (wordsize(32), 264566040, 5)
           # some date     328810212
           # 2015-07-11    350369584
@@ -936,10 +938,11 @@ test('T12227',
 test('T12425',
      [ only_ways(['optasm']),
        compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 153611448, 5),
+          [(wordsize(64), 143043544, 5),
           # initial:    125831400
           # 2017-01-18: 133380960  Allow top-level string literals in Core
           # 2017-02-17: 153611448  Type-indexed Typeable
+          # 2017-02-20: 143043544  Deduplicate Typeable bindings
           ]),
      ],
      compile,
