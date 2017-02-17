@@ -64,7 +64,7 @@ test('T4029',
             # 2016-07-13: 92 (amd64/Linux)           Changes to tidyType
             # 2016-09-01: 71 (amd64/Linux)           Restore w/w limit (#11565)
       stats_num_field('max_bytes_used',
-          [(wordsize(64), 22770352, 5)]),
+          [(wordsize(64), 21485552, 5)]),
             # 2016-02-26: 24071720 (amd64/Linux)     INITIAL
             # 2016-04-21: 25542832 (amd64/Linux)
             # 2016-05-23: 25247216 (amd64/Linux)     Use -G1
@@ -75,6 +75,7 @@ test('T4029',
             # 2016-11-14: 21387048 (amd64/Linux)     Creep back upwards :(
             # 2017-01-18: 21670448 (amd64/Linux)     Float string literals to toplevel
             # 2017-02-07: 22770352 (amd64/Linux)     It is unclear
+            # 2017-02-14: 21485552                   Early inline patch: 1.5% improvement
       extra_hc_opts('+RTS -G1 -RTS' ),
       ],
      ghci_script,
