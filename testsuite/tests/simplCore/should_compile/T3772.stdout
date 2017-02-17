@@ -1,7 +1,7 @@
 
 ==================== Tidy Core ====================
 Result size of Tidy Core
-  = {terms: 44, types: 19, coercions: 0, joins: 0/0}
+  = {terms: 44, types: 19, coercions: 0, joins: 1/1}
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 T3772.$trModule4 :: GHC.Prim.Addr#

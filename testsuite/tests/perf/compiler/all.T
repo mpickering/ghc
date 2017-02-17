@@ -896,7 +896,7 @@ test('T10370',
           #     were identical, so I think it's just GC noise.
           # 2016-10-20    38221184   Allow top-level string literals.
           #                          See the comment 16 on #8472.
-          # 2017-02-17    51126304   Type-indexed Typeawble
+          # 2017-02-17    51126304   Type-indexed Typeable
            (wordsize(32), 11371496, 15),
           # 2015-10-22    11371496
           ]),
@@ -906,7 +906,7 @@ test('T10370',
           # 2016-04-14    101 final demand analyzer run
           # 2016-08-08    121 see above
           # 2017-01-18    146 Allow top-level string literals in Core
-          # 2017-02-17    187 Type-indexed Typeawble
+          # 2017-02-17    187 Type-indexed Typeable
            (wordsize(32),  39, 15),
           # 2015-10-22     39
           ]),
@@ -999,11 +999,12 @@ test('T13056',
 
 test('T12707',
      [ compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 1310037632, 5),
+          [(wordsize(64), 1238630624, 5),
           # initial:    1271577192
           # 2017-01-22: 1348865648  Allow top-level strings in Core
           # 2017-01-31: 1280336112  Join points (#12988)
           # 2017-02-11: 1310037632  Check local family instances vs imports
+          # 2017-02-14  1238630624  Early inline patch: 20% improvement
           ]),
      ],
      compile,

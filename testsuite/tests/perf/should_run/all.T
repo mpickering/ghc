@@ -82,7 +82,7 @@ test('lazy-bs-alloc',
             # 2015-12-15: 444720 (amd64/Linux, D1616)
             # 2015-12-17: 444720 (widen 3->5%, Windows is at 462688)
             # 2017-01-30: 421792 (amd64/Linux, strangely Type-indexed Typeable)
-           (wordsize(32), 429760, 2)]),
+           (wordsize(32), 421448, 2)]),
             # 2013-02-10: 421296 (x86/Windows)
             # 2013-02-10: 414180 (x86/OSX)
             # 2014-01-22: 411500 (x86/Linux)
