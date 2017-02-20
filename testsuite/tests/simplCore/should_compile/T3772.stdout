@@ -1,7 +1,7 @@
 
 ==================== Tidy Core ====================
 Result size of Tidy Core
-  = {terms: 44, types: 19, coercions: 0, joins: 1/1}
+  = {terms: 44, types: 19, coercions: 0, joins: 0/0}
 
 -- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
 T3772.$trModule4 :: GHC.Prim.Addr#
@@ -44,8 +44,8 @@ T3772.$trModule :: GHC.Types.Module
  Str=m,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
-T3772.$trModule =
-  GHC.Types.Module T3772.$trModule3 T3772.$trModule1
+T3772.$trModule
+  = GHC.Types.Module T3772.$trModule3 T3772.$trModule1
 
 Rec {
 -- RHS size: {terms: 10, types: 2, coercions: 0, joins: 0/0}
