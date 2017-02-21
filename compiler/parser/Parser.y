@@ -2960,7 +2960,7 @@ name_boolformula :: { LBooleanFormula (Located RdrName) }
 
 name_boolformula_and :: { LBooleanFormula (Located RdrName) }
         : name_boolformula_and_list
-                  { sLL (head $1) (last $1) (And ($1)) }
+                  { sLL (head $1) $> (And ($1)) }
 
 name_boolformula_and_list :: { [LBooleanFormula (Located RdrName)] }
         : name_boolformula_atom                               { [$1] }
