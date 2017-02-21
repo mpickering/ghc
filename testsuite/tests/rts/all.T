@@ -162,6 +162,8 @@ def checkDynAsm(actual_file, normaliser):
     actual_raw = read_no_crs(actual_file)
     actual_str = normaliser(actual_raw)
     actual = actual_str.split()
+    # Note that the gold linker seems to reverse ctors1 and ctors2.
+    # See #13283.
     if actual == ['initArray1', 'initArray2', 'ctors1', 'ctors2', 'success']:
         return 1
     elif actual == ['ctors1', 'ctors2', 'initArray1', 'initArray2', 'success']:

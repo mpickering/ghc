@@ -16,7 +16,7 @@ T9509:
 	$(RM) -f T9509*.o T9509*.hi
 	'$(TEST_HC)' $(TEST_HC_OPTS) -O -c T9509a.hs
 	'$(TEST_HC)' $(TEST_HC_OPTS) -O -c T9509.hs  \
-              -ddump-rule-rewrites | grep SPEC
+              -ddump-rule-rewrites | { grep SPEC || true; }
         # Grep output should show a SPEC rule firing, twice
 
 T8832:
