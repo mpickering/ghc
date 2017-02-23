@@ -58,7 +58,9 @@ unIOEnv :: IOEnv env a -> (env -> IO a)
 unIOEnv (IOEnv m) = m
 
 instance Monad (IOEnv m) where
+    {-# INLINE (>>=) #-}
     (>>=)  = thenM
+    {-# INLINE (>>) #-}
     (>>)   = (*>)
     fail _ = failM -- Ignore the string
 
@@ -70,19 +72,24 @@ instance MonadFail.MonadFail (IOEnv m) where
 
 instance Applicative (IOEnv m) where
     pure = returnM
+    {-# INLINE (<*>) #-}
     IOEnv f <*> IOEnv x = IOEnv (\ env -> f env <*> x env )
     (*>) = thenM_
 
 instance Functor (IOEnv m) where
+    {-# INLINE fmap #-}
     fmap f (IOEnv m) = IOEnv (\ env -> fmap f (m env))
 
+{-# INLINE returnM #-}
 returnM :: a -> IOEnv env a
 returnM a = IOEnv (\ _ -> return a)
 
+{-# INLINE thenM #-}
 thenM :: IOEnv env a -> (a -> IOEnv env b) -> IOEnv env b
 thenM (IOEnv m) f = IOEnv (\ env -> do { r <- m env ;
                                          unIOEnv (f r) env })
 
+{-# INLINE thenM_ #-}
 thenM_ :: IOEnv env a -> IOEnv env b -> IOEnv env b
 thenM_ (IOEnv m) f = IOEnv (\ env -> do { _ <- m env ; unIOEnv f env })
 
