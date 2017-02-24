@@ -17,6 +17,7 @@ constraintKind :: Kind
 
 runtimeRepTyCon, vecCountTyCon, vecElemTyCon :: TyCon
 runtimeRepTy :: Type
+liftedRepTy  :: Type
 
 liftedRepDataConTyCon, vecRepDataConTyCon, tupleRepDataConTyCon :: TyCon
 

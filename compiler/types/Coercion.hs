@@ -123,7 +123,7 @@ import Pair
 import SrcLoc
 import PrelNames
 import TysPrim          ( eqPhantPrimTyCon )
-import {-# SOURCE #-} TysWiredIn ( constraintKind )
+import {-# SOURCE #-} TysWiredIn ( liftedRepTy, constraintKind )
 import ListSetOps
 import Maybes
 import UniqFM
@@ -405,42 +405,49 @@ mkHeteroCoercionType Representational = mkHeteroReprPrimEqPred
 mkHeteroCoercionType Phantom          = panic "mkHeteroCoercionType"
 
 constraintIsLifted :: CoAxiomRule
-constraintIsLifted =
-    CoAxiomRule { coaxrName = mkFastString "constraintIsLifted"
+-- constratintIsLifted :: Type ~N Constraint
+constraintIsLifted
+  = CoAxiomRule { coaxrName      = mkFastString "constraintIsLifted"
                 , coaxrAsmpRoles = []
-                , coaxrRole = Nominal
-                , coaxrProves =
-                      const $ Just $ Pair constraintKind liftedTypeKind
+                , coaxrRole      = Nominal
+                , coaxrProves    = const $ Just $
+                                   Pair constraintKind liftedTypeKind
                 }
 
--- | Given a coercion @co1 :: (a :: TYPE r1) ~ (b :: TYPE r2)@,
--- produce a coercion @rep_co :: r1 ~ r2@.
+-- | Given a coercion @co :: (a :: TYPE r1) ~ (b :: TYPE r2)@,
+-- produce a coercion @rep_co :: r1 ~N r2@.
+--
+-- HACK for Constraint (which is currently a different kind than TYPE r):
+--    treat Constraint like TYPE LiftedRep, so
+--    if   co :: (a :: Constraint) ~ (b :: TYPE r2)
+--         return rep_co :: LiftedRep ~ r2
 mkRuntimeRepCo :: Coercion -> Coercion
 mkRuntimeRepCo co
     -- This is currently a bit tricky since we can see types of kind Constraint
     -- in addition to the usual things of kind (TYPE rep). We first map
     -- Constraint-kinded types to (TYPE 'LiftedRep).
     -- FIXME: this is terrible
-  | isConstraintKind a && isConstraintKind b
-  = mkNthCo 0 $ constraintToLifted
-  $ mkSymCo $ constraintToLifted $ mkSymCo kind_co
+  | isReflCo kind_co   -- kind_co :: <TYPE r> or <Constraint>
+  = -- If a=b, things are easy
+    if isConstraintKind a
+    then mkNomReflCo liftedRepTy         -- <LiftedTypeRep>
+    else mkNomReflCo (tyConAppArgN 0 a)  -- <r>
 
-  | isConstraintKind a
+  | isConstraintKind a  -- Presumably b = TYPE r2
   = WARN( True, text "mkRuntimeRepCo" )
-    mkNthCo 0
-  $ mkSymCo $ constraintToLifted $ mkSymCo kind_co
+    mkNthCo 0 (mkSymCo cl_co `mkTransCo` kind_co)
 
-  | isConstraintKind b
+  | isConstraintKind b  -- Presumably a = TYPE r1
   = WARN( True, text "mkRuntimeRepCo" )
-    mkNthCo 0 $ constraintToLifted kind_co
+    mkNthCo 0 (kind_co `mkTransCo` cl_co)
 
-  | otherwise
+  | otherwise           -- a = TYPE r1, t = TYPE r2
   = mkNthCo 0 kind_co
   where
-    -- the right side of a coercion from Constraint to TYPE 'LiftedRep
-    constraintToLifted = (`mkTransCo` mkAxiomRuleCo constraintIsLifted [])
+    -- cl_co :: Constraint ~ TYPE LiftedRep
+    cl_co = mkAxiomRuleCo constraintIsLifted []
 
-    kind_co = mkKindCo co  -- kind_co :: TYPE r1 ~ TYPE r2
+    kind_co = mkKindCo co  -- kind_co :: TYPE r1 ~N TYPE r2
                            -- (up to silliness with Constraint)
     Pair a b = coercionKind kind_co  -- Pair of (TYPE r1, TYPE r2)
 
