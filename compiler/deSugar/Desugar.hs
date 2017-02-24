@@ -59,10 +59,18 @@ import Coverage
 import Util
 import MonadUtils
 import OrdList
+import UniqFM
+import UniqDFM
+import Fingerprint
+import Maybes
 
 import Data.List
 import Data.IORef
 import Control.Monad( when )
+
+import Data.Map (Map)
+import qualified Data.Map as Map
+import qualified Data.Set as S
 
 {-
 ************************************************************************
