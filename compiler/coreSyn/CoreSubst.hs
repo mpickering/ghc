@@ -1678,7 +1678,7 @@ pushCoValArg co
   = Just (mkRepReflCo arg, mkRepReflCo res)
 
   | isFunTy tyL
-  , [_, _, co1, co2] <- decomposeCo 4 co
+  , (co1, co2) <- decomposeFunCo co
               -- If   co  :: (tyL1 -> tyL2) ~ (tyR1 -> tyR2)
               -- then co1 :: tyL1 ~ tyR1
               --      co2 :: tyL2 ~ tyR2
@@ -1702,7 +1702,7 @@ pushCoercionIntoLambda in_scope x e co
     , Pair s1s2 t1t2 <- coercionKind co
     , Just (_s1,_s2) <- splitFunTy_maybe s1s2
     , Just (t1,_t2) <- splitFunTy_maybe t1t2
-    = let [_rep1, _rep2, co1, co2] = decomposeCo 4 co
+    = let (co1, co2) = decomposeFunCo co
           -- Should we optimize the coercions here?
           -- Otherwise they might not match too well
           x' = x `setIdType` t1
@@ -1808,8 +1808,9 @@ collectBindersPushingCo e
       | isId b
       , let Pair tyL tyR = coercionKind co
       , ASSERT( isFunTy tyL) isFunTy tyR
-      , isReflCo (mkNthCo 0 co)  -- See Note [collectBindersPushingCo]
-      = go_c (b:bs) e (mkNthCo 1 co)
+      , (co_arg, co_res) <- decomposeFunCo co
+      , isReflCo co_arg  -- See Note [collectBindersPushingCo]
+      = go_c (b:bs) e co_res
 
       | otherwise = (reverse bs, mkCast (Lam b e) co)
 
