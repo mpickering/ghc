@@ -1,6 +1,4 @@
 
-completesig04.hs:3:1: error:
-    • Orphan COMPLETE pragmas not supported
-      A COMPLETE pragma must mention at least one data constructor
-      or pattern synonym defined in the same module.
-    • In {-# COMPLETE Just, Left #-}
+completesig04.hs:6:1: error:
+    • Cannot form a group of complete patterns from patterns ‘A’ and ‘B’ as they match different type constructors (‘A’ resp. ‘B’)
+    • In {-# COMPLETE A, B #-}
