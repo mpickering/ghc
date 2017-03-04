@@ -18,8 +18,7 @@ TH_Roles2.$tcT
       1
       $krep
 $krep [InlPrag=[~]] = GHC.Types.KindRepVar 0
-$krep [InlPrag=[~]]
-  = GHC.Types.KindRepFun $krep GHC.Types.krep$*
+$krep [InlPrag=[~]] = GHC.Types.KindRepFun $krep GHC.Types.krep$*
 TH_Roles2.$trModule
   = GHC.Types.Module
       (GHC.Types.TrNameS "main"#) (GHC.Types.TrNameS "TH_Roles2"#)
