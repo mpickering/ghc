@@ -10,12 +10,15 @@ Error-checking and other utilities for @deriving@ clauses or declarations.
 
 module TcDerivUtils (
         DerivSpec(..), pprDerivSpec,
+        DerivInstArgs(..), DerivInstArgsNoRep, DerivInstArgsWithRep,
+        DataTypeInstArgs(..), DataTypeInstArgsNoRep,
+        DataTypeInstArgsWithRep, derivInstArgsToTypes,
         DerivSpecMechanism(..), isDerivSpecStock,
         isDerivSpecNewtype, isDerivSpecAnyClass,
         DerivContext, DerivStatus(..),
         PredOrigin(..), ThetaOrigin(..), mkPredOrigin,
         mkThetaOrigin, mkThetaOriginFromPreds, substPredOrigin,
-        checkSideConditions, hasStockDeriving,
+        checkSideConditions, hasStockDeriving, nonStdErr,
         canDeriveAnyClass,
         std_class_via_coercible, non_coercible_class,
         newDerivClsInst, extendLocalInstEnv
@@ -58,17 +61,30 @@ data DerivSpec theta = DS { ds_loc       :: SrcSpan
                           , ds_theta     :: theta
                           , ds_cls       :: Class
                           , ds_tys       :: [Type]
-                          , ds_tc        :: TyCon
                           , ds_overlap   :: Maybe OverlapMode
                           , ds_mechanism :: DerivSpecMechanism }
         -- This spec implies a dfun declaration of the form
         --       df :: forall tvs. theta => C tys
         -- The Name is the name for the DFun we'll build
         -- The tyvars bind all the variables in the theta
-        -- For type families, the tycon in
-        --       in ds_tys is the *family* tycon
-        --       in ds_tc is the *representation* type
-        -- For non-family tycons, both are the same
+
+        -- ds_tys contains all of the type arguments to the class. For stock-
+        -- and newtype-derived instances, the last type in ds_tys will always
+        -- be a datatype application. For example,
+        --
+        --   newtype Foo a = Foo a
+        --     deriving (C Int)
+        --   ===>
+        --   DS { ds_cls = C, ds_tys = [Int, Foo a] }
+        --
+        -- If the stock- or newtype-derived instance is for a data family, the
+        -- head tycon in the last type in ds_tys is the *family* tycon, not the
+        -- *representation* tycon. The representation tycon is stored in the
+        -- dsm_head_tycon field of DerivSpecMechanism instead (the
+        -- DerivSpecStock/DerivSpecNewtype constructors only). We do not store
+        -- the representation tycon in DerivSpec as DeriveAnyClass is not
+        -- guaranteed to have one.
+        -- See Note [Unconventional anyclass-derived instances]
 
         -- the theta is either the given and final theta, in standalone deriving,
         -- or the not-yet-simplified list of constraints together with their origin
@@ -85,7 +101,7 @@ Example:
      axiom :RTList a = Tree a
 
      DS { ds_tvs = [a,s], ds_cls = C, ds_tys = [s, T [a]]
-        , ds_tc = :RTList, ds_mechanism = DerivSpecNewtype (Tree a) }
+        , ds_mechanism = DerivSpecNewtype (Tree a) }
 -}
 
 pprDerivSpec :: Outputable theta => DerivSpec theta -> SDoc
@@ -103,17 +119,144 @@ pprDerivSpec (DS { ds_loc = l, ds_name = n, ds_tvs = tvs, ds_cls = c,
 instance Outputable theta => Outputable (DerivSpec theta) where
   ppr = pprDerivSpec
 
--- What action to take in order to derive a class instance.
+-- | A representation of a class's argument types in a derived instance.
+--
+-- This is quite similar in structure to 'DerivSpecMechanism', but this data
+-- type is used before we know with certainty which deriving strategy we are
+-- going to commit to.
+
+-- See Note [Unconventional anyclass-derived instances]
+data DerivInstArgs a b
+  = ConventionalInstArgs (DataTypeInstArgs a b)
+    -- ^ A derived instance where the last argument type is a data type
+    -- applied to some number of other types.
+    --
+    -- All stock- and newtype-derived instances must be of this form, and
+    -- 95% of anyclass-derived instances are also of this form (but see also
+    -- 'UnconventionalInstArgs' for the 5% that aren't).
+
+  | UnconventionalInstArgs [Type]
+    -- ^ A derived instance that does not decompose into a data type
+    -- application (as in 'DerivInstArgs'). This can sometimes happen with
+    -- @DeriveAnyClass@. Some examples:
+    --
+    -- @
+    -- class C
+    -- deriving anyclass instance C -- No type arguments to C
+    --
+    -- class Anything a
+    -- deriving anyclass instance Anything a -- a is not a data type
+    -- @
+    --
+    -- The only argument to 'UnconventionalInstArgs' are the list of type
+    -- arguments to the derived class.
+
+instance (Outputable a, Outputable b) => Outputable (DerivInstArgs a b) where
+  ppr (ConventionalInstArgs args) = hang (text "ConventionalInstArgs")
+                                       2 (parens $ ppr args)
+  ppr (UnconventionalInstArgs tys) = text "UnconventionalInstArgs" <+> ppr tys
+
+-- | A 'DerivInstArgs' value that is used before we know what the
+-- representation 'TyCon' is.
+type DerivInstArgsNoRep = DerivInstArgs () ()
+-- | A 'DerivInstArgs' value where we know what the representation 'TyCon' is,
+-- and what types it is being applied to.
+type DerivInstArgsWithRep = DerivInstArgs TyCon [Type]
+
+-- | Extract the class argument types from a 'DerivInstArgs' value.
+derivInstArgsToTypes :: DerivInstArgs a b -> [Type]
+derivInstArgsToTypes (ConventionalInstArgs inst_args)
+  | DataTypeInstArgs { dtia_class_tys = cls_tys, dtia_head_tycon = tc
+                     , dtia_head_tycon_args = tc_args } <- inst_args
+  = cls_tys ++ [mkTyConApp tc tc_args]
+derivInstArgsToTypes (UnconventionalInstArgs tys) = tys
+
+-- | A representation of a class's argument types in a derived instance,
+-- where the last argument type is a data type applied to some number of other
+-- types, e.g.,
+--
+-- @
+-- deriving instance C Int String (Foo Char Bool)
+-- @
+data DataTypeInstArgs a b = DataTypeInstArgs
+    { dtia_class_tys :: [Type]
+      -- ^ All type arguments to the derived class except the last one. In the
+      -- above example, @dtia_class_tys = [Int, String]@.
+    , dtia_head_tycon :: TyCon
+      -- ^ The 'TyCon' at the head of the last type argument to the derived
+      -- class. In the above example, @dtia_head_tycon = Foo@.
+      --
+      -- In the case of data families, this is the family 'TyCon', not the
+      -- representation 'TyCon'. The representation 'TyCon' is located in
+      -- 'dtia_head_rep_tycon' (if it is known).
+    , dtia_head_tycon_args :: [Type]
+      -- ^ The types to which @dtia_head_tycon@ is applied in the last type
+      -- argument to the derived class. In the above example,
+      -- @dtia_head_tycon_args = [Char, Bool]@.
+      --
+      -- In the case of data families, these are the arguments to the family
+      -- 'TyCon', not the representation 'TyCon'. The arguments to the
+      -- representation 'TyCon' are located in 'dtia_head_rep_tycon_args'
+      -- (if they are known).
+    , dtia_head_rep_tycon :: a
+      -- ^ The representation 'TyCon' of 'dtia_head_tycon' (if it is known).
+      -- This will only ever be different from 'dtia_head_tycon' in the case
+      -- of data families.
+    , dtia_head_rep_tycon_args :: b
+      -- ^ The type arguments to 'dtia_head_rep_tycon' (if they are known).
+      -- These will only ever be different from 'dtia_head_tycon_args' in the
+      -- case of data families.
+    }
+
+instance (Outputable a, Outputable b)
+    => Outputable (DataTypeInstArgs a b) where
+  ppr (DataTypeInstArgs { dtia_class_tys = cls_tys, dtia_head_tycon = tc
+                        , dtia_head_tycon_args = tc_args
+                        , dtia_head_rep_tycon = rep_tc
+                        , dtia_head_rep_tycon_args = rep_tc_args })
+    = hang (text "DataTypeInstArgs")
+         2 (vcat [ text "dtia_class_tys          " <+> ppr cls_tys
+                 , text "dtia_head_tycon         " <+> ppr tc
+                 , text "dtia_head_tycon_args    " <+> ppr tc_args
+                 , text "dtia_head_rep_tycon     " <+> ppr rep_tc
+                 , text "dtia_head_rep_tycon_args" <+> ppr rep_tc_args ])
+
+-- | A 'DataTypeInstArgs' value that is used before we know what the
+-- representation 'TyCon' is.
+type DataTypeInstArgsNoRep   = DataTypeInstArgs () ()
+-- | A 'DataTypeInstArgs' value where we know what the representation 'TyCon'
+-- is, and what types it is being applied to.
+type DataTypeInstArgsWithRep = DataTypeInstArgs TyCon [Type]
+
+-- | What action to take in order to derive a class instance.
+
 -- See Note [Deriving strategies] in TcDeriv
--- NB: DerivSpecMechanism is purely local to this module
 data DerivSpecMechanism
-  = DerivSpecStock   -- "Standard" classes
-      (SrcSpan -> TyCon -> [Type] -> TcM (LHsBinds RdrName, BagDerivStuff))
+  = -- | "Standard" classes
+    DerivSpecStock
+    { dsm_inst_args :: DataTypeInstArgsWithRep
+      -- ^ The arguments to the derived class in the instance head.
+    , dsm_gen_fn :: SrcSpan -> TyCon -> [Type]
+                 -> TcM (LHsBinds RdrName, BagDerivStuff)
+      -- ^ The function which generates stock-derived method bindings and other
+      -- auxiliary definitions for a given data type 'TyCon' and the arguments
+      -- to which it is applied.
 
-  | DerivSpecNewtype -- -XGeneralizedNewtypeDeriving
-      Type -- ^ The newtype rep type
+      -- NB: The TyCon argument to dsm_gen_fn will always be contained in
+      -- dsm_inst_args, We keep this TyCon separate because it is
+      -- useful to inspect its value in various places
+      -- (e.g., validity checking).
+    }
 
-  | DerivSpecAnyClass -- -XDeriveAnyClass
+  | -- | @-XGeneralizedNewtypeDeriving@
+    DerivSpecNewtype
+    { dsm_inst_args :: DataTypeInstArgsWithRep
+      -- ^ The arguments to the derived class in the instance head.
+    , dsm_rep_ty :: Type
+      -- ^ The newtype rep type
+    }
+
+  | DerivSpecAnyClass -- | @-XDeriveAnyClass@
 
 isDerivSpecStock, isDerivSpecNewtype, isDerivSpecAnyClass
   :: DerivSpecMechanism -> Bool
@@ -139,7 +282,7 @@ type DerivContext = Maybe ThetaType
    -- Nothing    <=> Vanilla deriving; infer the context of the instance decl
    -- Just theta <=> Standalone deriving: context supplied by programmer
 
-data DerivStatus = CanDerive                 -- Stock class, can derive
+data DerivStatus = CanDerive DataTypeInstArgsWithRep -- Stock class, can derive
                  | DerivableClassError SDoc  -- Stock class, but can't do it
                  | DerivableViaInstance      -- See Note [Deriving any class]
                  | NonDerivableClass SDoc    -- Non-stock class
@@ -302,15 +445,21 @@ getDataConFixityFun tc
 -- the data constructors - but we need to be careful to fall back to the
 -- family tycon (with indexes) in error messages.
 
-checkSideConditions :: DynFlags -> DerivContext -> Class -> [TcType]
-                    -> TyCon -- tycon
+checkSideConditions :: DynFlags -> DerivContext -> Class
+                    -> DerivInstArgsWithRep
                     -> DerivStatus
-checkSideConditions dflags mtheta cls cls_tys rep_tc
+checkSideConditions dflags mtheta cls deriv_inst_rep_args
   | Just cond <- sideConditions mtheta cls
-  = case (cond dflags rep_tc) of
+  , ConventionalInstArgs
+      inst_args@(DataTypeInstArgs { dtia_class_tys      = cls_tys
+                                  , dtia_head_tycon     = tc
+                                  , dtia_head_rep_tycon = rep_tc })
+      <- deriv_inst_rep_args
+    -- NB: pass the *representation* tycon
+  = case (cond dflags tc rep_tc) of
         NotValid err -> DerivableClassError err  -- Class-specific error
         IsValid  | null (filterOutInvisibleTypes (classTyCon cls) cls_tys)
-                   -> CanDerive
+                   -> CanDerive inst_args
                    -- All stock derivable classes are unary in the sense that
                    -- there should be not types in cls_tys (i.e., no type args
                    -- other than last). Note that cls_types can contain
@@ -319,14 +468,35 @@ checkSideConditions dflags mtheta cls cls_tys rep_tc
                  | otherwise -> DerivableClassError (classArgsErr cls cls_tys)
                    -- e.g. deriving( Eq s )
 
-  | NotValid err <- canDeriveAnyClass dflags
-  = NonDerivableClass err  -- DeriveAnyClass does not work
+    -- DeriveAnyClass does not work, and furthermore, we are trying to derive
+    -- an instance for a class itself, which warrants a special error message.
+    -- See Note [Deriving instances for classes themselves]
+  | NotValid{} <- can_dac
+  , ConventionalInstArgs
+      (DataTypeInstArgs { dtia_head_tycon     = tc
+                        , dtia_head_rep_tycon = rep_tc }) <- deriv_inst_rep_args
+  , isClassTyCon rep_tc
+  = NonDerivableClass $
+    quotes (ppr tc) <+> text "is a type class,"
+                    <+> text "and can only have a derived instance"
+                    $+$ text "if DeriveAnyClass is enabled"
+
+    -- DeriveAnyClass does not work
+  | NotValid err <- can_dac
+  = NonDerivableClass (nonStdErr cls $$ err)
 
   | otherwise
   = DerivableViaInstance   -- DeriveAnyClass should work
+ where
+  can_dac = canDeriveAnyClass dflags
 
 classArgsErr :: Class -> [Type] -> SDoc
 classArgsErr cls cls_tys = quotes (ppr (mkClassPred cls cls_tys)) <+> text "is not a class"
+
+nonStdErr :: Class -> SDoc
+nonStdErr cls =
+      quotes (ppr cls)
+  <+> text "is not a stock derivable class (Eq, Show, etc.)"
 
 -- Side conditions (whether the datatype must have at least one constructor,
 -- required language extensions, etc.) for using GHC's stock deriving
@@ -382,31 +552,47 @@ canDeriveAnyClass dflags
   | otherwise
   = IsValid   -- OK!
 
-type Condition = DynFlags -> TyCon -> Validity
-        -- TyCon is the *representation* tycon if the data type is an indexed one
-        -- Nothing => OK
+type Condition  = DynFlags
+
+               -> TyCon    -- ^ The data type's 'TyCon'. For data families,
+                           -- this is the family 'TyCon'.
+
+               -> TyCon    -- ^ For data families, this is the representation
+                           -- 'TyCon'. Otherwise, this is the same as the other
+                           -- 'TyCon' argument.
+
+               -> Validity -- ^ 'IsValid' if deriving an instance for this
+                           -- 'TyCon' is possible. Otherwise, it's
+                           -- @'NotValid' err@, where @err@ explains what went
+                           -- wrong.
 
 orCond :: Condition -> Condition -> Condition
-orCond c1 c2 dflags tc
-  = case (c1 dflags tc, c2 dflags tc) of
+orCond c1 c2 dflags tc rep_tc
+  = case (c1 dflags tc rep_tc, c2 dflags tc rep_tc) of
      (IsValid,    _)          -> IsValid    -- c1 succeeds
      (_,          IsValid)    -> IsValid    -- c21 succeeds
      (NotValid x, NotValid y) -> NotValid (x $$ text "  or" $$ y)
                                             -- Both fail
 
 andCond :: Condition -> Condition -> Condition
-andCond c1 c2 dflags tc = c1 dflags tc `andValid` c2 dflags tc
+andCond c1 c2 dflags tc rep_tc
+  = c1 dflags tc rep_tc `andValid` c2 dflags tc rep_tc
 
 cond_stdOK :: DerivContext -- Says whether this is standalone deriving or not;
                            --     if standalone, we just say "yes, go for it"
            -> Bool         -- True <=> permissive: allow higher rank
                            --          args and no data constructors
            -> Condition
-cond_stdOK (Just _) _ _ _
+cond_stdOK _ _ _ tc _
+  | not (isAlgTyCon tc) && not (isDataFamilyTyCon tc)
+    -- Complain about functions, primitive types, etc.
+  = NotValid $ text "The last argument of the instance must be a"
+           <+> text "data or newtype application"
+cond_stdOK (Just _) _ _ _ _
   = IsValid     -- Don't check these conservative conditions for
                 -- standalone deriving; just generate the code
                 -- and let the typechecker handle the result
-cond_stdOK Nothing permissive _ rep_tc
+cond_stdOK Nothing permissive _ _ rep_tc
   | null data_cons
   , not permissive      = NotValid (no_cons_why rep_tc $$ suggestion)
   | not (null con_whys) = NotValid (vcat con_whys $$ suggestion)
@@ -437,10 +623,10 @@ no_cons_why rep_tc = quotes (pprSourceTyCon rep_tc) <+>
                      text "must have at least one data constructor"
 
 cond_RepresentableOk :: Condition
-cond_RepresentableOk _ tc = canDoGenerics tc
+cond_RepresentableOk _ _ rep_tc = canDoGenerics rep_tc
 
 cond_Representable1Ok :: Condition
-cond_Representable1Ok _ tc = canDoGenerics1 tc
+cond_Representable1Ok _ _ rep_tc = canDoGenerics1 rep_tc
 
 cond_enumOrProduct :: Class -> Condition
 cond_enumOrProduct cls = cond_isEnumeration `orCond`
@@ -449,13 +635,13 @@ cond_enumOrProduct cls = cond_isEnumeration `orCond`
 cond_args :: Class -> Condition
 -- For some classes (eg Eq, Ord) we allow unlifted arg types
 -- by generating specialised code.  For others (eg Data) we don't.
-cond_args cls _ tc
+cond_args cls _ _ rep_tc
   = case bad_args of
       []     -> IsValid
       (ty:_) -> NotValid (hang (text "Don't know how to derive" <+> quotes (ppr cls))
                              2 (text "for type" <+> quotes (ppr ty)))
   where
-    bad_args = [ arg_ty | con <- tyConDataCons tc
+    bad_args = [ arg_ty | con <- tyConDataCons rep_tc
                         , arg_ty <- dataConOrigArgTys con
                         , isUnliftedType arg_ty
                         , not (ok_ty arg_ty) ]
@@ -473,7 +659,7 @@ cond_args cls _ tc
 
 
 cond_isEnumeration :: Condition
-cond_isEnumeration _ rep_tc
+cond_isEnumeration _ _ rep_tc
   | isEnumerationTyCon rep_tc = IsValid
   | otherwise                 = NotValid why
   where
@@ -483,7 +669,7 @@ cond_isEnumeration _ rep_tc
                   -- See Note [Enumeration types] in TyCon
 
 cond_isProduct :: Condition
-cond_isProduct _ rep_tc
+cond_isProduct _ _ rep_tc
   | isProductTyCon rep_tc = IsValid
   | otherwise             = NotValid why
   where
@@ -497,7 +683,7 @@ cond_functorOK :: Bool -> Bool -> Condition
 --            (c) don't use argument in the wrong place, e.g. data T a = T (X a a)
 --            (d) optionally: don't use function types
 --            (e) no "stupid context" on data type
-cond_functorOK allowFunctions allowExQuantifiedLastTyVar _ rep_tc
+cond_functorOK allowFunctions allowExQuantifiedLastTyVar _ _ rep_tc
   | null tc_tvs
   = NotValid (text "Data type" <+> quotes (ppr rep_tc)
               <+> text "must have some type parameters")
@@ -545,7 +731,7 @@ cond_functorOK allowFunctions allowExQuantifiedLastTyVar _ rep_tc
     wrong_arg   = text "must use the type variable only as the last argument of a data type"
 
 checkFlag :: LangExt.Extension -> Condition
-checkFlag flag dflags _
+checkFlag flag dflags _ _
   | xopt flag dflags = IsValid
   | otherwise        = NotValid why
   where
@@ -666,4 +852,54 @@ As a result, T can have a derived Foldable instance:
     foldr _ z T6       = z
 
 See Note [DeriveFoldable with ExistentialQuantification] in TcGenFunctor.
+
+Note [Unconventional anyclass-derived instances]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+95% of derived instances are what I will label "conventional". That is, they
+generate an instance of the form:
+
+  instance C c1 ... cm (T t1 ... tn) where ...
+
+where T is a data type constructor. In particular, it is guaranteed that all
+stock- and newtype-derived instances will be of this form, as they simply
+wouldn't make sense otherwise.
+
+With DeriveAnyClass, however, the other 5% of the instances emerge (the
+"unconventional" ones), as there's no requirement that the last type be headed
+with a data type constructor. For instance, this is a perfectly legitimate
+anyclass-derived instance:
+
+  class C a
+  deriving instance C a
+
+In this way, DeriveAnyClass is quite different, and we need to be careful not
+to ingrain the assumption that all instances are of the "conventional" form.
+We accomplish this by careful use of datatypes.
+
+First, there's the DerivInstTys data type. This represents whether you are
+dealing with an "unconventional" derived instance or a "conventional" one. In
+the former case, you only have a list of types. In the latter case, however,
+you have a list of types followed by a data type constructor and the arguments
+to which it is applied. We encapsulate the latter case's types (and tycon)
+with the DataTypeInstArgs data type.
+
+Note that DataTypeInstArgs has *two* copies of the data type constructor and
+its argument. This second copy is for the case of data families, in which case
+the data family instance has a different representation tycon than the parent
+data family's tycon (similarly, the arguments to the tycon might be different
+if you use the representation tycon instead). We don't always know what this
+representation tycon is (it's only at TcDeriv.mkEqnHelp that we obtain it),
+which is we have both DataTypeInstArgsNoRep and DataTypeInstArgsWithRep
+(and similarly, DerivInstArgsNoRep and DerivInstArgsWithRep).
+
+It's important to note that DerivInstArgs is only used _before_ we know for
+sure what the deriving strategy will be. Once we know this, DerivInstArgs'
+functionality is superseded by DerivSpecMechanism. Two constructors of
+DerivSpecMechanism also contain DataTypeInstArgs, as it's convenient to refer
+to them later when generating bindings.
+
+All of this data type engineering leads to a much cleaner validity-checking
+story, as it is now very easy to check in various places whether an instance
+is "conventional" or not, and if so, we can perform special "conventional"-only
+validity checks.
 -}

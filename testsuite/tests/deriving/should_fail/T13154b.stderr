@@ -1,0 +1,33 @@
+
+T13154b.hs:15:1: error:
+    • Can't make a derived instance of ‘Foo a’ with the stock strategy:
+        ‘Foo’ is not a stock derivable class (Eq, Show, etc.)
+    • In the stand-alone deriving instance for ‘Foo a’
+
+T13154b.hs:16:1: error:
+    • Can't make a derived instance of
+        ‘Foo (# #)’ with the stock strategy:
+        ‘Foo’ is not a stock derivable class (Eq, Show, etc.)
+    • In the stand-alone deriving instance for ‘Foo (# #)’
+
+T13154b.hs:17:1: error:
+    • Can't make a derived instance of
+        ‘Foo a’ with the newtype strategy:
+        GeneralizedNewtypeDeriving cannot be used on non-newtypes
+    • In the stand-alone deriving instance for ‘Foo a’
+
+T13154b.hs:18:1: error:
+    • Can't make a derived instance of
+        ‘Foo (# #)’ with the newtype strategy:
+        GeneralizedNewtypeDeriving cannot be used on non-newtypes
+    • In the stand-alone deriving instance for ‘Foo (# #)’
+
+T13154b.hs:21:1: error:
+    • Can't make a derived instance of ‘C’ with the stock strategy:
+        ‘C’ is not a stock derivable class (Eq, Show, etc.)
+    • In the stand-alone deriving instance for ‘C’
+
+T13154b.hs:22:1: error:
+    • Can't make a derived instance of ‘C’ with the newtype strategy:
+        GeneralizedNewtypeDeriving cannot be used on non-newtypes
+    • In the stand-alone deriving instance for ‘C’

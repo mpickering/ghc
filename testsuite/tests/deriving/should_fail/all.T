@@ -64,3 +64,4 @@ test('T11509_1', [when(doing_ghci(), extra_hc_opts('-fobject-code'))],
      compile_fail, [''])
 test('T12163', normal, compile_fail, [''])
 test('T12512', omit_ways(['ghci']), compile_fail, [''])
+test('T13154b', omit_ways(['ghci']), compile_fail, [''])
