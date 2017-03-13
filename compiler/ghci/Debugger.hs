@@ -15,7 +15,8 @@
 module Debugger (pprintClosureCommand, showTerm, pprTypeAndContents) where
 
 import Linker
-import RtClosureInspect
+io  mport RtClosureInspect
+
 
 import GHCi
 import GHCi.RemoteTypes
