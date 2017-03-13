@@ -972,6 +972,8 @@ DmdResult:     Dunno CPRResult
 CPRResult:         NoCPR
                    /    \
   RetProd [DmdResult]    RetSum ConTag
+                  \     /
+                NeverReturns
 
 
 Product constructors return (Converges (RetProd rs))
@@ -995,9 +997,12 @@ type DmdResult = Termination CPRResult
 data CPRResult = NoCPR               -- Top of the lattice
                | RetProd [DmdResult] -- Returns a constructor from a product type
                | RetSum ConTag       -- Returns a constructor from a data type
+               | NeverReturns        -- Never returns anything
                deriving( Eq, Show )
 
 lubCPR :: CPRResult -> CPRResult -> CPRResult
+lubCPR NeverReturns r              = r
+lubCPR r NeverReturns              = r
 lubCPR (RetSum t1) (RetSum t2)
   | t1 == t2                       = RetSum t1
 lubCPR (RetProd ds1) (RetProd ds2)
@@ -1046,6 +1051,7 @@ instance Outputable CPRResult where
   ppr NoCPR        = empty
   ppr (RetSum n)   = char 'm' <> int n
   ppr (RetProd rs) = char 'm' <> parens (hcat (punctuate (char ',') (map ppr rs)))
+  ppr NeverReturns = text "m_"
 
 seqDmdResult :: DmdResult -> ()
 seqDmdResult Diverges  = ()
@@ -1057,6 +1063,7 @@ seqCPRResult :: CPRResult -> ()
 seqCPRResult NoCPR        = ()
 seqCPRResult (RetSum n)   = n `seq` ()
 seqCPRResult (RetProd rs) = seqListWith seqDmdResult rs
+seqCPRResult NeverReturns = ()
 
 
 ------------------------------------------------------------------------
@@ -1102,6 +1109,7 @@ cutDmdResult n (Dunno c)     = Dunno     (cutCPRResult n c)
 cutCPRResult :: Int -> CPRResult -> CPRResult
 cutCPRResult 0 _               = NoCPR
 cutCPRResult _ NoCPR           = NoCPR
+cutCPRResult _ NeverReturns    = NeverReturns
 cutCPRResult _ (RetSum tag)    = RetSum tag
 cutCPRResult n (RetProd rs)    = RetProd (map (cutDmdResult (n-1)) rs)
 
@@ -1120,6 +1128,7 @@ forgetSumCPR res = res
 forgetSumCPR_help :: CPRResult -> CPRResult
 forgetSumCPR_help (RetProd ds) = RetProd (map forgetSumCPR ds)
 forgetSumCPR_help (RetSum _)   = NoCPR
+forgetSumCPR_help NeverReturns = NeverReturns
 forgetSumCPR_help NoCPR        = NoCPR
 
 splitNestedRes :: DmdResult -> [DmdResult]
@@ -1132,6 +1141,7 @@ splitNestedCPR :: CPRResult -> [DmdResult]
 splitNestedCPR NoCPR        = repeat topRes
 splitNestedCPR (RetSum _)   = repeat topRes
 splitNestedCPR (RetProd cs) = cs
+splitNestedCPR NeverReturns = repeat topRes
 
 isTopRes :: DmdResult -> Bool
 isTopRes (Dunno NoCPR) = True
@@ -1156,6 +1166,7 @@ retCPR_maybe :: CPRResult -> Maybe (ConTag, [DmdResult])
 retCPR_maybe (RetSum t)   = Just (t, [])
 retCPR_maybe (RetProd rs) = Just (fIRST_TAG, rs)
 retCPR_maybe NoCPR        = Nothing
+retCPR_maybe NeverReturns = Nothing
 
 -- See Notes [Default demand on free variables]
 -- and [defaultDmd vs. resTypeArgDmd]
@@ -1485,7 +1496,7 @@ deferAfterIO d@(DmdType _ _ res) =
   where
   defer_res (Converges r) = Dunno r
   defer_res r@(Dunno {})  = r
-  defer_res _             = topRes  -- Diverges and ThrowsExn
+  defer_res _             = Dunno NeverReturns  -- Diverges and ThrowsExn
 
 strictenDmd :: Demand -> CleanDemand
 strictenDmd (JD { sd = s, ud = u})
@@ -2287,10 +2298,12 @@ instance Binary CPRResult where
     put_ bh (RetSum n)   = do { putByte bh 0; put_ bh n }
     put_ bh (RetProd rs) = do { putByte bh 1; put_ bh rs }
     put_ bh NoCPR        = putByte bh 2
+    put_ bh NeverReturns = putByte bh 3
 
     get  bh = do
             h <- getByte bh
             case h of 
               0 -> do { n  <- get bh; return (RetSum n) }
               1 -> do { rs <- get bh; return (RetProd rs) }
-              _ -> return NoCPR
+              2 -> return NoCPR
+              _ -> return NeverReturns
