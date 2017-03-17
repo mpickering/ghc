@@ -1106,7 +1106,7 @@ validSubstitutions ct | isExprHoleCt ct =
      return $ if (null substitutions)
        then empty
        else hang (text "Valid substitutions include")
-             2 (vcat $ map (ppr_sub rdr_env) substitutions)
+             2 (vcat $ map (ppr_sub rdr_env) $ take 10 substitutions)
   where
     hole_ty :: TcPredType
     hole_ty = ctEvPred (ctEvidence ct)
@@ -1132,7 +1132,7 @@ validSubstitutions ct | isExprHoleCt ct =
     tcTyToId _ = Nothing
 
     substituteable :: Type -> [Id] -> [Id]
-    substituteable ty = filter (\id -> (varType id `nonDetCmpType` ty) == EQ)
+    substituteable ty = filter ((tcEqType ty) . varType)
 
 validSubstitutions _ = return empty
 
