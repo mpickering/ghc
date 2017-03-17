@@ -6,6 +6,7 @@ holes3.hs:3:5: error:
     • In the expression: _
       In an equation for ‘f’: f = _
     • Relevant bindings include f :: t (bound at holes3.hs:3:1)
+      Valid substitutions include h :: [Char] (defined at holes3.hs:8:1)
 
 holes3.hs:6:7: error:
     • Found hole: _gr :: Char
@@ -23,6 +24,7 @@ holes3.hs:8:5: error:
       In the expression: _aa ++ "a"
       In an equation for ‘h’: h = _aa ++ "a"
     • Relevant bindings include h :: [Char] (bound at holes3.hs:8:1)
+      Valid substitutions include h :: [Char] (defined at holes3.hs:8:1)
 
 holes3.hs:11:15: error:
     • Found hole: _x :: b0
