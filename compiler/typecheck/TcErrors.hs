@@ -219,12 +219,14 @@ report_unsolved mb_binds_var err_as_warn type_errors expr_holes
 data Report
   = Report { report_important :: [SDoc]
            , report_relevant_bindings :: [SDoc]
+           , report_valid_substitutions :: [SDoc]
            }
 
 instance Outputable Report where   -- Debugging only
-  ppr (Report { report_important = imp, report_relevant_bindings = rel })
+  ppr (Report { report_important = imp, report_relevant_bindings = rel, report_valid_substitutions = val })
     = vcat [ text "important:" <+> vcat imp
-           , text "relevant:"  <+> vcat rel ]
+           , text "relevant:"  <+> vcat rel
+           , text "valid:"  <+> vcat val ]
 
 {- Note [Error report]
 The idea is that error msgs are divided into three parts: the main msg, the
@@ -241,12 +243,12 @@ multiple places so they have to be in the Report.
 
 #if __GLASGOW_HASKELL__ > 710
 instance Semigroup Report where
-    Report a1 b1 <> Report a2 b2 = Report (a1 ++ a2) (b1 ++ b2)
+    Report a1 b1 c1 <> Report a2 b2 c2 = Report (a1 ++ a2) (b1 ++ b2) (c1 ++ c2)
 #endif
 
 instance Monoid Report where
-    mempty = Report [] []
-    mappend (Report a1 b1) (Report a2 b2) = Report (a1 ++ a2) (b1 ++ b2)
+    mempty = Report [] [] []
+    mappend (Report a1 b1 c1) (Report a2 b2 c2) = Report (a1 ++ a2) (b1 ++ b2) (c1 ++ c2)
 
 -- | Put a doc into the important msgs block.
 important :: SDoc -> Report
@@ -255,6 +257,10 @@ important doc = mempty { report_important = [doc] }
 -- | Put a doc into the relevant bindings block.
 relevant_bindings :: SDoc -> Report
 relevant_bindings doc = mempty { report_relevant_bindings = [doc] }
+
+-- | Put a doc into the relevant bindings block.
+valid_substitutions :: [SDoc] -> Report
+valid_substitutions docs = mempty { report_valid_substitutions = docs }
 
 data TypeErrorChoice   -- What to do for type errors found by the type checker
   = TypeError     -- A type error aborts compilation with an error message
@@ -841,10 +847,10 @@ mkErrorMsgFromCt ctxt ct report
   = mkErrorReport ctxt (ctLocEnv (ctLoc ct)) report
 
 mkErrorReport :: ReportErrCtxt -> TcLclEnv -> Report -> TcM ErrMsg
-mkErrorReport ctxt tcl_env (Report important relevant_bindings)
+mkErrorReport ctxt tcl_env (Report important relevant_bindings valid_subs)
   = do { context <- mkErrInfo (cec_tidy ctxt) (tcl_ctxt tcl_env)
        ; mkErrDocAt (RealSrcSpan (tcl_loc tcl_env))
-            (errDoc important [context] relevant_bindings)
+            (errDoc important [context] (relevant_bindings ++ valid_subs))
        }
 
 type UserGiven = Implication
@@ -1021,6 +1027,7 @@ mkHoleError ctxt ct@(CHoleCan { cc_hole = hole })
   = do { (ctxt, binds_msg, ct) <- relevantBindings False ctxt ct
                -- The 'False' means "don't filter the bindings"; see Trac #8191
 
+       ; valid_subs <-  validSubstitutions ct
        ; show_hole_constraints <- goptM Opt_ShowHoleConstraints
        ; let constraints_msg
                | isExprHoleCt ct, show_hole_constraints
@@ -1029,7 +1036,8 @@ mkHoleError ctxt ct@(CHoleCan { cc_hole = hole })
 
        ; mkErrorMsgFromCt ctxt ct $
             important hole_msg `mappend`
-            relevant_bindings (binds_msg $$ constraints_msg) }
+            relevant_bindings (binds_msg $$ constraints_msg) `mappend`
+            valid_substitutions valid_subs}
 
   where
     occ     = holeOcc hole
@@ -1075,6 +1083,15 @@ mkHoleError ctxt ct@(CHoleCan { cc_hole = hole })
 
 mkHoleError _ ct = pprPanic "mkHoleError" (ppr ct)
 
+validSubstitutions :: Ct -> TcM [SDoc]
+validSubstitutions ct =
+  do traceTc "Constraint" $ vcat $ [ppr ct]
+     rdr_env     <- getGlobalRdrEnv
+     traceTc "Global env" $ vcat $ [ppr rdr_env]
+     return $ if (null res)
+       then []
+       else [text "Valid substitutions:", vcat res]
+  where res = [text "None found"]
 
 -- See Note [Constraints include ...]
 givenConstraintsMsg :: ReportErrCtxt -> SDoc
