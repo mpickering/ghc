@@ -32,7 +32,7 @@ import HsExpr  ( UnboundVar(..) )
 import HsBinds ( PatSynBind(..) )
 import Name
 import RdrName ( lookupGlobalRdrEnv, lookupGRE_Name, GlobalRdrEnv
-               , mkRdrUnqual, isLocalGRE, greSrcSpan )
+               , mkRdrUnqual, isLocalGRE, greSrcSpan, pprNameProvenance)
 import PrelNames ( typeableClassName, hasKey, liftedRepDataConKey )
 import Id
 import Var
@@ -1089,29 +1089,38 @@ mkHoleError _ ct = pprPanic "mkHoleError" (ppr ct)
 
 
 validSubstitutions :: Ct -> TcM SDoc
-validSubstitutions ct@(CHoleCan { cc_ev = _ }) =
+validSubstitutions ct | isExprHoleCt ct =
   do
-     lcl_env <- getLclEnv
-     let ids = catMaybes $ map tcTyToId $ eltsUFM  $ tcl_env lcl_env
-         res = substituteable hole_ty ids
+     (_, lcl_env) <- getEnvs
+     rdr_env <- getGlobalRdrEnv
+     let lcl_ids = catMaybes $ map ltcTyToId $ eltsUFM  $ tcl_env lcl_env
+         res = substituteable hole_ty lcl_ids
      return $ if (null res)
        then empty
        else hang (text "Valid substitutions include")
-             2 (vcat $ map ppr_sub res)
+             2 (vcat $ map (ppr_sub rdr_env) res)
   where
     hole_ty :: TcPredType
     hole_ty = ctEvPred (ctEvidence ct)
-    ppr_sub :: Id -> SDoc
-    ppr_sub id = (ppr id) <+> (text "::") <+> (ppr $ varType id)
-    tcTyToId :: TcTyThing -> Maybe Id
-    tcTyToId (AGlobal (AnId i)) = Just i
-    tcTyToId (ATcId {tct_id = i}) = Just i
-    tcTyToId _ = Nothing
+    ppr_sub :: GlobalRdrEnv -> Id -> SDoc
+    ppr_sub rdr_env id = (ppr id) <+> (text "::") <+> (ppr $ varType id) <+> add_info
+      where add_info = case lookupGRE_Name rdr_env (idName id) of
+              Just elt -> (parens $ pprNameProvenance elt)
+              _ -> empty
+
+    gtcTyToId :: TyThing -> Maybe Id
+    gtcTyToId (AnId i) = Just i
+    gtcTyToId _ = Nothing
+
+    ltcTyToId :: TcTyThing -> Maybe Id
+    ltcTyToId (AGlobal gid) = gtcTyToId gid
+    ltcTyToId (ATcId {tct_id = i}) = Just i
+    ltcTyToId _ = Nothing
 
     substituteable :: Type -> [Id] -> [Id]
     substituteable ty = filter (\id -> ((((flip nonDetCmpType) ty) . varType) id) >= EQ)
 
-validSubstitutions ct = return $ pprPanic "validSubstitutions works only for holes" (ppr ct)
+validSubstitutions _ = return empty
 
 
 -- See Note [Constraints include ...]

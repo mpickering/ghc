@@ -4,7 +4,6 @@
 SplicesUsed.hs:7:16: warning: [-Wpartial-type-signatures (in -Wdefault)]
     • Found type wildcard ‘_’ standing for ‘Maybe Bool’
     • In the type signature: maybeBool :: (_)
-      Valid substitutions include maybeBool :: Maybe Bool
 
 SplicesUsed.hs:8:15: warning: [-Wpartial-type-signatures (in -Wdefault)]
     • Found type wildcard ‘_a’ standing for ‘w’
