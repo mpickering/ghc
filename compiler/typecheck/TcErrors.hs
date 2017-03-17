@@ -1110,8 +1110,6 @@ validSubstitutions ct@(CHoleCan { cc_ev = _ }) =
 
     substituteable :: Type -> [Id] -> [Id]
     substituteable ty = filter (\id -> ((((flip nonDetCmpType) ty) . varType) id) >= EQ)
-    expanded :: Type -> [Id] -> [(Type, Type)]
-    expanded hole_ty = map ((expandSynonymsToMatch hole_ty) . varType)
 
 validSubstitutions ct = return $ pprPanic "validSubstitutions works only for holes" (ppr ct)
 

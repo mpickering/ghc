@@ -1,4 +1,3 @@
-
 Defer03.hs:4:5: warning: [-Wdeferred-type-errors (in -Wdefault)]
     • Couldn't match expected type ‘Int’ with actual type ‘Char’
     • In the expression: 'p'
@@ -9,6 +8,9 @@ Defer03.hs:7:5: warning: [-Wtyped-holes (in -Wdefault)]
     • In the expression: _
       In an equation for ‘f’: f = _
     • Relevant bindings include f :: Int (bound at Defer03.hs:7:1)
+      Valid substitutions include
+        a :: Int
+        f :: Int
 
 Defer03.hs:4:5: error:
     • Couldn't match expected type ‘Int’ with actual type ‘Char’
@@ -20,6 +22,9 @@ Defer03.hs:7:5: error:
     • In the expression: _
       In an equation for ‘f’: f = _
     • Relevant bindings include f :: Int (bound at Defer03.hs:7:1)
+      Valid substitutions include
+        a :: Int
+        f :: Int
 
 Defer03.hs:4:5: warning: [-Wdeferred-type-errors (in -Wdefault)]
     • Couldn't match expected type ‘Int’ with actual type ‘Char’
@@ -31,6 +36,9 @@ Defer03.hs:7:5: warning: [-Wtyped-holes (in -Wdefault)]
     • In the expression: _
       In an equation for ‘f’: f = _
     • Relevant bindings include f :: Int (bound at Defer03.hs:7:1)
+      Valid substitutions include
+        a :: Int
+        f :: Int
 
 Defer03.hs:4:5: error:
     • Couldn't match expected type ‘Int’ with actual type ‘Char’
@@ -42,6 +50,9 @@ Defer03.hs:7:5: error:
     • In the expression: _
       In an equation for ‘f’: f = _
     • Relevant bindings include f :: Int (bound at Defer03.hs:7:1)
+      Valid substitutions include
+        a :: Int
+        f :: Int
 
 Defer03.hs:4:5: warning: [-Wdeferred-type-errors (in -Wdefault)]
     • Couldn't match expected type ‘Int’ with actual type ‘Char’
@@ -53,3 +64,6 @@ Defer03.hs:7:5: warning: [-Wtyped-holes (in -Wdefault)]
     • In the expression: _
       In an equation for ‘f’: f = _
     • Relevant bindings include f :: Int (bound at Defer03.hs:7:1)
+      Valid substitutions include
+        a :: Int
+        f :: Int
