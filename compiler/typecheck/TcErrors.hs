@@ -1091,10 +1091,11 @@ mkHoleError _ ct = pprPanic "mkHoleError" (ppr ct)
 validSubstitutions :: Ct -> TcM SDoc
 validSubstitutions ct | isExprHoleCt ct =
   do
-     (_, lcl_env) <- getEnvs
+     (gbl_env, lcl_env) <- getEnvs
      rdr_env <- getGlobalRdrEnv
      let lcl_ids = catMaybes $ map ltcTyToId $ eltsUFM  $ tcl_env lcl_env
-         res = substituteable hole_ty lcl_ids
+         gbl_ids = catMaybes $ map gtcTyToId $ eltsUFM $ tcg_type_env gbl_env
+         res = substituteable hole_ty (lcl_ids ++ gbl_ids)
      return $ if (null res)
        then empty
        else hang (text "Valid substitutions include")
