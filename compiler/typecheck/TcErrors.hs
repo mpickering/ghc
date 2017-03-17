@@ -32,7 +32,8 @@ import HsExpr  ( UnboundVar(..) )
 import HsBinds ( PatSynBind(..) )
 import Name
 import RdrName ( lookupGlobalRdrEnv, lookupGRE_Name, GlobalRdrEnv
-               , mkRdrUnqual, isLocalGRE, greSrcSpan, pprNameProvenance)
+               , mkRdrUnqual, isLocalGRE, greSrcSpan, pprNameProvenance
+               , GlobalRdrElt (..), globalRdrEnvElts )
 import PrelNames ( typeableClassName, hasKey, liftedRepDataConKey )
 import Id
 import Var
@@ -45,6 +46,7 @@ import BasicTypes
 import ConLike          ( ConLike(..) )
 import Util
 import UniqFM (eltsUFM)
+import TcIface (tcLookupImported_maybe)
 import FastString
 import Outputable
 import SrcLoc
@@ -1087,39 +1089,50 @@ mkHoleError _ ct = pprPanic "mkHoleError" (ppr ct)
 
 
 
-
 validSubstitutions :: Ct -> TcM SDoc
 validSubstitutions ct | isExprHoleCt ct =
   do
      (gbl_env, lcl_env) <- getEnvs
      rdr_env <- getGlobalRdrEnv
-     let lcl_ids = catMaybes $ map ltcTyToId $ eltsUFM  $ tcl_env lcl_env
-         gbl_ids = catMaybes $ map gtcTyToId $ eltsUFM $ tcg_type_env gbl_env
-         res = substituteable hole_ty (lcl_ids ++ gbl_ids)
-     return $ if (null res)
+     imported_ids <-
+       catMaybes . (map tyToId)
+       <$> catSuccesses
+       <$> (mapM (tcLookupImported_maybe . gre_name) $ filter (not . gre_lcl) $ globalRdrEnvElts  rdr_env)
+     let lcl_ids = catMaybes $ map tcTyToId $ eltsUFM  $ tcl_env lcl_env
+         gbl_ids = catMaybes $ map tyToId $ eltsUFM $ tcg_type_env gbl_env
+         module_ids = lcl_ids ++ gbl_ids
+         all_ids = module_ids ++ imported_ids
+         substitutions = substituteable hole_ty all_ids
+     return $ if (null substitutions)
        then empty
        else hang (text "Valid substitutions include")
-             2 (vcat $ map (ppr_sub rdr_env) res)
+             2 (vcat $ map (ppr_sub rdr_env) substitutions)
   where
     hole_ty :: TcPredType
     hole_ty = ctEvPred (ctEvidence ct)
+
+    catSuccesses :: [MaybeErr err val] -> [val]
+    catSuccesses ((Maybes.Succeeded val):xs) = val : (catSuccesses xs)
+    catSuccesses (_:xs) = catSuccesses xs
+    catSuccesses [] = []
+
     ppr_sub :: GlobalRdrEnv -> Id -> SDoc
     ppr_sub rdr_env id = (ppr id) <+> (text "::") <+> (ppr $ varType id) <+> add_info
       where add_info = case lookupGRE_Name rdr_env (idName id) of
               Just elt -> (parens $ pprNameProvenance elt)
               _ -> empty
 
-    gtcTyToId :: TyThing -> Maybe Id
-    gtcTyToId (AnId i) = Just i
-    gtcTyToId _ = Nothing
+    tyToId :: TyThing -> Maybe Id
+    tyToId (AnId i) = Just i
+    tyToId _ = Nothing
 
-    ltcTyToId :: TcTyThing -> Maybe Id
-    ltcTyToId (AGlobal gid) = gtcTyToId gid
-    ltcTyToId (ATcId {tct_id = i}) = Just i
-    ltcTyToId _ = Nothing
+    tcTyToId :: TcTyThing -> Maybe Id
+    tcTyToId (AGlobal gid) = tyToId gid
+    tcTyToId (ATcId {tct_id = i}) = Just i
+    tcTyToId _ = Nothing
 
     substituteable :: Type -> [Id] -> [Id]
-    substituteable ty = filter (\id -> ((((flip nonDetCmpType) ty) . varType) id) >= EQ)
+    substituteable ty = filter (\id -> (varType id `nonDetCmpType` ty) == EQ)
 
 validSubstitutions _ = return empty
 
