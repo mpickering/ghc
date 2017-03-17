@@ -44,7 +44,7 @@ import ErrUtils         ( ErrMsg, errDoc, pprLocErrMsg )
 import BasicTypes
 import ConLike          ( ConLike(..) )
 import Util
-import UniqFM
+import UniqFM (eltsUFM)
 import FastString
 import Outputable
 import SrcLoc
@@ -1085,28 +1085,33 @@ mkHoleError ctxt ct@(CHoleCan { cc_hole = hole })
 mkHoleError _ ct = pprPanic "mkHoleError" (ppr ct)
 
 
-tcTyToId :: TcTyThing -> Maybe Id
-tcTyToId (AGlobal (AnId i)) = Just i
-tcTyToId (ATcId {tct_id = i}) = Just i
-tcTyToId _ = Nothing
 
-validSubstitutionIds :: TcTypeEnv -> Type -> [Id]
-validSubstitutionIds ty_env ty = filter ((sameShapes ty) . varType) $ catMaybes $ map tcTyToId $ eltsUFM ty_env
 
-ppr_sub :: Id -> SDoc
-ppr_sub id = (ppr id) <+> (text "::") <+> (ppr $ varType id)
 
 validSubstitutions :: Ct -> TcM SDoc
 validSubstitutions ct@(CHoleCan { cc_ev = _ }) =
   do
      lcl_env <- getLclEnv
-     let res = validSubstitutionIds (tcl_env lcl_env) hole_ty
+     let ids = catMaybes $ map tcTyToId $ eltsUFM  $ tcl_env lcl_env
+         res = substituteable hole_ty ids
      return $ if (null res)
        then empty
        else hang (text "Valid substitutions include")
              2 (vcat $ map ppr_sub res)
   where
-    hole_ty = ctEvPred (ctEvidence ct)  :: TcPredType
+    hole_ty :: TcPredType
+    hole_ty = ctEvPred (ctEvidence ct)
+    ppr_sub :: Id -> SDoc
+    ppr_sub id = (ppr id) <+> (text "::") <+> (ppr $ varType id)
+    tcTyToId :: TcTyThing -> Maybe Id
+    tcTyToId (AGlobal (AnId i)) = Just i
+    tcTyToId (ATcId {tct_id = i}) = Just i
+    tcTyToId _ = Nothing
+
+    substituteable :: Type -> [Id] -> [Id]
+    substituteable ty = filter (\id -> ((((flip nonDetCmpType) ty) . varType) id) >= EQ)
+    expanded :: Type -> [Id] -> [(Type, Type)]
+    expanded hole_ty = map ((expandSynonymsToMatch hole_ty) . varType)
 
 validSubstitutions ct = return $ pprPanic "validSubstitutions works only for holes" (ppr ct)
 
@@ -2020,14 +2025,14 @@ expandSynonymsToMatch ty1 ty2 = (ty1_ret, ty2_ret)
       -- Otherwise follow the expansions until they look alike
       | otherwise = followExpansions tss
 
-sameShapes :: Type -> Type -> Bool
-sameShapes AppTy{}          AppTy{}          = True
-sameShapes (TyConApp tc1 _) (TyConApp tc2 _) = tc1 == tc2
-sameShapes (FunTy {})       (FunTy {})       = True
-sameShapes (ForAllTy {})    (ForAllTy {})    = True
-sameShapes (CastTy ty1 _)   ty2              = sameShapes ty1 ty2
-sameShapes ty1              (CastTy ty2 _)   = sameShapes ty1 ty2
-sameShapes _                _                = False
+    sameShapes :: Type -> Type -> Bool
+    sameShapes AppTy{}          AppTy{}          = True
+    sameShapes (TyConApp tc1 _) (TyConApp tc2 _) = tc1 == tc2
+    sameShapes (FunTy {})       (FunTy {})       = True
+    sameShapes (ForAllTy {})    (ForAllTy {})    = True
+    sameShapes (CastTy ty1 _)   ty2              = sameShapes ty1 ty2
+    sameShapes ty1              (CastTy ty2 _)   = sameShapes ty1 ty2
+    sameShapes _                _                = False
 
 sameOccExtra :: TcType -> TcType -> SDoc
 -- See Note [Disambiguating (X ~ X) errors]
