@@ -44,6 +44,7 @@ import ErrUtils         ( ErrMsg, errDoc, pprLocErrMsg )
 import BasicTypes
 import ConLike          ( ConLike(..) )
 import Util
+import UniqFM
 import FastString
 import Outputable
 import SrcLoc
@@ -259,8 +260,8 @@ relevant_bindings :: SDoc -> Report
 relevant_bindings doc = mempty { report_relevant_bindings = [doc] }
 
 -- | Put a doc into the relevant bindings block.
-valid_substitutions :: [SDoc] -> Report
-valid_substitutions docs = mempty { report_valid_substitutions = docs }
+valid_substitutions :: SDoc -> Report
+valid_substitutions docs = mempty { report_valid_substitutions = [docs] }
 
 data TypeErrorChoice   -- What to do for type errors found by the type checker
   = TypeError     -- A type error aborts compilation with an error message
@@ -1083,15 +1084,32 @@ mkHoleError ctxt ct@(CHoleCan { cc_hole = hole })
 
 mkHoleError _ ct = pprPanic "mkHoleError" (ppr ct)
 
-validSubstitutions :: Ct -> TcM [SDoc]
-validSubstitutions ct =
-  do traceTc "Constraint" $ vcat $ [ppr ct]
-     rdr_env     <- getGlobalRdrEnv
-     traceTc "Global env" $ vcat $ [ppr rdr_env]
+
+tcTyToId :: TcTyThing -> Maybe Id
+tcTyToId (AGlobal (AnId i)) = Just i
+tcTyToId (ATcId {tct_id = i}) = Just i
+tcTyToId _ = Nothing
+
+validSubstitutionIds :: TcTypeEnv -> Type -> [Id]
+validSubstitutionIds ty_env ty = filter ((sameShapes ty) . varType) $ catMaybes $ map tcTyToId $ eltsUFM ty_env
+
+ppr_sub :: Id -> SDoc
+ppr_sub id = (ppr id) <+> (text "::") <+> (ppr $ varType id)
+
+validSubstitutions :: Ct -> TcM SDoc
+validSubstitutions ct@(CHoleCan { cc_ev = _ }) =
+  do
+     lcl_env <- getLclEnv
+     let res = validSubstitutionIds (tcl_env lcl_env) hole_ty
      return $ if (null res)
-       then []
-       else [text "Valid substitutions:", vcat res]
-  where res = [text "None found"]
+       then empty
+       else hang (text "Valid substitutions include")
+             2 (vcat $ map ppr_sub res)
+  where
+    hole_ty = ctEvPred (ctEvidence ct)  :: TcPredType
+
+validSubstitutions ct = return $ pprPanic "validSubstitutions works only for holes" (ppr ct)
+
 
 -- See Note [Constraints include ...]
 givenConstraintsMsg :: ReportErrCtxt -> SDoc
@@ -2002,14 +2020,14 @@ expandSynonymsToMatch ty1 ty2 = (ty1_ret, ty2_ret)
       -- Otherwise follow the expansions until they look alike
       | otherwise = followExpansions tss
 
-    sameShapes :: Type -> Type -> Bool
-    sameShapes AppTy{}          AppTy{}          = True
-    sameShapes (TyConApp tc1 _) (TyConApp tc2 _) = tc1 == tc2
-    sameShapes (FunTy {})       (FunTy {})       = True
-    sameShapes (ForAllTy {})    (ForAllTy {})    = True
-    sameShapes (CastTy ty1 _)   ty2              = sameShapes ty1 ty2
-    sameShapes ty1              (CastTy ty2 _)   = sameShapes ty1 ty2
-    sameShapes _                _                = False
+sameShapes :: Type -> Type -> Bool
+sameShapes AppTy{}          AppTy{}          = True
+sameShapes (TyConApp tc1 _) (TyConApp tc2 _) = tc1 == tc2
+sameShapes (FunTy {})       (FunTy {})       = True
+sameShapes (ForAllTy {})    (ForAllTy {})    = True
+sameShapes (CastTy ty1 _)   ty2              = sameShapes ty1 ty2
+sameShapes ty1              (CastTy ty2 _)   = sameShapes ty1 ty2
+sameShapes _                _                = False
 
 sameOccExtra :: TcType -> TcType -> SDoc
 -- See Note [Disambiguating (X ~ X) errors]
