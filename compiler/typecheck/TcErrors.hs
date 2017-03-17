@@ -47,6 +47,7 @@ import ConLike          ( ConLike(..) )
 import Util
 import UniqFM (eltsUFM)
 import TcIface (tcLookupImported_maybe)
+import TcUnify
 import FastString
 import Outputable
 import SrcLoc
@@ -1102,7 +1103,7 @@ validSubstitutions ct | isExprHoleCt ct =
          gbl_ids = catMaybes $ map tyToId $ eltsUFM $ tcg_type_env gbl_env
          module_ids = lcl_ids ++ gbl_ids
          all_ids = module_ids ++ imported_ids
-         substitutions = substituteable hole_ty all_ids
+     substitutions <- substituteable hole_ty all_ids
      return $ if (null substitutions)
        then empty
        else hang (text "Valid substitutions include")
@@ -1131,8 +1132,18 @@ validSubstitutions ct | isExprHoleCt ct =
     tcTyToId (ATcId {tct_id = i}) = Just i
     tcTyToId _ = Nothing
 
-    substituteable :: Type -> [Id] -> [Id]
-    substituteable ty = filter ((tcEqType ty) . varType)
+    subSumable :: Id -> TcM (Maybe Id)
+    subSumable id = do
+        traceTc "Checking" $ ppr (idName id, varType id)
+        (wrp, constraints) <- captureConstraints $ tcSubType_NC ExprSigCtxt (varType id) hole_ty
+        traceTc "Constraints were:" $ ppr constraints
+        traceTc "Wrap was" $ ppr wrp
+        return Nothing
+
+    substituteable :: Type -> [Id] -> TcM [Id]
+    substituteable ty ids = do subs <- catMaybes <$> mapM subSumable neq
+                               return $ eq ++ subs
+      where (eq, neq) = partition ((tcEqType ty) . varType)  ids
 
 validSubstitutions _ = return empty
 
