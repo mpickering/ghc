@@ -570,19 +570,12 @@ tcCheckSatisfiability given_ids
            ; solveSimpleGivens new_given
            ; getInertInsols }
 
--- Reports whether a type can fit in a hole
--- Throws away any errors
+-- Reports whether a type can fit in a hole, discarding any errors
 tcCanFitHole :: Type -> Type -> TcM Bool
-tcCanFitHole ty hole_ty =
+tcCanFitHole ty hole_ty = discardErrs $
  do { (_, wanted) <- captureTopConstraints $ tcSubType_NC ExprSigCtxt ty hole_ty
-    ; errs_var <- getErrsVar
-    ; saved_msg <- TcM.readTcRef errs_var
-    ; cons <- simplifyTop wanted
-    ; satisfiable <- tcCheckSatisfiability $ mapBag eb_lhs cons
-    ; TcM.writeTcRef errs_var saved_msg
-    ; return satisfiable
-    }
-
+    ; (_,errs) <- askNoErrs $ simplifyTop wanted
+    ; return (not errs) }
 
 
 
