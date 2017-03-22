@@ -9,6 +9,7 @@ module TcSimplify(
        simplifyInteractive, solveSomeEqualities, solveEqualities,
        simplifyWantedsTcM,
        tcCheckSatisfiability,
+       tcCanSubsume,
 
        -- For Rules we need these
        solveWanteds, solveWantedsAndDrop,
@@ -37,6 +38,7 @@ import TcMType   as TcM
 import TcRnMonad as TcM
 import TcSMonad  as TcS
 import TcType
+import TcUnify (tcSubType_NC)
 import TrieMap       () -- DV: for now
 import Type
 import TysWiredIn    ( liftedRepTy )
@@ -80,6 +82,8 @@ captureTopConstraints thing_inside
            Left {}   -> do { _ <- reportUnsolved lie; failM } }
                 -- This call to reportUnsolved is the reason
                 -- this function is here instead of TcRnMonad
+                --
+                --
 
 simplifyTopImplic :: Bag Implication -> TcM ()
 simplifyTopImplic implics
@@ -565,6 +569,14 @@ tcCheckSatisfiability given_ids
            ; new_given <- makeSuperClasses pending_given
            ; solveSimpleGivens new_given
            ; getInertInsols }
+
+tcCanSubsume :: Type  -- The type to check if can subsume
+             -> Type  -- The type to check whether it is subsumable by
+             -> TcM Bool
+tcCanSubsume ty base =
+ do { (_, wanted) <- captureTopConstraints $ tcSubType_NC ExprSigCtxt ty base
+    ; cons <- simplifyTop wanted
+    ; tcCheckSatisfiability $ mapBag eb_lhs cons}
 
 {- Note [Superclasses and satisfiability]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -18,7 +18,7 @@ import RnEnv( unknownNameSuggestions )
 import Type
 import TyCoRep
 import Kind
-import Unify            ( tcMatchTys )
+import Unify            ( tcMatchTys)
 import Module
 import FamInst
 import FamInstEnv       ( flattenTys )
@@ -47,6 +47,7 @@ import ConLike          ( ConLike(..), conLikeWrapId_maybe )
 import Util
 import HscTypes (HscEnv, lookupTypeHscEnv, TypeEnv, lookupTypeEnv )
 import NameEnv (lookupNameEnv)
+import {-# SOURCE #-} TcSimplify ( tcCanSubsume )
 import FastString
 import Outputable
 import SrcLoc
@@ -1138,8 +1139,8 @@ validSubstitutions ct | isExprHoleCt ct =
     tcTyToId (ATcId id _) = Just id
     tcTyToId _ = Nothing
 
-    substituteable :: Id -> Bool
-    substituteable = tcEqType hole_ty . varType
+    substituteable :: Id ->  TcM Bool
+    substituteable id = (varType id) `tcCanSubsume` hole_ty
 
     lookupTopId :: HscEnv -> Name -> IO (Maybe Id)
     lookupTopId env name =
@@ -1163,8 +1164,11 @@ validSubstitutions ct | isExprHoleCt ct =
        if shouldBeSkipped el then discard_it
          else do { maybeId <- liftIO lookupId
                  ; case maybeId of
-                     Just id | substituteable id ->
-                       go_ (id:subs) envs ((\n -> n - 1) <$> maxleft) elts
+                     Just id ->
+                      do { canSub <- substituteable id
+                         ; if canSub then
+                            go_ (id:subs) envs ((\n -> n - 1) <$> maxleft) elts
+                           else discard_it}
                      _ -> discard_it }
       where name = gre_name el
             discard_it = go_ subs envs maxleft elts
