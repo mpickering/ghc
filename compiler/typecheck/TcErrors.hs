@@ -18,7 +18,7 @@ import RnEnv( unknownNameSuggestions )
 import Type
 import TyCoRep
 import Kind
-import Unify            ( tcMatchTys)
+import Unify            ( tcMatchTys )
 import Module
 import FamInst
 import FamInstEnv       ( flattenTys )
@@ -47,7 +47,7 @@ import ConLike          ( ConLike(..), conLikeWrapId_maybe )
 import Util
 import HscTypes (HscEnv, lookupTypeHscEnv, TypeEnv, lookupTypeEnv )
 import NameEnv (lookupNameEnv)
-import {-# SOURCE #-} TcSimplify ( tcCanSubsume )
+import {-# SOURCE #-} TcSimplify ( tcCanFitHole )
 import FastString
 import Outputable
 import SrcLoc
@@ -1101,7 +1101,7 @@ validSubstitutions ct | isExprHoleCt ct =
      ; dflags <- getDynFlags
      ; (discards, substitutions) <-
         go (gbl_env, lcl_env, top_env) (maxValidSubstitutions dflags)
-         $ globalRdrEnvElts rdr_env
+         $ localFirst $ globalRdrEnvElts rdr_env
      ; return $ ppUnless (null substitutions) $
                  hang (text "Valid substitutions include")
                   2 (vcat (map (ppr_sub rdr_env) substitutions)
@@ -1111,6 +1111,14 @@ validSubstitutions ct | isExprHoleCt ct =
     hole_ty = ctEvPred (ctEvidence ct)
 
     hole_env = ctLocEnv $ ctEvLoc $ ctEvidence ct
+
+    localFirst :: [GlobalRdrElt] -> [GlobalRdrElt]
+    localFirst = go [] []
+      where go lcl gbl [] = (reverse lcl) ++ (reverse gbl)
+            go lcl gbl (el:els) = if (gre_lcl el) then go (el:lcl) gbl els
+                                                  else go lcl (el:gbl) els
+
+
 
     getBndrOcc :: TcIdBinder -> OccName
     getBndrOcc (TcIdBndr id _) = occName $ getName id
@@ -1140,7 +1148,7 @@ validSubstitutions ct | isExprHoleCt ct =
     tcTyToId _ = Nothing
 
     substituteable :: Id ->  TcM Bool
-    substituteable id = (varType id) `tcCanSubsume` hole_ty
+    substituteable id = (varType id) `tcCanFitHole` hole_ty
 
     lookupTopId :: HscEnv -> Name -> IO (Maybe Id)
     lookupTopId env name =

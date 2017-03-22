@@ -2,7 +2,6 @@ module TcSimplify where
 import TcRnTypes  ( TcM )
 import Type ( Type )
 
--- This boot file exists to make tcCanSubsume avaialble
--- when finding valid substitutions for holes
+-- This boot file exists to make tcCanFitHole avaialble in TcErrors
 
-tcCanSubsume :: Type -> Type -> TcM Bool
+tcCanFitHole :: Type -> Type -> TcM Bool

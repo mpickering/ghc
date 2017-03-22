@@ -9,7 +9,7 @@ module TcSimplify(
        simplifyInteractive, solveSomeEqualities, solveEqualities,
        simplifyWantedsTcM,
        tcCheckSatisfiability,
-       tcCanSubsume,
+       tcCanFitHole,
 
        -- For Rules we need these
        solveWanteds, solveWantedsAndDrop,
@@ -38,7 +38,7 @@ import TcMType   as TcM
 import TcRnMonad as TcM
 import TcSMonad  as TcS
 import TcType
-import TcUnify (tcSubType_NC)
+import TcUnify ( tcSubType_NC )
 import TrieMap       () -- DV: for now
 import Type
 import TysWiredIn    ( liftedRepTy )
@@ -570,13 +570,21 @@ tcCheckSatisfiability given_ids
            ; solveSimpleGivens new_given
            ; getInertInsols }
 
-tcCanSubsume :: Type  -- The type to check if can subsume
-             -> Type  -- The type to check whether it is subsumable by
-             -> TcM Bool
-tcCanSubsume ty base =
- do { (_, wanted) <- captureTopConstraints $ tcSubType_NC ExprSigCtxt ty base
+-- Reports whether a type can fit in a hole
+-- Throws away any errors
+tcCanFitHole :: Type -> Type -> TcM Bool
+tcCanFitHole ty hole_ty =
+ do { (_, wanted) <- captureTopConstraints $ tcSubType_NC ExprSigCtxt ty hole_ty
+    ; errs_var <- getErrsVar
+    ; saved_msg <- TcM.readTcRef errs_var
     ; cons <- simplifyTop wanted
-    ; tcCheckSatisfiability $ mapBag eb_lhs cons}
+    ; satisfiable <- tcCheckSatisfiability $ mapBag eb_lhs cons
+    ; TcM.writeTcRef errs_var saved_msg
+    ; return satisfiable
+    }
+
+
+
 
 {- Note [Superclasses and satisfiability]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
