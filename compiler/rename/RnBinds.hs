@@ -688,7 +688,7 @@ rnPatSynBind sig_fn bind@(PSB { psb_id = L l name
           -- Why fvs1?  See Note [Pattern synonym builders don't yield dependencies]
       }
   where
-    lookupVar = wrapLocM lookupOccRn
+    lookupVar = wrapLocM lookupLocalOccRn
 
     patternSynonymErr :: SDoc
     patternSynonymErr
