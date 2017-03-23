@@ -691,7 +691,8 @@ lookupOccRn rdr_name
            Just name -> return name
            Nothing   -> reportUnboundName rdr_name }
 
--- lookupOccRn looks up an occurrence of a RdrName
+-- Only used in one place, to rename pattern synonym binders.
+-- See Note [Renaming pattern synonym variables] in RnBinds
 lookupLocalOccRn :: RdrName -> RnM Name
 lookupLocalOccRn rdr_name
   = do { mb_name <- lookupLocalOccRn_maybe rdr_name
@@ -1803,8 +1804,10 @@ checkShadowedOccs (global_env,local_env) get_loc_occ ns
 data WhereLooking = WL_Any        -- Any binding
                   | WL_Global     -- Any top-level binding (local or imported)
                   | WL_LocalTop   -- Any top-level binding in this module
-                  | WL_LocalOnly  -- Only local bindings
-                                  -- (pattern synonyms declaractions)
+                  | WL_LocalOnly
+                        -- Only local bindings
+                        -- (pattern synonyms declaractions,
+                        -- see Note [Renaming pattern synonym variables])
 
 reportUnboundName :: RdrName -> RnM Name
 reportUnboundName rdr = unboundName WL_Any rdr
