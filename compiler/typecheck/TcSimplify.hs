@@ -570,6 +570,26 @@ tcCheckSatisfiability given_ids
            ; solveSimpleGivens new_given
            ; getInertInsols }
 
+
+-- NOTES from talking to Jurriaan.
+--- Matching.
+-- Skolemize one side, so that it cannot be changed.
+-- Type Lattice.
+--
+-- tryToUnify the two types
+-- it gives a mapping for variables in both types
+--
+-- find matching facility in GHC. Same as subsume.
+--
+-- type -> type -> Maybe substitution
+--
+-- Deal with typeclass predicates.
+--
+-- look at papers by Bruce McAdam
+--
+-- Talk to Alejandro Serrano, he's very familiar with the type system,
+-- doing type error diagnosis and is a bit bored at the moment.
+
 -- Reports whether a type can fit in a hole, discarding any errors
 tcCanFitHole :: Type -> Type -> TcM Bool
 tcCanFitHole ty hole_ty = discardErrs $
