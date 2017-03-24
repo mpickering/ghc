@@ -45,8 +45,9 @@ import ErrUtils         ( ErrMsg, errDoc, pprLocErrMsg )
 import BasicTypes
 import ConLike          ( ConLike(..), conLikeWrapId_maybe )
 import Util
-import HscTypes (HscEnv, lookupTypeHscEnv, TypeEnv, lookupTypeEnv )
-import NameEnv (lookupNameEnv)
+import HscTypes ( HscEnv, lookupTypeHscEnv, TypeEnv, lookupTypeEnv )
+import NameEnv ( lookupNameEnv )
+import {-# SOURCE #-} TcSimplify ( tcSubsumes )
 import FastString
 import Outputable
 import SrcLoc
@@ -1167,8 +1168,9 @@ validSubstitutions ct | isExprHoleCt ct =
     tcTyToId (ATcId id _) = Just id
     tcTyToId _ = Nothing
 
-    substituteable :: Id -> Bool
-    substituteable = tcEqType hole_ty . varType
+    substituteable :: Id ->  TcM Bool
+    substituteable id = ty `tcSubsumes` hole_ty
+      where ty = varType id
 
     lookupTopId :: HscEnv -> Name -> IO (Maybe Id)
     lookupTopId env name =
@@ -1189,14 +1191,15 @@ validSubstitutions ct | isExprHoleCt ct =
     go_ subs _ _ [] = return (False, reverse subs)
     go_ subs _ (Just 0) _ = return (True, reverse subs)
     go_ subs envs@(gbl,lcl,top) maxleft (el:elts) =
-       if shouldBeSkipped el then discard_it
-         else do { maybeId <- liftIO lookupId
-                 ; case maybeId of
-                     Just id | substituteable id ->
-                       go_ (id:subs) envs ((\n -> n - 1) <$> maxleft) elts
-                     _ -> discard_it }
+      if shouldBeSkipped el then discard_it
+      else do { maybeId <- liftIO lookupId
+              ; case maybeId of
+                 Just id -> do { canSub <- substituteable id
+                               ; if canSub then (keep_it id) else discard_it }
+                 _ -> discard_it }
       where name = gre_name el
             discard_it = go_ subs envs maxleft elts
+            keep_it id = go_ (id:subs) envs ((\n -> n - 1) <$> maxleft) elts
             getTopId = lookupTopId top name
             gbl_id = lookupGblId gbl name
             lcl_id = lookupLclId lcl name
@@ -1263,27 +1266,25 @@ For example, look at the following definitions in a file called test.hs:
 The hole in `main` would generate the message:
 
     Valid substitutions include
-      ps :: String -> IO () ((defined at test.hs:2:1)
-      putStrLn :: String -> IO ()
-        (imported from ‘Prelude’ at test.hs:1:1
-         (and originally defined in ‘System.IO’))
-      putStr :: String -> IO ()
-        (imported from ‘Prelude’ at test.hs:1:1
-         (and originally defined in ‘System.IO’))
+        ps :: String -> IO () (defined at t1.hs:2:1)
+        ps2 :: forall a. a -> IO () (defined at t1.hs:5:1)
+        putStrLn :: String -> IO ()
+          (imported from ‘Prelude’ at t1.hs:1:1
+           (and originally defined in ‘System.IO’))
+        fail :: forall (m :: * -> *). Monad m => forall a. String -> m a
+          (imported from ‘Prelude’ at t1.hs:1:1
+           (and originally defined in ‘GHC.Base’))
+        mempty :: forall a. Monoid a => a
+          (imported from ‘Prelude’ at t1.hs:1:1
+           (and originally defined in ‘GHC.Base’))
+        print :: forall a. Show a => a -> IO ()
+          (imported from ‘Prelude’ at t1.hs:1:1
+           (and originally defined in ‘System.IO’))
+        (Some substitutions suppressed;
+          use -fmax-valid-substitutions=N or -fno-max-valid-substitutions)
 
-Valid substitutions are found by checking names in scope.
-
-Currently the implementation only looks at exact type matches, as given by
-`tcEqType`, so we DO NOT report `ps2` as a valid substitution in the example,
-even though it fits in the hole. To determine that `ps2` fits in the hole,
-we would need to check ids for subsumption, i.e. that the type of the hole is
-a subtype of the id. This can be done using `tcSubType` from `TcUnify` and
-`tcCheckSatisfiability` in `TcSimplify`.  Unfortunately, `TcSimplify` uses
-`TcErrors` to report errors found during constraint checking, so checking for
-subsumption in holes would involve shuffling some code around in `TcSimplify`,
-to make a non-error reporting constraint satisfiability checker which could
-then be used for checking whether a given id satisfies the constraints imposed
-by the hole.
+Valid substitutions are found by checking ids in scope, and checking whether
+their type subsumes the type of the hole.
 
 Note [Constraints include ...]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
