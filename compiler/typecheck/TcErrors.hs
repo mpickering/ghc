@@ -45,8 +45,8 @@ import ErrUtils         ( ErrMsg, errDoc, pprLocErrMsg )
 import BasicTypes
 import ConLike          ( ConLike(..), conLikeWrapId_maybe )
 import Util
-import HscTypes (HscEnv, lookupTypeHscEnv, TypeEnv, lookupTypeEnv )
-import NameEnv (lookupNameEnv)
+import HscTypes ( HscEnv, lookupTypeHscEnv, TypeEnv, lookupTypeEnv )
+import NameEnv ( lookupNameEnv )
 import {-# SOURCE #-} TcSimplify ( tcCanFitHole )
 import FastString
 import Outputable
@@ -1111,6 +1111,7 @@ validSubstitutions ct | isExprHoleCt ct =
     hole_ty = ctEvPred (ctEvidence ct)
 
     hole_env = ctLocEnv $ ctEvLoc $ ctEvidence ct
+    hole_orig = ctOrigin ct
 
     localFirst :: [GlobalRdrElt] -> [GlobalRdrElt]
     localFirst = go [] []
@@ -1148,7 +1149,12 @@ validSubstitutions ct | isExprHoleCt ct =
     tcTyToId _ = Nothing
 
     substituteable :: Id ->  TcM Bool
-    substituteable id = (varType id) `tcCanFitHole` hole_ty
+    substituteable id =
+     do { (_, rho) <- topInstantiate hole_orig ty
+        ; if (isJust $ tcMatchTys [rho] [hole_ty])
+            then ty `tcCanFitHole` hole_ty
+            else return False }
+      where ty = varType id
 
     lookupTopId :: HscEnv -> Name -> IO (Maybe Id)
     lookupTopId env name =

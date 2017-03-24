@@ -591,11 +591,11 @@ tcCheckSatisfiability given_ids
 -- doing type error diagnosis and is a bit bored at the moment.
 
 -- Reports whether a type can fit in a hole, discarding any errors
-tcCanFitHole :: Type -> Type -> TcM Bool
+tcCanFitHole :: TcSigmaType -> TcSigmaType -> TcM Bool
 tcCanFitHole ty hole_ty = discardErrs $
  do { (_, wanted) <- captureTopConstraints $ tcSubType_NC ExprSigCtxt ty hole_ty
-    ; (_,errs) <- askNoErrs $ simplifyTop wanted
-    ; return (not errs) }
+    ; (_,noErrs) <- askNoErrs $ simplifyTop wanted
+    ; return noErrs }
 
 
 

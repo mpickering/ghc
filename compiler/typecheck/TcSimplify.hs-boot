@@ -1,7 +1,7 @@
 module TcSimplify where
 import TcRnTypes  ( TcM )
-import Type ( Type )
+import TcType ( TcSigmaType )
 
 -- This boot file exists to make tcCanFitHole avaialble in TcErrors
 
-tcCanFitHole :: Type -> Type -> TcM Bool
+tcCanFitHole :: TcSigmaType -> TcSigmaType -> TcM Bool
