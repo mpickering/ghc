@@ -168,7 +168,7 @@ module TcType (
   isUnboxedTupleType,   -- Ditto
   isPrimitiveType,
 
-  coreView,
+  tcView, coreView,
 
   tyCoVarsOfType, tyCoVarsOfTypes, closeOverKinds,
   tyCoFVsOfType, tyCoFVsOfTypes,
@@ -792,7 +792,7 @@ instance Outputable TcLevel where
 -- the calls on the RHS are smaller than the LHS
 tcTyFamInsts :: Type -> [(TyCon, [Type])]
 tcTyFamInsts ty
-  | Just exp_ty <- coreView ty  = tcTyFamInsts exp_ty
+  | Just exp_ty <- tcView ty    = tcTyFamInsts exp_ty
 tcTyFamInsts (TyVarTy _)        = []
 tcTyFamInsts (TyConApp tc tys)
   | isTypeFamilyTyCon tc        = [(tc, take (tyConArity tc) tys)]
@@ -848,7 +848,7 @@ exactTyCoVarsOfType :: Type -> TyCoVarSet
 exactTyCoVarsOfType ty
   = go ty
   where
-    go ty | Just ty' <- coreView ty = go ty'  -- This is the key line
+    go ty | Just ty' <- tcView ty = go ty'  -- This is the key line
     go (TyVarTy tv)         = unitVarSet tv `unionVarSet` go (tyVarKind tv)
     go (TyConApp _ tys)     = exactTyCoVarsOfTypes tys
     go (LitTy {})           = emptyVarSet
@@ -1349,13 +1349,30 @@ However, they are non-monadic and do not follow through mutable type
 variables.  It's up to you to make sure this doesn't matter.
 -}
 
+-- | Gives the typechecker view of a type. This unwraps synonyms but
+-- leaves 'Constraint' alone. c.f. coreView, which turns Constraint into
+-- TYPE LiftedRep. Returns Nothing if no unwrapping happens.
+-- See also Note [coreView vs tcView] in Type.
+{-# INLINE tcView #-}
+tcView :: Type -> Maybe Type
+tcView (TyConApp tc tys) | Just (tenv, rhs, tys') <- expandSynTyCon_maybe tc tys
+  = Just (mkAppTys (substTy (mkTvSubstPrs tenv) rhs) tys')
+               -- The free vars of 'rhs' should all be bound by 'tenv', so it's
+               -- ok to use 'substTy' here.
+               -- See also Note [The substitution invariant] in TyCoRep.
+               -- Its important to use mkAppTys, rather than (foldl AppTy),
+               -- because the function part might well return a
+               -- partially-applied type constructor; indeed, usually will!
+tcView _ = Nothing
+
+
 -- | Splits a forall type into a list of 'TyBinder's and the inner type.
 -- Always succeeds, even if it returns an empty list.
 tcSplitPiTys :: Type -> ([TyBinder], Type)
 tcSplitPiTys = splitPiTys
 
 tcSplitForAllTy_maybe :: Type -> Maybe (TyVarBinder, Type)
-tcSplitForAllTy_maybe ty | Just ty' <- coreView ty = tcSplitForAllTy_maybe ty'
+tcSplitForAllTy_maybe ty | Just ty' <- tcView ty = tcSplitForAllTy_maybe ty'
 tcSplitForAllTy_maybe (ForAllTy tv ty) = Just (tv, ty)
 tcSplitForAllTy_maybe _                = Nothing
 
@@ -1370,14 +1387,14 @@ tcSplitForAllTyVarBndrs = splitForAllTyVarBndrs
 
 -- | Is this a ForAllTy with a named binder?
 tcIsForAllTy :: Type -> Bool
-tcIsForAllTy ty | Just ty' <- coreView ty = tcIsForAllTy ty'
+tcIsForAllTy ty | Just ty' <- tcView ty = tcIsForAllTy ty'
 tcIsForAllTy (ForAllTy {}) = True
 tcIsForAllTy _             = False
 
 tcSplitPredFunTy_maybe :: Type -> Maybe (PredType, Type)
 -- Split off the first predicate argument from a type
 tcSplitPredFunTy_maybe ty
-  | Just ty' <- coreView ty = tcSplitPredFunTy_maybe ty'
+  | Just ty' <- tcView ty = tcSplitPredFunTy_maybe ty'
 tcSplitPredFunTy_maybe (FunTy arg res)
   | isPredTy arg = Just (arg, res)
 tcSplitPredFunTy_maybe _
@@ -1453,7 +1470,7 @@ tcTyConAppTyCon ty
 -- | Like 'tcRepSplitTyConApp_maybe', but only returns the 'TyCon'.
 tcTyConAppTyCon_maybe :: Type -> Maybe TyCon
 tcTyConAppTyCon_maybe ty
-  | Just ty' <- coreView ty = tcTyConAppTyCon_maybe ty'
+  | Just ty' <- tcView ty = tcTyConAppTyCon_maybe ty'
 tcTyConAppTyCon_maybe (TyConApp tc _)
   = Just tc
 tcTyConAppTyCon_maybe (FunTy _ _)
@@ -1479,7 +1496,7 @@ tcSplitTyConApp ty = case tcSplitTyConApp_maybe ty of
 --
 -- If you only need the 'TyCon', consider using 'tcTyConAppTyCon_maybe'.
 tcSplitTyConApp_maybe :: HasCallStack => Type -> Maybe (TyCon, [Type])
-tcSplitTyConApp_maybe ty | Just ty' <- coreView ty = tcSplitTyConApp_maybe ty'
+tcSplitTyConApp_maybe ty | Just ty' <- tcView ty = tcSplitTyConApp_maybe ty'
 tcSplitTyConApp_maybe ty                           = tcRepSplitTyConApp_maybe ty
 
 -- | Like 'tcSplitTyConApp_maybe' but doesn't look through type synonyms.
@@ -1524,7 +1541,7 @@ tcSplitFunTys ty = case tcSplitFunTy_maybe ty of
                                           (args,res') = tcSplitFunTys res
 
 tcSplitFunTy_maybe :: Type -> Maybe (Type, Type)
-tcSplitFunTy_maybe ty | Just ty' <- coreView ty         = tcSplitFunTy_maybe ty'
+tcSplitFunTy_maybe ty | Just ty' <- tcView ty         = tcSplitFunTy_maybe ty'
 tcSplitFunTy_maybe (FunTy arg res) | not (isPredTy arg) = Just (arg, res)
 tcSplitFunTy_maybe _                                    = Nothing
         -- Note the typeKind guard
@@ -1573,7 +1590,7 @@ tcFunResultTyN n ty
 
 -----------------------
 tcSplitAppTy_maybe :: Type -> Maybe (Type, Type)
-tcSplitAppTy_maybe ty | Just ty' <- coreView ty = tcSplitAppTy_maybe ty'
+tcSplitAppTy_maybe ty | Just ty' <- tcView ty = tcSplitAppTy_maybe ty'
 tcSplitAppTy_maybe ty = tcRepSplitAppTy_maybe ty
 
 tcSplitAppTy :: Type -> (Type, Type)
@@ -1591,7 +1608,7 @@ tcSplitAppTys ty
 
 -----------------------
 tcGetTyVar_maybe :: Type -> Maybe TyVar
-tcGetTyVar_maybe ty | Just ty' <- coreView ty = tcGetTyVar_maybe ty'
+tcGetTyVar_maybe ty | Just ty' <- tcView ty = tcGetTyVar_maybe ty'
 tcGetTyVar_maybe (TyVarTy tv)   = Just tv
 tcGetTyVar_maybe _              = Nothing
 
@@ -1599,7 +1616,7 @@ tcGetTyVar :: String -> Type -> TyVar
 tcGetTyVar msg ty = expectJust msg (tcGetTyVar_maybe ty)
 
 tcIsTyVarTy :: Type -> Bool
-tcIsTyVarTy ty | Just ty' <- coreView ty = tcIsTyVarTy ty'
+tcIsTyVarTy ty | Just ty' <- tcView ty = tcIsTyVarTy ty'
 tcIsTyVarTy (CastTy ty _) = tcIsTyVarTy ty  -- look through casts, as
                                             -- this is only used for
                                             -- e.g., FlexibleContexts
@@ -1658,8 +1675,8 @@ tcEqType :: TcType -> TcType -> Bool
 -- equality] (in TyCoRep) as `eqType`, but Type.eqType believes (* ==
 -- Constraint), and that is NOT what we want in the type checker!
 tcEqType ty1 ty2
-  = isNothing (tc_eq_type coreView ki1 ki2) &&
-    isNothing (tc_eq_type coreView ty1 ty2)
+  = isNothing (tc_eq_type tcView ki1 ki2) &&
+    isNothing (tc_eq_type tcView ty1 ty2)
   where
     ki1 = typeKind ty1
     ki2 = typeKind ty2
@@ -1668,7 +1685,7 @@ tcEqType ty1 ty2
 -- as long as their non-coercion structure is identical.
 tcEqTypeNoKindCheck :: TcType -> TcType -> Bool
 tcEqTypeNoKindCheck ty1 ty2
-  = isNothing $ tc_eq_type coreView ty1 ty2
+  = isNothing $ tc_eq_type tcView ty1 ty2
 
 -- | Like 'tcEqType', but returns information about whether the difference
 -- is visible in the case of a mismatch.
@@ -1677,7 +1694,7 @@ tcEqTypeNoKindCheck ty1 ty2
 -- @Just False@ : the types differ, and the point of difference is invisible
 tcEqTypeVis :: TcType -> TcType -> Maybe Bool
 tcEqTypeVis ty1 ty2
-  = tc_eq_type coreView ty1 ty2 <!> invis (tc_eq_type coreView ki1 ki2)
+  = tc_eq_type tcView ty1 ty2 <!> invis (tc_eq_type tcView ki1 ki2)
   where
     ki1 = typeKind ty1
     ki2 = typeKind ty2
@@ -1694,7 +1711,7 @@ Just vis       <!> _         = Just vis
 infixr 3 <!>
 
 -- | Real worker for 'tcEqType'. No kind check!
-tc_eq_type :: (TcType -> Maybe TcType)  -- ^ @coreView@, if you want unwrapping
+tc_eq_type :: (TcType -> Maybe TcType)  -- ^ @tcView@, if you want unwrapping
            -> Type -> Type -> Maybe Bool
 tc_eq_type view_fun orig_ty1 orig_ty2 = go True orig_env orig_ty1 orig_ty2
   where
@@ -2053,13 +2070,13 @@ isSigmaTy :: TcType -> Bool
 -- isSigmaTy returns true of any qualified type.  It doesn't
 -- *necessarily* have any foralls.  E.g
 --        f :: (?x::Int) => Int -> Int
-isSigmaTy ty | Just ty' <- coreView ty = isSigmaTy ty'
+isSigmaTy ty | Just ty' <- tcView ty = isSigmaTy ty'
 isSigmaTy (ForAllTy {}) = True
 isSigmaTy (FunTy a _)   = isPredTy a
 isSigmaTy _             = False
 
 isRhoTy :: TcType -> Bool   -- True of TcRhoTypes; see Note [TcRhoType]
-isRhoTy ty | Just ty' <- coreView ty = isRhoTy ty'
+isRhoTy ty | Just ty' <- tcView ty = isRhoTy ty'
 isRhoTy (ForAllTy {}) = False
 isRhoTy (FunTy a r)   = not (isPredTy a) && isRhoTy r
 isRhoTy _             = True
@@ -2072,7 +2089,7 @@ isRhoExpTy (Infer {}) = True
 isOverloadedTy :: Type -> Bool
 -- Yes for a type of a function that might require evidence-passing
 -- Used only by bindLocalMethods
-isOverloadedTy ty | Just ty' <- coreView ty = isOverloadedTy ty'
+isOverloadedTy ty | Just ty' <- tcView ty = isOverloadedTy ty'
 isOverloadedTy (ForAllTy _  ty) = isOverloadedTy ty
 isOverloadedTy (FunTy a _)      = isPredTy a
 isOverloadedTy _                = False
@@ -2148,7 +2165,7 @@ isTyVarExposed _  (CoercionTy {}) = False
 isTyVarUnderDatatype :: TcTyVar -> TcType -> Bool
 isTyVarUnderDatatype tv = go False
   where
-    go under_dt ty | Just ty' <- coreView ty = go under_dt ty'
+    go under_dt ty | Just ty' <- tcView ty = go under_dt ty'
     go under_dt (TyVarTy tv') = under_dt && (tv == tv')
     go under_dt (TyConApp tc tys) = let under_dt' = under_dt ||
                                                     isGenerativeTyCon tc
@@ -2564,7 +2581,7 @@ sizeType :: Type -> TypeSize
 -- Ignore kinds altogether
 sizeType = go
   where
-    go ty | Just exp_ty <- coreView ty = go exp_ty
+    go ty | Just exp_ty <- tcView ty = go exp_ty
     go (TyVarTy {})              = 1
     go (TyConApp tc tys)
       | isTypeFamilyTyCon tc     = infinity  -- Type-family applications can
