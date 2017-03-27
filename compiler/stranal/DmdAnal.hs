@@ -32,7 +32,7 @@ import Type
 import Coercion         ( Coercion, coVarsOfCo )
 import FamInstEnv
 import Util
-import Maybes           ( isJust )
+import Maybes
 import TysWiredIn
 import TysPrim          ( realWorldStatePrimTy )
 import ErrUtils         ( dumpIfSet_dyn )
@@ -1296,41 +1296,62 @@ nonVirgin env = env { ae_virgin = False }
 
 extendSigsWithLam :: AnalEnv -> Id -> AnalEnv
 -- Extend the AnalEnv when we meet a lambda binder
-extendSigsWithLam env id
-  | isId id
-  , isStrictDmd (idDemandInfo id) || ae_virgin env
-       -- See Note [Optimistic CPR in the "virgin" case]
-       -- See Note [Initial CPR for strict binders]
-  , Just (dc,_,_,_) <- deepSplitProductType_maybe (ae_fam_envs env) $ idType id
-  = extendAnalEnv NotTopLevel env id $ sigMayDiverge $
-    cprProdSig (maxCprDepth (ae_dflags env))
-               (replicate (dataConRepArity dc) topRes)
+extendSigsWithLam env id =
+  case initialCPRForBinder env id (isStrictDmd (idDemandInfo id)) of
+  Just res ->
+    extendAnalEnv NotTopLevel env id $ sigMayDiverge $
+      mkClosedStrictSig [] res
+  Nothing -> env
 
+initialCPRForBinder :: AnalEnv -> Id -> Bool -> Maybe DmdResult
+initialCPRForBinder env id is_strict
+  | not (isId id)
+  = Nothing
+  | ae_virgin env
+     -- See Note [Optimistic CPR in the "virgin" case]
+  = nestedCPRResultForType env (idType id)
+  | is_strict
+     -- See Note [Initial CPR for strict binders]
+  = fmap (forgetLazyCPR (getStrDmd (idDemandInfo id))) $
+      nestedCPRResultForType env (idType id)
   | otherwise
-  = env
+  = Nothing
+
+nestedCPRResultForType :: AnalEnv -> Type -> Maybe DmdResult
+nestedCPRResultForType env ty0 = go (maxCprDepth $ ae_dflags env) ty0
+  where
+    go 0 _ = Nothing
+    go depth ty
+      | Just (_, _, arg_tys, _)
+          <- deepSplitProductType_maybe (ae_fam_envs env) ty
+      = Just $ cprProdRes depth $
+          map (fromMaybe topRes . go (depth - 1) . fst) arg_tys
+      | otherwise
+      = Nothing
 
 extendEnvForProdAlt :: AnalEnv -> CoreExpr -> Id -> DataCon -> [Var] -> AnalEnv
 -- See Note [CPR in a product case alternative]
 extendEnvForProdAlt env scrut case_bndr dc bndrs
-  = foldl do_con_arg env1 ids_w_strs
+  | is_var_scrut
+  = foldl' add_result env1 (zip ids results)
+  | otherwise
+  = env1
   where
+    add_result env (id, res)
+      | isTopRes res = env
+      | otherwise = extendAnalEnv NotTopLevel env id (mkClosedStrictSig [] res)
     env1 = extendAnalEnv NotTopLevel env case_bndr case_bndr_sig
 
-    ids_w_strs    = filter isId bndrs `zip` dataConRepStrictness dc
-    case_bndr_sig =
-      cprProdSig (maxCprDepth (ae_dflags env))
-        (replicate (dataConRepArity dc) topRes)
+    results       = zipWith do_con_arg ids (dataConRepStrictness dc)
+    ids           = filter isId bndrs
+    case_bndr_sig = cprProdSig (maxCprDepth (ae_dflags env)) results
     fam_envs      = ae_fam_envs env
 
-    do_con_arg env (id, str)
-       | let is_strict = isStrictDmd (idDemandInfo id) || isMarkedStrict str
-       , ae_virgin env || (is_var_scrut && is_strict)  -- See Note [CPR in a product case alternative]
-       , Just (dc,_,_,_) <- deepSplitProductType_maybe fam_envs $ idType id
-       = extendAnalEnv NotTopLevel env id
-          (cprProdSig (maxCprDepth (ae_dflags env))
-            (replicate (dataConRepArity dc) topRes))
-       | otherwise
-       = env
+    do_con_arg id str
+      = let
+        -- See Note [CPR in a product case alternative]
+        is_strict = isStrictDmd (idDemandInfo id) || isMarkedStrict str
+      in fromMaybe topRes $ initialCPRForBinder env id is_strict
 
     is_var_scrut = is_var scrut
     is_var (Cast e _) = is_var e

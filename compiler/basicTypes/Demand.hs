@@ -32,10 +32,11 @@ module Demand (
         DmdResult, CPRResult,
         isBotRes, isTopRes, getDmdResult, resTypeArgDmd,
         topRes, convRes, botRes, exnRes,
+        cprProdRes,
         splitNestedRes,
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
         returnsCPR_maybe,
-        forgetCPR, forgetSumCPR,
+        forgetCPR, forgetSumCPR, forgetLazyCPR,
         StrictSig(..), mkStrictSig, mkClosedStrictSig,
         nopSig, botSig, exnSig, cprProdSig, convergeSig,
         isTopSig, hasDemandEnvSig,
@@ -1113,6 +1114,19 @@ cutCPRResult _ NeverReturns    = NeverReturns
 cutCPRResult _ (RetSum tag)    = RetSum tag
 cutCPRResult n (RetProd rs)    = RetProd (map (cutDmdResult (n-1)) rs)
 
+-- | Forget any CPR property for components that are lazy according to the
+-- first argument.
+forgetLazyCPR :: ArgStr -> DmdResult -> DmdResult
+forgetLazyCPR argStr res = case (argStr, res) of
+  (Lazy, _) -> topRes
+  (_, Dunno (RetProd rs)) -> Dunno $ deep rs
+  (_, Converges (RetProd rs)) -> Converges $ deep rs
+  _ -> res
+  where
+    deep rs = case splitArgStrProdDmd (length rs) argStr of
+      Nothing -> NoCPR
+      Just args -> RetProd $ zipWith forgetLazyCPR args rs
+
 -- Forget the CPR information, but remember if it converges or diverges
 -- Used for non-strict thunks and non-top-level things with sum type
 forgetCPR :: DmdResult -> DmdResult
@@ -1132,8 +1146,8 @@ forgetSumCPR_help NeverReturns = NeverReturns
 forgetSumCPR_help NoCPR        = NoCPR
 
 splitNestedRes :: DmdResult -> [DmdResult]
-splitNestedRes Diverges      = repeat topRes
-splitNestedRes ThrowsExn     = repeat topRes
+splitNestedRes Diverges      = repeat Diverges
+splitNestedRes ThrowsExn     = repeat ThrowsExn
 splitNestedRes (Dunno c)     = splitNestedCPR c
 splitNestedRes (Converges c) = splitNestedCPR c
 
@@ -1141,7 +1155,7 @@ splitNestedCPR :: CPRResult -> [DmdResult]
 splitNestedCPR NoCPR        = repeat topRes
 splitNestedCPR (RetSum _)   = repeat topRes
 splitNestedCPR (RetProd cs) = cs
-splitNestedCPR NeverReturns = repeat topRes
+splitNestedCPR NeverReturns = repeat $ Dunno NeverReturns
 
 isTopRes :: DmdResult -> Bool
 isTopRes (Dunno NoCPR) = True
