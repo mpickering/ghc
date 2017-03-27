@@ -384,6 +384,7 @@ makeCorePair dflags gbl_id is_default_method dict_arity rhs
           NoInline        -> (gbl_id, rhs)
           Inlinable       -> (gbl_id `setIdUnfolding` inlinable_unf, rhs)
           Inline          -> inline_pair
+          InlineAlways    -> (gbl_id `setIdUnfolding` mkCompulsoryUnfolding rhs, rhs)
 
   where
     inline_prag   = idInlinePragma gbl_id

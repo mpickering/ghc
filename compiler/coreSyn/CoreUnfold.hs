@@ -1004,8 +1004,8 @@ couldBeSmallEnoughToInline dflags threshold rhs
 smallEnoughToInline :: DynFlags -> Unfolding -> Bool
 smallEnoughToInline dflags (CoreUnfolding {uf_guidance = UnfIfGoodArgs {ug_size = size}})
   = size <= ufUseThreshold dflags
-smallEnoughToInline _ _
-  = False
+smallEnoughToInline _ cf
+  = WARN( True , text "Unfolding too big: " <+> ppr cf)  False
 
 ----------------
 

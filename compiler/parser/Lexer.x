@@ -2741,6 +2741,8 @@ oneWordPrags = Map.fromList [
      ("rules", rulePrag),
      ("inline",
          strtoken (\s -> (ITinline_prag (SourceText s) Inline FunLike))),
+     ("inalways",
+         strtoken (\s -> (ITinline_prag (SourceText s) InlineAlways FunLike))),
      ("inlinable",
          strtoken (\s -> (ITinline_prag (SourceText s) Inlinable FunLike))),
      ("inlineable",

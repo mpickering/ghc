@@ -1163,6 +1163,7 @@ data InlinePragma            -- Note [InlinePragma]
 data InlineSpec   -- What the user's INLINE pragma looked like
   = Inline
   | Inlinable
+  | InlineAlways
   | NoInline
   | EmptyInlineSpec  -- Used in a place-holder InlinePragma in SpecPrag or IdInfo,
                      -- where there isn't any real inline pragma at all
@@ -1325,6 +1326,7 @@ instance Outputable InlineSpec where
    ppr Inline          = text "INLINE"
    ppr NoInline        = text "NOINLINE"
    ppr Inlinable       = text "INLINABLE"
+   ppr InlineAlways       = text "INLINE ALAWAYS"
    ppr EmptyInlineSpec = empty
 
 instance Outputable InlinePragma where
