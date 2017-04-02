@@ -248,6 +248,7 @@ getCoreToDo dflags
         -- so that overloaded functions have all their dictionary lambdas manifest
         runWhen do_specialise CoreDoSpecialising,
 
+
         if full_laziness then
            CoreDoFloatOutwards FloatOutSwitches {
                                  floatOutLambdas   = Just 0,
@@ -279,6 +280,7 @@ getCoreToDo dflags
 
         simpl_phases,
 
+
                 -- Phase 0: allow all Ids to be inlined now
                 -- This gets foldr inlined before strictness analysis
 
@@ -297,6 +299,7 @@ getCoreToDo dflags
             -- them more likely to be strict. These bindings might only show
             -- up after the inlining from simplification.  Example in fulsom,
             -- Csg.calc, where an arg of timesDouble thereby becomes strict.
+        runWhen static_args CoreDoStaticArgs,
 
         runWhen call_arity $ CoreDoPasses
             [ CoreDoCallArity
@@ -340,6 +343,8 @@ getCoreToDo dflags
 
         maybe_rule_check (Phase 0),
 
+        runWhen do_specialise CoreDoSpecialising,
+
         -- Final clean-up simplification:
         simpl_phase 0 ["final"] max_iter,
 
@@ -354,6 +359,7 @@ getCoreToDo dflags
         -- It is EXTREMELY IMPORTANT to run this pass, otherwise execution
         -- can become /exponentially/ more expensive. See Trac #11731, #12996.
         runWhen (strictness || late_dmd_anal) CoreDoStrictness,
+
 
         maybe_rule_check (Phase 0)
      ]

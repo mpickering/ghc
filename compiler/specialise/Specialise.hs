@@ -580,6 +580,7 @@ specProgram guts@(ModGuts { mg_module = this_mod
 
              -- Specialise the bindings of this module
        ; (binds', uds) <- runSpecM dflags this_mod (go binds)
+       ; pprTrace "specProgram:binds" (ppr binds') (return ())
 
              -- Specialise imported functions
        ; hpt_rules <- getRuleBase
@@ -597,6 +598,7 @@ specProgram guts@(ModGuts { mg_module = this_mod
                | otherwise        = Rec (flattenBinds spec_binds') : binds'
                    -- Note [Glom the bindings if imported functions are specialised]
 
+       ; pprTrace "specProgram:final_binds" (ppr final_binds) (return ())
        ; return (guts { mg_binds = final_binds
                       , mg_rules = new_rules ++ local_rules }) }
   where
@@ -1035,7 +1037,9 @@ specBind :: SpecEnv                     -- Use this for RHSs
 -- Returned UsageDetails:
 --    No calls for binders of this bind
 specBind rhs_env (NonRec fn rhs) body_uds
-  = do { (rhs', rhs_uds) <- specExpr rhs_env rhs
+  = do { pprTrace "specBind:non-rec" (ppr fn <+> ppr rhs) (return ())
+       ; (rhs', rhs_uds) <- specExpr rhs_env rhs
+       ; pprTrace "rhs_uds1" (ppr fn <+> ppr rhs_uds) (return ())
        ; (fn', spec_defns, body_uds1) <- specDefn rhs_env body_uds fn rhs
 
        ; let pairs = spec_defns ++ [(fn', rhs')]
@@ -1048,6 +1052,7 @@ specBind rhs_env (NonRec fn rhs) body_uds
                 -- that is good because it'll tend to keep "earlier" calls
                 -- See Note [Specialisation of dictionary functions]
 
+
              (free_uds, dump_dbs, float_all) = dumpBindUDs [fn] combined_uds
                 -- See Note [From non-recursive to recursive]
 
@@ -1055,6 +1060,10 @@ specBind rhs_env (NonRec fn rhs) body_uds
              final_binds
                | isEmptyBag dump_dbs = [mkDB $ NonRec b r | (b,r) <- pairs]
                | otherwise = [flattenDictBinds dump_dbs pairs]
+        ; pprTrace "combined_uds" (ppr fn <+> ppr combined_uds) (return ())
+        ; pprTrace "free_uds" (ppr fn <+> ppr free_uds) (return ())
+        ; pprTrace "float_all" (ppr fn <+> ppr float_all) (return ())
+        ; pprTrace "final_binds" (ppr fn <+> ppr final_binds) (return ())
 
          ; if float_all then
              -- Rather than discard the calls mentioning the bound variables
@@ -1068,7 +1077,8 @@ specBind rhs_env (NonRec fn rhs) body_uds
 
 specBind rhs_env (Rec pairs) body_uds
        -- Note [Specialising a recursive group]
-  = do { let (bndrs,rhss) = unzip pairs
+  = do { pprTrace "specBind:rec" (ppr pairs) (return ())
+       ; let (bndrs,rhss) = unzip pairs
        ; (rhss', rhs_uds) <- mapAndCombineSM (specExpr rhs_env) rhss
        ; let scope_uds = body_uds `plusUDs` rhs_uds
                        -- Includes binds and calls arising from rhss
@@ -1086,6 +1096,9 @@ specBind rhs_env (Rec pairs) body_uds
        ; let (final_uds, dumped_dbs, float_all) = dumpBindUDs bndrs uds3
              bind = flattenDictBinds dumped_dbs
                                      (spec_defns3 ++ zip bndrs3 rhss')
+        ; pprTrace "rec:spec_defns" (ppr bndrs <+> ppr spec_defns3) (return ())
+        ; pprTrace "rec:float_all" (ppr bndrs <+> ppr float_all) (return ())
+        ; pprTrace "rec:bind" (ppr bndrs <+> ppr bind) (return ())
 
        ; if float_all then
               return ([], final_uds `snocDictBind` bind)
@@ -1123,10 +1136,14 @@ specDefn :: SpecEnv
                    UsageDetails)        -- Stuff to fling upwards from the specialised versions
 
 specDefn env body_uds fn rhs
-  = do { let (body_uds_without_me, calls_for_me) = callsForMe fn body_uds
+  = do { pprTrace "speccing" (ppr fn) (return ())
+       ; let (body_uds_without_me, calls_for_me) = callsForMe fn body_uds
              rules_for_me = idCoreRules fn
        ; (rules, spec_defns, spec_uds) <- specCalls Nothing env rules_for_me
                                                     calls_for_me fn rhs
+       ; pprTrace "Specced" (ppr fn $$ hsep [text "rules" <+> ppr rules
+                                            , text "spec_defns" <+> ppr spec_defns
+                                            ]) (return ())
        ; return ( fn `addIdSpecialisations` rules
                 , spec_defns
                 , body_uds_without_me `plusUDs` spec_uds) }
@@ -1165,9 +1182,10 @@ specCalls mb_mod env rules_for_me calls_for_me fn rhs
 --      See Note [Inline specialisation] for why we do not
 --      switch off specialisation for inline functions
 
-  = -- pprTrace "specDefn: some" (ppr fn $$ ppr calls_for_me $$ ppr rules_for_me) $
+  = pprTrace "specDefn: some" (ppr fn $$ ppr calls_for_me $$ ppr rules_for_me) $
     do { stuff <- mapM spec_call calls_for_me
        ; let (spec_defns, spec_uds, spec_rules) = unzip3 (catMaybes stuff)
+       ; pprTrace "spec_defns" (ppr spec_defns) (return ())
        ; return (spec_rules, spec_defns, plusUDList spec_uds) }
 
   | otherwise   -- No calls or RHS doesn't fit our preconceptions
@@ -1175,7 +1193,9 @@ specCalls mb_mod env rules_for_me calls_for_me fn rhs
           text "Missed specialisation opportunity for"
                                  <+> ppr fn $$ _trace_doc )
           -- Note [Specialisation shape]
-    -- pprTrace "specDefn: none" (ppr fn <+> ppr calls_for_me) $
+    pprTrace "specDefn: none" (ppr fn
+                                $$ text "calls:" <+> ppr calls_for_me
+                                $$ _trace_doc) $
     return ([], [], emptyUDs)
   where
     _trace_doc = sep [ ppr rhs_tyvars, ppr n_tyvars
@@ -1243,6 +1263,7 @@ specCalls mb_mod env rules_for_me calls_for_me fn rhs
         -- Note that the substitution is applied to the whole thing.
         -- This is convenient, but just slightly fragile.  Notably:
         --      * There had better be no name clashes in a/b/c
+        pprTrace "spec_call" (ppr _call_info) $
         do { let
                 -- poly_tyvars = [b] in the example above
                 -- spec_tyvars = [a,c]
@@ -1264,6 +1285,7 @@ specCalls mb_mod env rules_for_me calls_for_me fn rhs
 
            ; dflags <- getDynFlags
            ; if already_covered dflags rule_args then
+                pprTrace "spec_call:covered" (ppr call_ts) $
                 return Nothing
              else -- pprTrace "spec_call" (vcat [ ppr _call_info, ppr fn, ppr rhs_dict_ids
                   --                           , text "rhs_env2" <+> ppr (se_subst rhs_env2)
@@ -1326,7 +1348,7 @@ specCalls mb_mod env rules_for_me calls_for_me fn rhs
                 -- Add a suitable unfolding if the spec_inl_prag says so
                 -- See Note [Inline specialisations]
                 (spec_inl_prag, spec_unf)
-                  | not is_local && isStrongLoopBreaker (idOccInfo fn)
+                  | False --not is_local && isStrongLoopBreaker (idOccInfo fn)
                   = (neverInlinePragma, noUnfolding)
                         -- See Note [Specialising imported functions] in OccurAnal
 
@@ -1898,7 +1920,7 @@ singleCall id tys dicts
 
 mkCallUDs, mkCallUDs' :: SpecEnv -> Id -> [CoreExpr] -> UsageDetails
 mkCallUDs env f args
-  = -- pprTrace "mkCallUDs" (vcat [ ppr f, ppr args, ppr res ])
+  =  pprTrace "mkCallUDs" (vcat [ ppr f, ppr args, ppr res ])
     res
   where
     res = mkCallUDs' env f args
@@ -2005,6 +2027,7 @@ whole it's only a small win: 2.2% improvement in allocation for ansi,
 1.2% for bspt, but mostly 0.0!  Average 0.1% increase in binary size.
 -}
 
+{-
 interestingDict :: SpecEnv -> CoreExpr -> Bool
 -- A dictionary argument is interesting if it has *some* structure
 -- NB: "dictionary" arguments include constraints of all sorts,
@@ -2019,6 +2042,8 @@ interestingDict env (App fn (Coercion _)) = interestingDict env fn
 interestingDict env (Tick _ a)            = interestingDict env a
 interestingDict env (Cast e _)            = interestingDict env e
 interestingDict _ _                       = True
+-}
+interestingDict _ _ = True
 
 plusUDs :: UsageDetails -> UsageDetails -> UsageDetails
 plusUDs (MkUD {ud_binds = db1, ud_calls = calls1})
@@ -2123,12 +2148,12 @@ dumpBindUDs bndrs (MkUD { ud_binds = orig_dbs, ud_calls = orig_calls })
 
 callsForMe :: Id -> UsageDetails -> (UsageDetails, [CallInfo])
 callsForMe fn (MkUD { ud_binds = orig_dbs, ud_calls = orig_calls })
-  = -- pprTrace ("callsForMe")
-    --          (vcat [ppr fn,
-    --                 text "Orig dbs ="     <+> ppr (_dictBindBndrs orig_dbs),
-    --                 text "Orig calls ="   <+> ppr orig_calls,
-    --                 text "Dep set ="      <+> ppr dep_set,
-    --                 text "Calls for me =" <+> ppr calls_for_me]) $
+  =  pprTrace ("callsForMe")
+              (vcat [ppr fn,
+                     text "Orig dbs ="     <+> ppr (_dictBindBndrs orig_dbs),
+                     text "Orig calls ="   <+> ppr orig_calls,
+                     text "Dep set ="      <+> ppr dep_set,
+                     text "Calls for me =" <+> ppr calls_for_me]) $
     (uds_without_me, calls_for_me)
   where
     uds_without_me = MkUD { ud_binds = orig_dbs

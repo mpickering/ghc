@@ -1001,7 +1001,10 @@ findExternalRules omit_prags binds imp_id_rules unfold_env
        where
          stuff@(binds', bndr_set, needed_fvs, rules)
                        = trim_binds binds
-         needed bndr   = isExportedId bndr || bndr `elemVarSet` needed_fvs
+         needed bndr   = True
+--          pprTrace "needed" (ppr bndr <+>
+--            ppr (isExportedId bndr || bndr `elemVarSet` needed_fvs)) $
+--            ((isExportedId bndr || bndr `elemVarSet` needed_fvs))
 
          bndrs         = bindersOf  bind
          rhss          = rhssOfBind bind
