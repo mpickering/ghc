@@ -517,7 +517,7 @@ dmdTransform env var dmd
     res
 
   | Just (sig, top_lvl) <- lookupSigEnv env var  -- Local letrec bound thing
-  , let fn_ty = dmdTransformSig sig dmd
+  , let fn_ty = dmdTransformSig (cutSigResult (maxCprDepth (ae_dflags env)) sig) dmd
   = -- pprTrace "dmdTransform" (vcat [ppr var, ppr sig, ppr dmd, ppr fn_ty]) $
     if isTopLevel top_lvl
     then fn_ty   -- Don't record top level things
@@ -1309,54 +1309,55 @@ initialCPRForBinder env id is_strict
   = Nothing
   | ae_virgin env
      -- See Note [Optimistic CPR in the "virgin" case]
-  = nestedCPRResultForType env (idType id)
+  = Just $ nestedCPRResultForType env (idType id)
   | is_strict
      -- See Note [Initial CPR for strict binders]
-  = fmap (forgetLazyCPR (getStrDmd (idDemandInfo id))) $
+  = Just $ forgetLazyCPR (getStrDmd (idDemandInfo id)) $
       nestedCPRResultForType env (idType id)
   | otherwise
   = Nothing
 
-nestedCPRResultForType :: AnalEnv -> Type -> Maybe DmdResult
-nestedCPRResultForType env ty0 = go (maxCprDepth $ ae_dflags env) ty0
+nestedCPRResultForType :: AnalEnv -> Type -> DmdResult
+nestedCPRResultForType env = go
   where
-    go 0 _ = Nothing
-    go depth ty
+    go ty
       | Just (_, _, arg_tys, _)
           <- deepSplitProductType_maybe (ae_fam_envs env) ty
-      = Just $ cprProdRes depth $
-          map (fromMaybe topRes . go (depth - 1) . fst) arg_tys
+      = cprProdRes' $ map (go . fst) arg_tys
       | otherwise
-      = Nothing
+      = topRes
 
 extendEnvForProdAlt :: AnalEnv -> CoreExpr -> Id -> DataCon -> [Var] -> AnalEnv
 -- See Note [CPR in a product case alternative]
 extendEnvForProdAlt env scrut case_bndr dc bndrs
-  | is_var_scrut
-  = foldl' add_result env1 (zip ids results)
+  | Just v <- unwrap_var scrut
+  = extendEnvForProdAltVar env v case_bndr dc bndrs
   | otherwise
-  = env1
+  = extendAnalEnv NotTopLevel env case_bndr $
+    cprProdSig (maxCprDepth (ae_dflags env)) $
+    replicate (dataConRepArity dc) topRes
+  where
+    unwrap_var (Cast e _) = unwrap_var e
+    unwrap_var (Var v)    = Just v
+    unwrap_var _          = Nothing
+
+
+extendEnvForProdAltVar :: AnalEnv -> Id -> Id -> DataCon -> [Var] -> AnalEnv
+extendEnvForProdAltVar env scrut_var case_bndr dc bndrs
+  = foldl' add_result env1 $ zip ids results
   where
     add_result env (id, res)
       | isTopRes res = env
       | otherwise = extendAnalEnv NotTopLevel env id (mkClosedStrictSig [] res)
     env1 = extendAnalEnv NotTopLevel env case_bndr case_bndr_sig
 
-    results       = zipWith do_con_arg ids (dataConRepStrictness dc)
+    results       = take (dataConRepArity dc) $ splitNestedRes $
+        case lookupSigEnv env scrut_var of
+      Nothing -> topRes
+      Just (sig, _toplevel) -> snd $ splitStrictSig sig
+
     ids           = filter isId bndrs
     case_bndr_sig = cprProdSig (maxCprDepth (ae_dflags env)) results
-    fam_envs      = ae_fam_envs env
-
-    do_con_arg id str
-      = let
-        -- See Note [CPR in a product case alternative]
-        is_strict = isStrictDmd (idDemandInfo id) || isMarkedStrict str
-      in fromMaybe topRes $ initialCPRForBinder env id is_strict
-
-    is_var_scrut = is_var scrut
-    is_var (Cast e _) = is_var e
-    is_var (Var v)    = isLocalId v
-    is_var _          = False
 
 addDataConStrictness :: DataCon -> [Demand] -> [Demand]
 -- See Note [Add demands for strict constructors]

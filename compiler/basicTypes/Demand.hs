@@ -32,7 +32,7 @@ module Demand (
         DmdResult, CPRResult,
         isBotRes, isTopRes, getDmdResult, resTypeArgDmd,
         topRes, convRes, botRes, exnRes,
-        cprProdRes,
+        cprProdRes, cprProdRes',
         splitNestedRes,
         appIsBottom, isBottomingSig, pprIfaceStrictSig,
         returnsCPR_maybe,
@@ -42,6 +42,7 @@ module Demand (
         isTopSig, hasDemandEnvSig,
         splitStrictSig, strictSigDmdEnv,
         increaseStrictSigArity,
+        cutSigResult,
         sigMayDiverge,
 
         seqDemand, seqDemandList, seqDmdType, seqStrictSig,
@@ -1081,7 +1082,11 @@ cprSumRes :: Int -> ConTag -> DmdResult
 cprSumRes depth tag = cutDmdResult depth $ Converges $ RetSum tag
 
 cprProdRes :: Int -> [DmdResult] -> DmdResult
-cprProdRes depth arg_ress = cutDmdResult depth $ Converges $ RetProd arg_ress
+cprProdRes depth arg_ress = cutDmdResult depth $ cprProdRes' arg_ress
+
+-- | cprProdRes with no depth limit.
+cprProdRes' :: [DmdResult] -> DmdResult
+cprProdRes' arg_ress = Converges $ RetProd arg_ress
 
 getDmdResult :: DmdType -> DmdResult
 getDmdResult (DmdType _ [] r) = r       -- Only for data-typed arguments!
@@ -1891,6 +1896,10 @@ increaseStrictSigArity :: Int -> StrictSig -> StrictSig
 -- Add extra arguments to a strictness signature
 increaseStrictSigArity arity_increase (StrictSig (DmdType env dmds res))
   = StrictSig (DmdType env (replicate arity_increase topDmd ++ dmds) res)
+
+cutSigResult :: Int -> StrictSig -> StrictSig
+cutSigResult depth (StrictSig (DmdType env dmds res))
+  = StrictSig $ DmdType env dmds $ cutDmdResult depth res
 
 isTopSig :: StrictSig -> Bool
 isTopSig (StrictSig ty) = isTopDmdType ty
