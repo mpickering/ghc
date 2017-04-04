@@ -265,13 +265,13 @@ withTimeSpec ts f
 
 fromTimeout :: Timeout -> TimeSpec
 fromTimeout Forever     = TimeSpec (-1) (-1)
-fromTimeout (Timeout s) = TimeSpec (toEnum sec) (toEnum nanosec)
+fromTimeout (Timeout s) = TimeSpec (toEnum sec') (toEnum nanosec')
   where
-    sec :: Int
-    sec     = floor s
+    (sec, nanosec) = s `quotRem` 1000000000
 
-    nanosec :: Int
-    nanosec = ceiling $ (s - fromIntegral sec) * 1000000000
+    nanosec', sec' :: Int
+    sec' = fromIntegral sec
+    nanosec' = fromIntegral nanosec
 
 toEvent :: Filter -> E.Event
 toEvent (Filter f)
