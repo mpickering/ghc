@@ -2095,6 +2095,8 @@ AC_DEFUN([FIND_LD],[
             # This case should catch at least arm-unknown-linux-gnueabihf,
             # arm-linux-androideabi, arm64-unknown-linux and
             # aarch64-linux-android
+            # See GHC #4210 and
+            # https://sourceware.org/bugzilla/show_bug.cgi?id=16177
             FP_ARG_WITH_PATH_GNU_PROG([LD_GOLD], [ld.gold], [ld.gold])
             $1="$LD_GOLD"
             ;;
@@ -2276,6 +2278,32 @@ AC_DEFUN([FP_BFD_SUPPORT], [
                         [],dnl bfd seems to work
                         [AC_MSG_ERROR([can't use 'bfd' library])])
             LIBS="$save_LIBS"
+        ]
+    )
+])
+
+# FP_USE_GOLD()
+# --------------------
+# Should we pass -fuse-ld=gold to the C compiler while linking?
+# See #13541 for motivation.
+#
+# $1 = the variable to append arguments to be passed to the C compiler while
+# linking.
+AC_DEFUN([FP_USE_GOLD], [
+    AC_ARG_ENABLE(gold,
+        [AC_HELP_STRING([--enable-gold],
+                        [Use the gold linker when available (default=no)])],
+        [
+            AC_MSG_CHECKING([whether -fuse-ld=gold is supported])
+            echo 'int main(void) {return 0;}' > conftest.c
+            if $CC -o conftest.o -fuse-ld=gold conftest.c > /dev/null 2>&1
+            then
+                $1="$1 -optlc=-fuse-ld=gold"
+                AC_MSG_RESULT([yes])
+            else
+                AC_MSG_RESULT([no])
+            fi
+            rm -f conftest.c conftest.o
         ]
     )
 ])
