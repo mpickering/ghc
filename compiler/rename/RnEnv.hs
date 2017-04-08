@@ -20,8 +20,6 @@ module RnEnv (
         HsSigCtxt(..), lookupLocalTcNames, lookupSigOccRn,
         lookupSigCtxtOccRn,
 
-        lookupFixityRn, lookupFixityRn_help,
-        lookupFieldFixityRn, lookupTyFixityRn,
         lookupInstDeclBndr, lookupRecFieldOcc, lookupFamInstName,
         lookupConstructorFields,
         lookupSyntaxName, lookupSyntaxName', lookupSyntaxNames,
@@ -30,11 +28,10 @@ module RnEnv (
 
         module RnUnbound,
         module RnUtils,
+        module RnFixity,
 
         addUsedGRE, addUsedGREs, addUsedDataCons,
 
-        MiniFixityEnv,
-        addLocalFixities,
 
         -- Role annotations
         RoleAnnotEnv, emptyRoleAnnotEnv, mkRoleAnnotEnv,
