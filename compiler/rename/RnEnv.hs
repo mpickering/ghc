@@ -33,9 +33,6 @@ module RnEnv (
         addUsedGRE, addUsedGREs, addUsedDataCons,
 
 
-        -- Role annotations
-        RoleAnnotEnv, emptyRoleAnnotEnv, mkRoleAnnotEnv,
-        lookupRoleAnnot, getRoleAnnots,
 
         dataTcOccs, --TODO: Move this somewhere, into utils?
 
@@ -1323,33 +1320,6 @@ Note that setRdrNameSpace on an Exact name requires the Name to be External,
 which it always is for built in syntax.
 -}
 
-{- *********************************************************************
-*                                                                      *
-                        Role annotations
-*                                                                      *
-********************************************************************* -}
-
-type RoleAnnotEnv = NameEnv (LRoleAnnotDecl Name)
-
-mkRoleAnnotEnv :: [LRoleAnnotDecl Name] -> RoleAnnotEnv
-mkRoleAnnotEnv role_annot_decls
- = mkNameEnv [ (name, ra_decl)
-             | ra_decl <- role_annot_decls
-             , let name = roleAnnotDeclName (unLoc ra_decl)
-             , not (isUnboundName name) ]
-       -- Some of the role annots will be unbound;
-       -- we don't wish to include these
-
-emptyRoleAnnotEnv :: RoleAnnotEnv
-emptyRoleAnnotEnv = emptyNameEnv
-
-lookupRoleAnnot :: RoleAnnotEnv -> Name -> Maybe (LRoleAnnotDecl Name)
-lookupRoleAnnot = lookupNameEnv
-
-getRoleAnnots :: [Name] -> RoleAnnotEnv -> ([LRoleAnnotDecl Name], RoleAnnotEnv)
-getRoleAnnots bndrs role_env
-  = ( mapMaybe (lookupRoleAnnot role_env) bndrs
-    , delListFromNameEnv role_env bndrs )
 
 
 {-
