@@ -16,7 +16,6 @@ module RnEnv (
         lookupTypeOccRn, lookupKindOccRn,
         lookupGlobalOccRn, lookupGlobalOccRn_maybe,
         lookupOccRn_overloaded, lookupGlobalOccRn_overloaded, lookupExactOcc,
-        reportUnboundName, unknownNameSuggestions,
         addNameClashErrRn,
 
         HsSigCtxt(..), lookupLocalTcNames, lookupSigOccRn,
@@ -29,7 +28,9 @@ module RnEnv (
         lookupSyntaxName, lookupSyntaxName', lookupSyntaxNames,
         lookupIfThenElse,
         lookupGreAvailRn,
-        mkUnboundName, mkUnboundNameRdr, isUnboundName,
+
+        module RnUnbound,
+
         addUsedGRE, addUsedGREs, addUsedDataCons,
 
         newLocalBndrRn, newLocalBndrsRn,
@@ -49,7 +50,7 @@ module RnEnv (
         warnUnusedMatches, warnUnusedTypePatterns,
         warnUnusedTopBinds, warnUnusedLocalBinds,
         mkFieldEnv,
-        dataTcOccs, kindSigErr, perhapsForallMsg, unknownSubordinateErr,
+        dataTcOccs, kindSigErr, unknownSubordinateErr,
         HsDocContext(..), pprHsDocContext,
         inHsDocContext, withHsDocContext
     ) where
@@ -73,23 +74,18 @@ import Module
 import ConLike
 import DataCon
 import TyCon
-import PrelNames        ( mkUnboundName, isUnboundName, rOOT_MAIN, forall_tv_RDR )
+import PrelNames        ( rOOT_MAIN )
 import ErrUtils         ( MsgDoc )
-import BasicTypes       ( Fixity(..), FixityDirection(..), minPrecedence,
-                          defaultFixity, pprWarningTxtForMsg, SourceText(..) )
+import BasicTypes       ( pprWarningTxtForMsg )
 import SrcLoc
 import Outputable
 import Util
 import Maybes
 import BasicTypes       ( TopLevelFlag(..) )
-import ListSetOps       ( removeDups )
 import DynFlags
 import FastString
 import Control.Monad
-import Data.List
-import Data.Function    ( on )
 import ListSetOps       ( minusList )
-import Constants        ( mAX_TUPLE_SIZE )
 import qualified GHC.LanguageExtensions as LangExt
 import RnFixity
 import RnUnbound
