@@ -3,41 +3,47 @@
 This module contains miscellaneous functions related to renaming.
 
 -}
-module RnUtils where
+module RnUtils (
+        checkDupRdrNames, checkShadowedRdrNames,
+        checkDupNames, checkDupAndShadowedNames, dupNamesErr,
+        checkTupSize,
+        addFvRn, mapFvRn, mapMaybeFvRn,
+        warnUnusedMatches, warnUnusedTypePatterns,
+        warnUnusedTopBinds, warnUnusedLocalBinds,
+        mkFieldEnv,
+        kindSigErr, unknownSubordinateErr, badQualBndrErr,
+        HsDocContext(..), pprHsDocContext,
+        inHsDocContext, withHsDocContext,
 
-import LoadIface        ( loadInterfaceForName, loadSrcInterface_maybe )
-import IfaceEnv
+        newLocalBndrRn, newLocalBndrsRn,
+
+        bindLocalNames, bindLocalNamesFV,
+
+        opDeclErr, badOrigBinding, addNameClashErrRn, extendTyVarEnvFVRn
+
+)
+
+where
+
+
 import HsSyn
 import RdrName
 import HscTypes
 import TcEnv
 import TcRnMonad
-import RdrHsSyn         ( setRdrNameSpace )
-import TysWiredIn       ( starKindTyConName, unicodeStarKindTyConName )
 import Name
 import NameSet
 import NameEnv
-import Avail
-import Module
-import ConLike
 import DataCon
-import TyCon
-import PrelNames        ( mkUnboundName, isUnboundName, rOOT_MAIN, forall_tv_RDR )
-import ErrUtils         ( MsgDoc )
-import BasicTypes       ( Fixity(..), FixityDirection(..), minPrecedence,
-                          defaultFixity, pprWarningTxtForMsg, SourceText(..) )
 import SrcLoc
 import Outputable
 import Util
-import Maybes
 import BasicTypes       ( TopLevelFlag(..) )
 import ListSetOps       ( removeDups )
 import DynFlags
 import FastString
 import Control.Monad
 import Data.List
-import Data.Function    ( on )
-import ListSetOps       ( minusList )
 import Constants        ( mAX_TUPLE_SIZE )
 import qualified GHC.LanguageExtensions as LangExt
 

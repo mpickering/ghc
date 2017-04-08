@@ -16,7 +16,6 @@ module RnEnv (
         lookupTypeOccRn, lookupKindOccRn,
         lookupGlobalOccRn, lookupGlobalOccRn_maybe,
         lookupOccRn_overloaded, lookupGlobalOccRn_overloaded, lookupExactOcc,
-        addNameClashErrRn,
 
         HsSigCtxt(..), lookupLocalTcNames, lookupSigOccRn,
         lookupSigCtxtOccRn,
@@ -30,29 +29,19 @@ module RnEnv (
         lookupGreAvailRn,
 
         module RnUnbound,
+        module RnUtils,
 
         addUsedGRE, addUsedGREs, addUsedDataCons,
 
-        newLocalBndrRn, newLocalBndrsRn,
-        bindLocalNames, bindLocalNamesFV,
         MiniFixityEnv,
         addLocalFixities,
-        extendTyVarEnvFVRn,
 
         -- Role annotations
         RoleAnnotEnv, emptyRoleAnnotEnv, mkRoleAnnotEnv,
         lookupRoleAnnot, getRoleAnnots,
 
-        checkDupRdrNames, checkShadowedRdrNames,
-        checkDupNames, checkDupAndShadowedNames, dupNamesErr,
-        checkTupSize,
-        addFvRn, mapFvRn, mapMaybeFvRn,
-        warnUnusedMatches, warnUnusedTypePatterns,
-        warnUnusedTopBinds, warnUnusedLocalBinds,
-        mkFieldEnv,
-        dataTcOccs, kindSigErr, unknownSubordinateErr,
-        HsDocContext(..), pprHsDocContext,
-        inHsDocContext, withHsDocContext
+        dataTcOccs, --TODO: Move this somewhere, into utils?
+
     ) where
 
 #include "HsVersions.h"
