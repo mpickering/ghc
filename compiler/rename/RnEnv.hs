@@ -950,8 +950,6 @@ lookupGreRn_maybe :: RdrName -> RnM (Maybe GlobalRdrElt)
 --   Exactly one binding: records it as "used", return (Just gre)
 --   No bindings:         return Nothing
 --   Many bindings:       report "ambiguous", return an arbitrary (Just gre)
--- (This API is a bit strange; lookupGRERn2_maybe is simpler.
---  But it works and I don't want to fiddle too much.)
 -- Uses addUsedRdrName to record use and deprecations
 lookupGreRn_maybe rdr_name
   = do  { env <- getGlobalRdrEnv
@@ -964,35 +962,17 @@ lookupGreRn_maybe rdr_name
                             (ppr rdr_name $$ ppr gres $$ ppr env)
                         ; return (Just (head gres)) } }
 
-lookupGreRn2_maybe :: RdrName -> RnM (Maybe GlobalRdrElt)
--- Look up the RdrName in the GlobalRdrEnv
---   Exactly one binding: record it as "used",   return (Just gre)
---   No bindings:         report "not in scope", return Nothing
---   Many bindings:       report "ambiguous",    return Nothing
--- Uses addUsedRdrName to record use and deprecations
-lookupGreRn2_maybe rdr_name
-  = do  { env <- getGlobalRdrEnv
-        ; case lookupGRE_RdrName rdr_name env of
-            []    -> do { _ <- unboundName WL_Global rdr_name
-                        ; return Nothing }
-            [gre] -> do { addUsedGRE True gre
-                        ; return (Just gre) }
-            gres  -> do { addNameClashErrRn rdr_name gres
-                        ; traceRn "lookupGreRn_maybe:name clash"
-                            (ppr rdr_name $$ ppr gres $$ ppr env)
-                        ; return Nothing } }
-
 lookupGreAvailRn :: RdrName -> RnM (Name, AvailInfo)
 -- Used in export lists
 -- If not found or ambiguous, add error message, and fake with UnboundName
 -- Uses addUsedRdrName to record use and deprecations
 lookupGreAvailRn rdr_name
-  = do  { mb_gre <- lookupGreRn2_maybe rdr_name
+  = do  { mb_gre <- lookupGreRn_maybe rdr_name
         ; case mb_gre of {
             Just gre -> return (gre_name gre, availFromGRE gre) ;
             Nothing  ->
     do  { traceRn "lookupGreAvailRn" (ppr rdr_name)
-        ; let name = mkUnboundNameRdr rdr_name
+        ; name <- unboundName WL_Global rdr_name
         ; return (name, avail name) } } }
 
 {-
