@@ -35,7 +35,6 @@ module RnEnv (
         bindLocalNames, bindLocalNamesFV,
         MiniFixityEnv,
         addLocalFixities,
-        bindLocatedLocalsFV, bindLocatedLocalsRn,
         extendTyVarEnvFVRn,
 
         -- Role annotations
@@ -1649,18 +1648,6 @@ newLocalBndrRn (L loc rdr_name)
 newLocalBndrsRn :: [Located RdrName] -> RnM [Name]
 newLocalBndrsRn = mapM newLocalBndrRn
 
----------------------
-bindLocatedLocalsRn :: [Located RdrName]
-                    -> ([Name] -> RnM a)
-                    -> RnM a
-bindLocatedLocalsRn rdr_names_w_loc enclosed_scope
-  = do { checkDupRdrNames rdr_names_w_loc
-       ; checkShadowedRdrNames rdr_names_w_loc
-
-        -- Make fresh Names and extend the environment
-       ; names <- newLocalBndrsRn rdr_names_w_loc
-       ; bindLocalNames names (enclosed_scope names) }
-
 bindLocalNames :: [Name] -> RnM a -> RnM a
 bindLocalNames names enclosed_scope
   = do { lcl_env <- getLclEnv
@@ -1676,17 +1663,6 @@ bindLocalNamesFV :: [Name] -> RnM (a, FreeVars) -> RnM (a, FreeVars)
 bindLocalNamesFV names enclosed_scope
   = do  { (result, fvs) <- bindLocalNames names enclosed_scope
         ; return (result, delFVs names fvs) }
-
-
--------------------------------------
-        -- binLocalsFVRn is the same as bindLocalsRn
-        -- except that it deals with free vars
-bindLocatedLocalsFV :: [Located RdrName]
-                    -> ([Name] -> RnM (a,FreeVars)) -> RnM (a, FreeVars)
-bindLocatedLocalsFV rdr_names enclosed_scope
-  = bindLocatedLocalsRn rdr_names       $ \ names ->
-    do (thing, fvs) <- enclosed_scope names
-       return (thing, delFVs names fvs)
 
 -------------------------------------
 
