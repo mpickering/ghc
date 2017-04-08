@@ -11,7 +11,7 @@ module RnUtils (
         warnUnusedMatches, warnUnusedTypePatterns,
         warnUnusedTopBinds, warnUnusedLocalBinds,
         mkFieldEnv,
-        kindSigErr, unknownSubordinateErr, badQualBndrErr,
+        unknownSubordinateErr, badQualBndrErr,
         HsDocContext(..), pprHsDocContext,
         inHsDocContext, withHsDocContext,
 
@@ -19,7 +19,7 @@ module RnUtils (
 
         bindLocalNames, bindLocalNamesFV,
 
-        opDeclErr, badOrigBinding, addNameClashErrRn, extendTyVarEnvFVRn
+        addNameClashErrRn, extendTyVarEnvFVRn
 
 )
 
@@ -316,10 +316,6 @@ unknownSubordinateErr doc op    -- Doc is "method of class" or
                                 -- "field of constructor"
   = quotes (ppr op) <+> text "is not a (visible)" <+> doc
 
-badOrigBinding :: RdrName -> SDoc
-badOrigBinding name
-  = text "Illegal binding of built-in syntax:" <+> ppr (rdrNameOcc name)
-        -- The rdrNameOcc is because we don't want to print Prelude.(,)
 
 dupNamesErr :: Outputable n => (n -> SrcSpan) -> [n] -> RnM ()
 dupNamesErr get_loc names
@@ -331,19 +327,10 @@ dupNamesErr get_loc names
     big_loc   = foldr1 combineSrcSpans locs
     locations = text "Bound at:" <+> vcat (map ppr (sort locs))
 
-kindSigErr :: Outputable a => a -> SDoc
-kindSigErr thing
-  = hang (text "Illegal kind signature for" <+> quotes (ppr thing))
-       2 (text "Perhaps you intended to use KindSignatures")
-
 badQualBndrErr :: RdrName -> SDoc
 badQualBndrErr rdr_name
   = text "Qualified name in binding position:" <+> ppr rdr_name
 
-opDeclErr :: RdrName -> SDoc
-opDeclErr n
-  = hang (text "Illegal declaration of a type or class operator" <+> quotes (ppr n))
-       2 (text "Use TypeOperators to declare operators in type and declarations")
 
 checkTupSize :: Int -> RnM ()
 checkTupSize tup_size

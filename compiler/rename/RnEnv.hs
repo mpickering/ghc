@@ -1405,3 +1405,16 @@ lookupSyntaxNames std_names
         else
           do { usr_names <- mapM (lookupOccRn . mkRdrUnqual . nameOccName) std_names
              ; return (map (HsVar . noLoc) usr_names, mkFVs usr_names) } }
+
+-- Error messages
+
+
+opDeclErr :: RdrName -> SDoc
+opDeclErr n
+  = hang (text "Illegal declaration of a type or class operator" <+> quotes (ppr n))
+       2 (text "Use TypeOperators to declare operators in type and declarations")
+
+badOrigBinding :: RdrName -> SDoc
+badOrigBinding name
+  = text "Illegal binding of built-in syntax:" <+> ppr (rdrNameOcc name)
+        -- The rdrNameOcc is because we don't want to print Prelude.(,)
