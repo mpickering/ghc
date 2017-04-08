@@ -45,7 +45,7 @@ module RnEnv (
         checkDupRdrNames, checkShadowedRdrNames,
         checkDupNames, checkDupAndShadowedNames, dupNamesErr,
         checkTupSize,
-        addFvRn, mapFvRn, mapMaybeFvRn, mapFvRnCPS,
+        addFvRn, mapFvRn, mapMaybeFvRn,
         warnUnusedMatches, warnUnusedTypePatterns,
         warnUnusedTopBinds, warnUnusedLocalBinds,
         mkFieldEnv,
@@ -2091,17 +2091,6 @@ mapFvRn f xs = do stuff <- mapM f xs
 mapMaybeFvRn :: (a -> RnM (b, FreeVars)) -> Maybe a -> RnM (Maybe b, FreeVars)
 mapMaybeFvRn _ Nothing = return (Nothing, emptyFVs)
 mapMaybeFvRn f (Just x) = do { (y, fvs) <- f x; return (Just y, fvs) }
-
--- because some of the rename functions are CPSed:
--- maps the function across the list from left to right;
--- collects all the free vars into one set
-mapFvRnCPS :: (a  -> (b   -> RnM c) -> RnM c)
-           -> [a] -> ([b] -> RnM c) -> RnM c
-
-mapFvRnCPS _ []     cont = cont []
-mapFvRnCPS f (x:xs) cont = f x             $ \ x' ->
-                           mapFvRnCPS f xs $ \ xs' ->
-                           cont (x':xs')
 
 {-
 ************************************************************************
