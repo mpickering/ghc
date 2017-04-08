@@ -28,7 +28,7 @@ module RnEnv (
         lookupSyntaxName, lookupSyntaxName', lookupSyntaxNames,
         lookupIfThenElse,
         lookupGreAvailRn,
-        getLookupOccRn,mkUnboundName, mkUnboundNameRdr, isUnboundName,
+        mkUnboundName, mkUnboundNameRdr, isUnboundName,
         addUsedGRE, addUsedGREs, addUsedDataCons,
 
         newLocalBndrRn, newLocalBndrsRn,
@@ -659,11 +659,6 @@ we'll miss the fact that the qualified import is redundant.
 --              Occurrences
 --------------------------------------------------
 -}
-
-getLookupOccRn :: RnM (Name -> Maybe Name)
-getLookupOccRn
-  = do local_env <- getLocalRdrEnv
-       return (lookupLocalRdrOcc local_env . nameOccName)
 
 mkUnboundNameRdr :: RdrName -> Name
 mkUnboundNameRdr rdr = mkUnboundName (rdrNameOcc rdr)
