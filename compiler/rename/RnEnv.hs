@@ -22,14 +22,14 @@ module RnEnv (
 
         lookupInstDeclBndr, lookupRecFieldOcc, lookupFamInstName,
         lookupConstructorFields,
-        lookupSyntaxName, lookupSyntaxName', lookupSyntaxNames,
-        lookupIfThenElse,
+
         lookupGreAvailRn,
 
-        module RnUnbound,
-        module RnUtils,
-        module RnFixity,
+        -- Rebindable Syntax
+        lookupSyntaxName, lookupSyntaxName', lookupSyntaxNames,
+        lookupIfThenElse,
 
+        -- Constructing usage information
         addUsedGRE, addUsedGREs, addUsedDataCons,
 
 
@@ -70,7 +70,6 @@ import FastString
 import Control.Monad
 import ListSetOps       ( minusList )
 import qualified GHC.LanguageExtensions as LangExt
-import RnFixity
 import RnUnbound
 import RnUtils
 
