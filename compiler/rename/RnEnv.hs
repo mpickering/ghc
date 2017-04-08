@@ -203,7 +203,7 @@ newTopSrcBinder (L loc rdr_name)
         ; newGlobalBinder rdr_mod rdr_occ loc }
 
   | otherwise
-  = do  { unless (not (isQual rdr_name))
+  = do  { when (isQual rdr_name)
                  (addErrAt loc (badQualBndrErr rdr_name))
                 -- Binders should not be qualified; if they are, and with a different
                 -- module name, we we get a confusing "M.T is not in scope" error later
