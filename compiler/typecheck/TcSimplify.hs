@@ -480,10 +480,12 @@ simplifyDefault theta
 
 -- Reports whether one type subsumes another, discarding any errors
 tcSubsumes :: TcSigmaType -> TcSigmaType -> TcM Bool
-tcSubsumes ty hole_ty = discardErrs $
- do { (_, wanted) <- captureTopConstraints $ tcSubType_NC ExprSigCtxt ty hole_ty
-    ; (_, noErrs) <- askNoErrs $ simplifyTop wanted
-    ; return noErrs }
+tcSubsumes hole_ty ty = discardErrs $
+ do {  (_, wanted, _) <- pushLevelAndCaptureConstraints $
+                           tcSubType_NC ExprSigCtxt ty hole_ty
+    ; (rem, _) <- runTcS (simpl_top wanted)
+    ; return (isEmptyWC rem)
+    }
 
 ------------------
 tcCheckSatisfiability :: Bag EvVar -> TcM Bool

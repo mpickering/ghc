@@ -1065,7 +1065,7 @@ mkHoleError ctxt ct@(CHoleCan { cc_hole = hole })
                   = givenConstraintsMsg ctxt
                | otherwise = empty
 
-       ; sub_msg <-  validSubstitutions ct
+       ; sub_msg <- validSubstitutions ct
        ; mkErrorMsgFromCt ctxt ct $
             important hole_msg `mappend`
             relevant_bindings (binds_msg $$ constraints_msg) `mappend`
@@ -1125,8 +1125,9 @@ validSubstitutions ct | isExprHoleCt ct =
      ; lcl_env <- getLclTypeEnv
      ; dflags <- getDynFlags
      ; (discards, substitutions) <-
-        go (gbl_env, lcl_env, top_env) (maxValidSubstitutions dflags)
-         $ localsFirst $ globalRdrEnvElts rdr_env
+        setTcLevel hole_lvl $
+          go (gbl_env, lcl_env, top_env) (maxValidSubstitutions dflags)
+           $ localsFirst $ globalRdrEnvElts rdr_env
      ; return $ ppUnless (null substitutions) $
                  hang (text "Valid substitutions include")
                   2 (vcat (map (ppr_sub rdr_env) substitutions)
@@ -1134,8 +1135,9 @@ validSubstitutions ct | isExprHoleCt ct =
   where
     hole_ty :: TcPredType
     hole_ty = ctEvPred (ctEvidence ct)
-
-    hole_env = ctLocEnv $ ctEvLoc $ ctEvidence ct
+    hole_loc = ctEvLoc $ ctEvidence ct
+    hole_env = ctLocEnv $ hole_loc
+    hole_lvl = ctLocLevel $ hole_loc
 
     localsFirst :: [GlobalRdrElt] -> [GlobalRdrElt]
     localsFirst elts = lcl ++ gbl
@@ -1169,7 +1171,7 @@ validSubstitutions ct | isExprHoleCt ct =
     tcTyToId _ = Nothing
 
     substituteable :: Id ->  TcM Bool
-    substituteable id = ty `tcSubsumes` hole_ty
+    substituteable id = hole_ty `tcSubsumes` ty
       where ty = varType id
 
     lookupTopId :: HscEnv -> Name -> IO (Maybe Id)
