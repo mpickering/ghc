@@ -795,14 +795,21 @@ The final result (after the renamer) will be:
 --                                         , let gres' = filter isLocalGRE gres, not (null gres') ] ]
 --       ; return mb_res }
 
-lookupOccRn_maybe :: RdrName -> RnM (Maybe Name)
+lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName -> RnM (Maybe r)
 -- lookupOccRn looks up an occurrence of a RdrName
-lookupOccRn_maybe rdr_name
+lookupOccRnX_maybe globalLookup wrapper rdr_name
   = do { local_env <- getLocalRdrEnv
        ; case lookupLocalRdrEnv local_env rdr_name of {
-          Just name -> return (Just name) ;
-          Nothing   -> do
-       ; lookupGlobalOccRn_maybe rdr_name } }
+          Just name -> return $ Just (wrapper name) ;
+          Nothing   -> globalLookup rdr_name } }
+
+lookupOccRn_maybe :: RdrName -> RnM (Maybe Name)
+lookupOccRn_maybe = lookupOccRnX_maybe lookupGlobalOccRn_maybe id
+
+lookupOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
+lookupOccRn_overloaded overload_ok
+  = lookupOccRnX_maybe (lookupGlobalOccRn_overloaded overload_ok) Left
+
 
 lookupGlobalOccRn_maybe :: RdrName -> RnM (Maybe Name)
 -- Looks up a RdrName occurrence in the top-level
@@ -856,6 +863,7 @@ lookupInfoOccRn rdr_name =
 --   * Just (Right xs) -> name refers to one or more record selectors;
 --                        if overload_ok was False, this list will be
 --                        a singleton.
+{-
 lookupOccRn_overloaded  :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
 lookupOccRn_overloaded overload_ok rdr_name
   = do { local_env <- getLocalRdrEnv
@@ -872,6 +880,7 @@ lookupOccRn_overloaded overload_ok rdr_name
        ; case ns of
            (n:_) -> return $ Just $ Left n  -- Unlikely to be more than one...?
            []    -> return Nothing  } } } } }
+-}
 
 lookupGlobalOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
 lookupGlobalOccRn_overloaded overload_ok rdr_name =
