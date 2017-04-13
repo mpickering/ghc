@@ -250,13 +250,9 @@ lookupTopBndrRn_maybe :: RdrName -> RnM (Maybe Name)
 -- The Haskell parser checks for the illegal qualified name in Haskell
 -- source files, so we don't need to do so here.
 
-lookupTopBndrRn_maybe rdr_name
-  | Just name <- isExact_maybe rdr_name
-  = do { name' <- lookupExactOcc name; return (Just name') }
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = do  { Just <$> lookupOrig rdr_mod rdr_occ }
-  | otherwise
-  = do  {  -- Check for operators in type or class declarations
+lookupTopBndrRn_maybe rdr_name =
+  lookupExactOrOrig rdr_name Just $
+    do  {  -- Check for operators in type or class declarations
            -- See Note [Type and class operator definitions]
           let occ = rdrNameOcc rdr_name
         ; when (isTcOcc occ && isSymOcc occ)
@@ -413,6 +409,18 @@ lookupConstructorFields con_name
              ; traceTc "lookupCF 2" (ppr con)
              ; return (conLikeFieldLabels con) } }
 
+
+-- In CPS style as `RnM r` is monadic
+lookupExactOrOrig :: RdrName -> (Name -> r) -> RnM r -> RnM r
+lookupExactOrOrig rdr_name res k
+  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
+  = res <$> lookupExactOcc n
+  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
+  = res <$> lookupOrig rdr_mod rdr_occ
+  | otherwise = k
+
+
+
 -----------------------------------------------
 -- Used for record construction and pattern matching
 -- When the -XDisambiguateRecordFields flag is on, take account of the
@@ -447,23 +455,16 @@ lookupSubBndrOcc :: Bool
                  -> RnM (Either MsgDoc Name)
 -- Find all the things the rdr-name maps to
 -- and pick the one with the right parent namep
-lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name
-  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
-  = do { n <- lookupExactOcc n
-       ; return (Right n) }
-
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = do { n <- lookupOrig rdr_mod rdr_occ
-       ; return (Right n) }
-
-  | isUnboundName the_parent
+lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name =
+  lookupExactOrOrig rdr_name Right $
+    if isUnboundName the_parent
         -- Avoid an error cascade from malformed decls:
         --   instance Int where { foo = e }
         -- We have already generated an error in rnLHsInstDecl
-  = return (Right (mkUnboundNameRdr rdr_name))
-
-  | otherwise
-  = do { env <- getGlobalRdrEnv
+        then return (Right (mkUnboundNameRdr rdr_name))
+        else
+          do
+       { env <- getGlobalRdrEnv
        ; let gres = lookupGlobalRdrEnv env (rdrNameOcc rdr_name)
                 -- NB: lookupGlobalRdrEnv, not lookupGRE_RdrName!
                 --     The latter does pickGREs, but we want to allow 'x'
@@ -482,8 +483,7 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name
             [] -> do { ns <- lookupQualifiedNameGHCi rdr_name
                      ; case ns of
                          (n:_) -> return (Right n)  -- Unlikely to be more than one...?
-                         [] -> return (Left (unknownSubordinateErr doc rdr_name))
-    } }
+                         [] -> return (Left (unknownSubordinateErr doc rdr_name))} }
   where
     -- If Parent = NoParent, just do a normal lookup
     -- If Parent = Parent p then find all GREs that
@@ -804,16 +804,9 @@ lookupGlobalOccRn_maybe :: RdrName -> RnM (Maybe Name)
 --   for the GHCi case
 -- No filter function; does not report an error on failure
 -- Uses addUsedRdrName to record use and deprecations
-lookupGlobalOccRn_maybe rdr_name
-  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
-  = do { n' <- lookupExactOcc n; return (Just n') }
-
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = do { n <- lookupOrig rdr_mod rdr_occ
-       ; return (Just n) }
-
-  | otherwise
-  = do  { mb_gre <- lookupGreRn_maybe rdr_name
+lookupGlobalOccRn_maybe rdr_name =
+  lookupExactOrOrig rdr_name Just $
+    do  { mb_gre <- lookupGreRn_maybe rdr_name
         ; case mb_gre of {
             Just gre -> return (Just (gre_name gre)) ;
             Nothing  ->
@@ -839,16 +832,9 @@ lookupInfoOccRn :: RdrName -> RnM [Name]
 -- It finds all the GREs that RdrName could mean, not complaining
 -- about ambiguity, but rather returning them all
 -- C.f. Trac #9881
-lookupInfoOccRn rdr_name
-  | Just n <- isExact_maybe rdr_name   -- e.g. (->)
-  = return [n]
-
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = do { n <- lookupOrig rdr_mod rdr_occ
-       ; return [n] }
-
-  | otherwise
-  = do { rdr_env <- getGlobalRdrEnv
+lookupInfoOccRn rdr_name =
+  lookupExactOrOrig rdr_name (:[]) $
+    do { rdr_env <- getGlobalRdrEnv
        ; let ns = map gre_name (lookupGRE_RdrName rdr_name rdr_env)
        ; qual_ns <- lookupQualifiedNameGHCi rdr_name
        ; return (ns ++ (qual_ns `minusList` ns)) }
@@ -880,16 +866,9 @@ lookupOccRn_overloaded overload_ok rdr_name
            []    -> return Nothing  } } } } }
 
 lookupGlobalOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [FieldOcc Name]))
-lookupGlobalOccRn_overloaded overload_ok rdr_name
-  | Just n <- isExact_maybe rdr_name   -- This happens in derived code
-  = do { n' <- lookupExactOcc n; return (Just (Left n')) }
-
-  | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-  = do { n <- lookupOrig rdr_mod rdr_occ
-       ; return (Just (Left n)) }
-
-  | otherwise
-  = do  { env <- getGlobalRdrEnv
+lookupGlobalOccRn_overloaded overload_ok rdr_name =
+  lookupExactOrOrig rdr_name (Just . Left) $
+     do  { env <- getGlobalRdrEnv
         ; case lookupGRE_RdrName rdr_name env of
                 []    -> return Nothing
                 [gre] | isRecFldGRE gre
