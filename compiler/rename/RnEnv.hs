@@ -856,7 +856,7 @@ lookupInfoOccRn rdr_name =
 --   * Just (Right xs) -> name refers to one or more record selectors;
 --                        if overload_ok was False, this list will be
 --                        a singleton.
-lookupOccRn_overloaded  :: Bool -> RdrName -> RnM (Maybe (Either Name [FieldOcc Name]))
+lookupOccRn_overloaded  :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
 lookupOccRn_overloaded overload_ok rdr_name
   = do { local_env <- getLocalRdrEnv
        ; case lookupLocalRdrEnv local_env rdr_name of {
@@ -873,7 +873,7 @@ lookupOccRn_overloaded overload_ok rdr_name
            (n:_) -> return $ Just $ Left n  -- Unlikely to be more than one...?
            []    -> return Nothing  } } } } }
 
-lookupGlobalOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [FieldOcc Name]))
+lookupGlobalOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
 lookupGlobalOccRn_overloaded overload_ok rdr_name =
   lookupExactOrOrig rdr_name (Just . Left) $
      do  { env <- getGlobalRdrEnv
@@ -881,11 +881,7 @@ lookupGlobalOccRn_overloaded overload_ok rdr_name =
                 []    -> return Nothing
                 [gre] | isRecFldGRE gre
                          -> do { addUsedGRE True gre
-                               ; let
-                                   fld_occ :: FieldOcc Name
-                                   fld_occ
-                                     = FieldOcc (noLoc rdr_name) (gre_name gre)
-                               ; return (Just (Right [fld_occ])) }
+                               ; return (Just (Right [gre_name gre])) }
                       | otherwise
                          -> do { addUsedGRE True gre
                                ; return (Just (Left (gre_name gre))) }
@@ -893,9 +889,7 @@ lookupGlobalOccRn_overloaded overload_ok rdr_name =
                             -- Don't record usage for ambiguous selectors
                             -- until we know which is meant
                          -> return
-                             (Just (Right
-                                     (map (FieldOcc (noLoc rdr_name) . gre_name)
-                                           gres)))
+                             (Just (Right (map gre_name gres)))
                 gres     -> do { addNameClashErrRn rdr_name gres
                                ; return (Just (Left (gre_name (head gres)))) } }
 
@@ -922,7 +916,7 @@ lookupGreRn_maybe rdr_name
         MultipleNames gres -> do
           addNameClashErrRn rdr_name gres
           return $ Just (head gres)
-        _ -> return Nothing
+        NameNotFound -> return Nothing
 
 {-
 
