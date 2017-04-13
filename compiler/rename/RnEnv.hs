@@ -796,12 +796,11 @@ The final result (after the renamer) will be:
 --       ; return mb_res }
 
 lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName -> RnM (Maybe r)
--- lookupOccRn looks up an occurrence of a RdrName
 lookupOccRnX_maybe globalLookup wrapper rdr_name
   = do { local_env <- getLocalRdrEnv
-       ; case lookupLocalRdrEnv local_env rdr_name of {
-          Just name -> return $ Just (wrapper name) ;
-          Nothing   -> globalLookup rdr_name } }
+       ; fmap msum . sequence $
+         [ return (wrapper <$> lookupLocalRdrEnv local_env rdr_name)
+         , globalLookup rdr_name ] }
 
 lookupOccRn_maybe :: RdrName -> RnM (Maybe Name)
 lookupOccRn_maybe = lookupOccRnX_maybe lookupGlobalOccRn_maybe id
@@ -819,16 +818,11 @@ lookupGlobalOccRn_maybe :: RdrName -> RnM (Maybe Name)
 -- Uses addUsedRdrName to record use and deprecations
 lookupGlobalOccRn_maybe rdr_name =
   lookupExactOrOrig rdr_name Just $
-    do  { mb_gre <- lookupGreRn_maybe rdr_name
-        ; case mb_gre of {
-            Just gre -> return (Just (gre_name gre)) ;
-            Nothing  ->
-     do { ns <- lookupQualifiedNameGHCi rdr_name
+    fmap msum . sequence $
+      [ fmap gre_name <$> lookupGreRn_maybe rdr_name
+      , listToMaybe <$> lookupQualifiedNameGHCi rdr_name ]
                       -- This test is not expensive,
                       -- and only happens for failed lookups
-       ; case ns of
-           (n:_) -> return (Just n)  -- Unlikely to be more than one...?
-           []    -> return Nothing } } }
 
 lookupGlobalOccRn :: RdrName -> RnM Name
 -- lookupGlobalOccRn is like lookupOccRn, except that it looks in the global
@@ -885,22 +879,20 @@ lookupOccRn_overloaded overload_ok rdr_name
 lookupGlobalOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
 lookupGlobalOccRn_overloaded overload_ok rdr_name =
   lookupExactOrOrig rdr_name (Just . Left) $
-     do  { env <- getGlobalRdrEnv
-        ; case lookupGRE_RdrName rdr_name env of
-                []    -> return Nothing
-                [gre] | isRecFldGRE gre
-                         -> do { addUsedGRE True gre
-                               ; return (Just (Right [gre_name gre])) }
-                      | otherwise
-                         -> do { addUsedGRE True gre
-                               ; return (Just (Left (gre_name gre))) }
-                gres  | all isRecFldGRE gres && overload_ok
-                            -- Don't record usage for ambiguous selectors
-                            -- until we know which is meant
-                         -> return
-                             (Just (Right (map gre_name gres)))
-                gres     -> do { addNameClashErrRn rdr_name gres
-                               ; return (Just (Left (gre_name (head gres)))) } }
+     do  { res <- lookupGreRn_helper rdr_name
+         ; case res of
+                NameNotFound  -> return Nothing
+                OneNameMatch gre -> do
+                  let wrapper = if isRecFldGRE gre then Left else (Right . (:[]))
+                  addUsedGRE True gre
+                  return $ Just (wrapper (gre_name gre))
+                MultipleNames gres  | all isRecFldGRE gres && overload_ok ->
+                  -- Don't record usage for ambiguous selectors
+                  -- until we know which is meant
+                  return $ Just (Right (map gre_name gres))
+                MultipleNames gres  -> do
+                  addNameClashErrRn rdr_name gres
+                  return (Just (Left (gre_name (head gres)))) }
 
 
 --------------------------------------------------
