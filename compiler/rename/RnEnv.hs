@@ -253,15 +253,8 @@ lookupTopBndrRn_maybe :: RdrName -> RnM (Maybe Name)
 lookupTopBndrRn_maybe rdr_name
   | Just name <- isExact_maybe rdr_name
   = do { name' <- lookupExactOcc name; return (Just name') }
-
   | Just (rdr_mod, rdr_occ) <- isOrig_maybe rdr_name
-        -- This deals with the case of derived bindings, where
-        -- we don't bother to call newTopSrcBinder first
-        -- We assume there is no "parent" name
-  = do  { loc <- getSrcSpanM
-        ; n <- newGlobalBinder rdr_mod rdr_occ loc
-        ; return (Just n)}
-
+  = do  { Just <$> lookupOrig rdr_mod rdr_occ }
   | otherwise
   = do  {  -- Check for operators in type or class declarations
            -- See Note [Type and class operator definitions]
