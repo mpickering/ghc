@@ -341,6 +341,7 @@ checkTupSize tup_size
                  nest 2 (parens (text "max size is" <+> int mAX_TUPLE_SIZE)),
                  nest 2 (text "Workaround: use nested tuples or define a data type")])
 
+
 {-
 ************************************************************************
 *                                                                      *

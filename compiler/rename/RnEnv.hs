@@ -5,7 +5,7 @@ RnEnv contains functions which convert RdrNames into Names.
 
 -}
 
-{-# LANGUAGE CPP, MultiWayIf #-}
+{-# LANGUAGE CPP, MultiWayIf, NamedFieldPuns #-}
 
 module RnEnv (
         newTopSrcBinder,
@@ -16,6 +16,8 @@ module RnEnv (
         lookupTypeOccRn, lookupKindOccRn,
         lookupGlobalOccRn, lookupGlobalOccRn_maybe,
         lookupOccRn_overloaded, lookupGlobalOccRn_overloaded, lookupExactOcc,
+
+        lookupSubBndrOcc_helper, ChildLookupResult(..),
 
         HsSigCtxt(..), lookupLocalTcNames, lookupSigOccRn,
         lookupSigCtxtOccRn,
@@ -58,7 +60,7 @@ import ConLike
 import DataCon
 import TyCon
 import PrelNames        ( rOOT_MAIN )
-import ErrUtils         ( MsgDoc )
+import ErrUtils         ( MsgDoc, ErrMsg )
 import BasicTypes       ( pprWarningTxtForMsg )
 import SrcLoc
 import Outputable
@@ -454,6 +456,163 @@ lookupRecFieldOcc parent doc rdr_name
   -- can only be defined at the top level.
   = lookupGlobalOccRn rdr_name
 
+
+
+-- | Used in export lists to lookup the children.
+lookupSubBndrOcc_helper :: Name -> RdrName -> RnM ChildLookupResult
+lookupSubBndrOcc_helper parent rdr_name
+  | isUnboundName parent
+    -- Avoid an error cascade
+  = return (FoundName (mkUnboundNameRdr rdr_name))
+
+  | otherwise = do
+  gre_env <- getGlobalRdrEnv
+
+  let original_gres = lookupGlobalRdrEnv gre_env (rdrNameOcc rdr_name)
+  -- Disambiguate the lookup based on the parent information.
+  -- The remaining GREs are things that we *could* export here, note that
+  -- this includes things which have `NoParent`. Those are sorted in
+  -- `checkPatSynParent`.
+  traceRn "lookupExportChild original_gres:" (ppr original_gres)
+  case picked_gres original_gres of
+    NoOccurrence ->
+      noMatchingParentErr original_gres
+    UniqueOccurrence g ->
+      checkFld g
+    DisambiguatedOccurrence g ->
+      checkFld g
+    AmbiguousOccurrence gres ->
+      mkNameClashErr gres
+    where
+        -- Convert into FieldLabel if necessary
+        checkFld :: GlobalRdrElt -> RnM ChildLookupResult
+        checkFld g@GRE{gre_name, gre_par} = do
+          addUsedGRE True g
+          return $ case gre_par of
+            FldParent _ mfs ->  do
+              FoundFL  (fldParentToFieldLabel gre_name mfs)
+            _ -> FoundName gre_name
+
+        fldParentToFieldLabel :: Name -> Maybe FastString -> FieldLabel
+        fldParentToFieldLabel name mfs =
+          case mfs of
+            Nothing ->
+              let fs = occNameFS (nameOccName name)
+              in FieldLabel fs False name
+            Just fs -> FieldLabel fs True name
+
+        -- Called when we fine no matching GREs after disambiguation but
+        -- there are three situations where this happens.
+        -- 1. There were none to begin with.
+        -- 2. None of the matching ones were the parent but
+        --  a. They were from an overloaded record field so we can report
+        --     a better error
+        --  b. The original lookup was actually ambiguous.
+        --     For example, the case where overloading is off and two
+        --     record fields are in scope from different record
+        --     constructors, neither of which is the parent.
+        noMatchingParentErr :: [GlobalRdrElt] -> RnM ChildLookupResult
+        noMatchingParentErr original_gres = do
+          overload_ok <- xoptM LangExt.DuplicateRecordFields
+          case original_gres of
+            [] ->  return NameNotFound
+            [g] -> return $ IncorrectParent parent (gre_name g) [p | Just p <- [getParent g]]
+            gss@(g:_:_) ->
+              if all isRecFldGRE gss && overload_ok
+                then return $ IncorrectParent parent (gre_name g)
+                                [p | x <- gss, Just p <- [getParent x]]
+                else mkNameClashErr gss
+
+        mkNameClashErr :: [GlobalRdrElt] -> RnM ChildLookupResult
+        mkNameClashErr gres = do
+          addNameClashErrRn rdr_name gres
+          return (FoundName (gre_name (head gres)))
+
+        getParent :: GlobalRdrElt -> Maybe Name
+        getParent (GRE { gre_par = p } ) =
+          case p of
+            ParentIs cur_parent -> Just cur_parent
+            FldParent { par_is = cur_parent } -> Just cur_parent
+            NoParent -> Nothing
+
+        picked_gres :: [GlobalRdrElt] -> DisambigInfo
+        picked_gres gres
+          | isUnqual rdr_name = mconcat (map right_parent gres)
+          | otherwise         = mconcat (map right_parent (pickGREs rdr_name gres))
+
+
+        right_parent :: GlobalRdrElt -> DisambigInfo
+        right_parent p
+          | Just cur_parent <- getParent p
+            = if parent == cur_parent
+                then DisambiguatedOccurrence p
+                else NoOccurrence
+          | otherwise
+            = UniqueOccurrence p
+
+
+-- This domain specific datatype is used to record why we decided it was
+-- possible that a GRE could be exported with a parent.
+data DisambigInfo
+       = NoOccurrence
+          -- The GRE could never be exported. It has the wrong parent.
+       | UniqueOccurrence GlobalRdrElt
+          -- The GRE has no parent. It could be a pattern synonym.
+       | DisambiguatedOccurrence GlobalRdrElt
+          -- The parent of the GRE is the correct parent
+       | AmbiguousOccurrence [GlobalRdrElt]
+          -- For example, two normal identifiers with the same name are in
+          -- scope. They will both be resolved to "UniqueOccurrence" and the
+          -- monoid will combine them to this failing case.
+
+instance Monoid DisambigInfo where
+  mempty = NoOccurrence
+  -- This is the key line: We prefer disambiguated occurrences to other
+  -- names.
+  UniqueOccurrence _ `mappend` DisambiguatedOccurrence g' = DisambiguatedOccurrence g'
+  DisambiguatedOccurrence g' `mappend` UniqueOccurrence _ = DisambiguatedOccurrence g'
+
+
+  NoOccurrence `mappend` m = m
+  m `mappend` NoOccurrence = m
+  UniqueOccurrence g `mappend` UniqueOccurrence g' = AmbiguousOccurrence [g, g']
+  UniqueOccurrence g `mappend` AmbiguousOccurrence gs = AmbiguousOccurrence (g:gs)
+  DisambiguatedOccurrence g `mappend` DisambiguatedOccurrence g'  = AmbiguousOccurrence [g, g']
+  DisambiguatedOccurrence g `mappend` AmbiguousOccurrence gs = AmbiguousOccurrence (g:gs)
+  AmbiguousOccurrence gs `mappend` UniqueOccurrence g' = AmbiguousOccurrence (g':gs)
+  AmbiguousOccurrence gs `mappend` DisambiguatedOccurrence g' = AmbiguousOccurrence (g':gs)
+  AmbiguousOccurrence gs `mappend` AmbiguousOccurrence gs' = AmbiguousOccurrence (gs ++ gs')
+-- Lookup SubBndrOcc can never be ambiguous
+--
+-- Records the result of looking up a child.
+data ChildLookupResult
+      = NameNotFound                --  We couldn't find a suitable name
+      | NameErr ErrMsg              --  We found an unambiguous name
+                                    --  but there's another error
+                                    --  we should abort from
+      | IncorrectParent Name        -- Parent
+                        Name        -- GRE
+                        [Name]      -- List of possible parents
+      | FoundName Name              --  We resolved to a normal name
+      | FoundFL FieldLabel       --  We resolved to a FL
+
+instance Outputable ChildLookupResult where
+  ppr NameNotFound = text "NameNotFound"
+  ppr (FoundName n) = text "Found:" <+> ppr n
+  ppr (FoundFL fls) = text "FoundFL:" <+> ppr fls
+  ppr (NameErr _) = text "Error"
+  ppr (IncorrectParent p n ns) = text "IncorrectParent"
+                                  <+> hsep [ppr p, ppr n, ppr ns]
+
+-- Left biased accumulation monoid. Chooses the left-most positive occurrence.
+instance Monoid ChildLookupResult where
+  mempty = NameNotFound
+  NameNotFound `mappend` m2 = m2
+  NameErr m `mappend` _ = NameErr m -- Abort from the first error
+  i@IncorrectParent {} `mappend` _ = i
+  FoundName n1 `mappend` _ = FoundName n1
+  FoundFL fls `mappend` _ = FoundFL fls
+
 lookupSubBndrOcc :: Bool
                  -> Name     -- Parent
                  -> SDoc
@@ -461,7 +620,17 @@ lookupSubBndrOcc :: Bool
                  -> RnM (Either MsgDoc Name)
 -- Find all the things the rdr-name maps to
 -- and pick the one with the right parent namep
-lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name =
+lookupSubBndrOcc _warn_if_deprec the_parent doc rdr_name = do
+  res <- lookupSubBndrOcc_helper the_parent rdr_name
+  case res of
+    NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
+    FoundName n ->  return (Right n)
+    FoundFL fl  ->  return (Right (flSelector fl)) -- Don't think this ever happens
+    NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
+    IncorrectParent{} -> panic "ha"
+
+
+{-
   lookupExactOrOrig rdr_name Right $
     if isUnboundName the_parent
         -- Avoid an error cascade from malformed decls:
@@ -504,6 +673,7 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name =
       | ParentIs parent <- p               = parent == the_parent
       | FldParent { par_is = parent } <- p = parent == the_parent
       | otherwise                          = False
+-}
 
 {-
 Note [Family instance binders]
@@ -881,7 +1051,7 @@ lookupGlobalOccRn_overloaded overload_ok rdr_name =
   lookupExactOrOrig rdr_name (Just . Left) $
      do  { res <- lookupGreRn_helper rdr_name
          ; case res of
-                NameNotFound  -> return Nothing
+                GreNotFound  -> return Nothing
                 OneNameMatch gre -> do
                   let wrapper = if isRecFldGRE gre then Left else (Right . (:[]))
                   addUsedGRE True gre
@@ -899,7 +1069,7 @@ lookupGlobalOccRn_overloaded overload_ok rdr_name =
 --      Lookup in the Global RdrEnv of the module
 --------------------------------------------------
 
-data GreLookupResult = NameNotFound
+data GreLookupResult = GreNotFound
                      | OneNameMatch GlobalRdrElt
                      | MultipleNames [GlobalRdrElt]
 
@@ -917,7 +1087,7 @@ lookupGreRn_maybe rdr_name
         MultipleNames gres -> do
           addNameClashErrRn rdr_name gres
           return $ Just (head gres)
-        NameNotFound -> return Nothing
+        GreNotFound -> return Nothing
 
 {-
 
@@ -952,7 +1122,7 @@ lookupGreRn_helper :: RdrName -> RnM GreLookupResult
 lookupGreRn_helper rdr_name
   = do  { env <- getGlobalRdrEnv
         ; case lookupGRE_RdrName rdr_name env of
-            []    -> return NameNotFound
+            []    -> return GreNotFound
             [gre] -> do { addUsedGRE True gre
                         ; return (OneNameMatch gre) }
             gres  -> return (MultipleNames gres) }
@@ -965,7 +1135,7 @@ lookupGreAvailRn rdr_name
   = do
       mb_gre <- lookupGreRn_helper rdr_name
       case mb_gre of
-        NameNotFound ->
+        GreNotFound ->
           do
             traceRn "lookupGreAvailRn" (ppr rdr_name)
             name <- unboundName WL_Global rdr_name
