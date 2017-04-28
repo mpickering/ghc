@@ -463,7 +463,7 @@ lookupSubBndrOcc_helper :: Name -> RdrName -> RnM ChildLookupResult
 lookupSubBndrOcc_helper parent rdr_name
   | isUnboundName parent
     -- Avoid an error cascade
-  = return (FoundName (mkUnboundNameRdr rdr_name))
+  = return (FoundName NoParent (mkUnboundNameRdr rdr_name))
 
   | otherwise = do
   gre_env <- getGlobalRdrEnv
@@ -473,7 +473,9 @@ lookupSubBndrOcc_helper parent rdr_name
   -- The remaining GREs are things that we *could* export here, note that
   -- this includes things which have `NoParent`. Those are sorted in
   -- `checkPatSynParent`.
+  traceRn "parent" (ppr parent)
   traceRn "lookupExportChild original_gres:" (ppr original_gres)
+  traceRn "lookupExportChild picked_gres:" (ppr $ picked_gres original_gres)
   case picked_gres original_gres of
     NoOccurrence ->
       noMatchingParentErr original_gres
@@ -491,7 +493,7 @@ lookupSubBndrOcc_helper parent rdr_name
           return $ case gre_par of
             FldParent _ mfs ->  do
               FoundFL  (fldParentToFieldLabel gre_name mfs)
-            _ -> FoundName gre_name
+            _ -> FoundName gre_par gre_name
 
         fldParentToFieldLabel :: Name -> Maybe FastString -> FieldLabel
         fldParentToFieldLabel name mfs =
@@ -526,7 +528,7 @@ lookupSubBndrOcc_helper parent rdr_name
         mkNameClashErr :: [GlobalRdrElt] -> RnM ChildLookupResult
         mkNameClashErr gres = do
           addNameClashErrRn rdr_name gres
-          return (FoundName (gre_name (head gres)))
+          return (FoundName (gre_par (head gres)) (gre_name (head gres)))
 
         getParent :: GlobalRdrElt -> Maybe Name
         getParent (GRE { gre_par = p } ) =
@@ -544,9 +546,9 @@ lookupSubBndrOcc_helper parent rdr_name
         right_parent :: GlobalRdrElt -> DisambigInfo
         right_parent p
           | Just cur_parent <- getParent p
-            = if parent == cur_parent
+            = if pprTrace "right_parent" (ppr (parent, cur_parent)) (parent == cur_parent)
                 then DisambiguatedOccurrence p
-                else NoOccurrence
+                else pprTrace "noOcc" (ppr ()) NoOccurrence
           | otherwise
             = UniqueOccurrence p
 
@@ -564,6 +566,12 @@ data DisambigInfo
           -- For example, two normal identifiers with the same name are in
           -- scope. They will both be resolved to "UniqueOccurrence" and the
           -- monoid will combine them to this failing case.
+
+instance Outputable DisambigInfo where
+  ppr NoOccurrence = text "NoOccurence"
+  ppr (UniqueOccurrence gre) = text "UniqueOccurrence:" <+> ppr gre
+  ppr (DisambiguatedOccurrence gre) = text "DiambiguatedOccurrence:" <+> ppr gre
+  ppr (AmbiguousOccurrence gres)    = text "Ambiguous:" <+> ppr gres
 
 instance Monoid DisambigInfo where
   mempty = NoOccurrence
@@ -593,12 +601,12 @@ data ChildLookupResult
       | IncorrectParent Name        -- Parent
                         Name        -- GRE
                         [Name]      -- List of possible parents
-      | FoundName Name              --  We resolved to a normal name
+      | FoundName Parent Name  --  We resolved to a normal name
       | FoundFL FieldLabel       --  We resolved to a FL
 
 instance Outputable ChildLookupResult where
   ppr NameNotFound = text "NameNotFound"
-  ppr (FoundName n) = text "Found:" <+> ppr n
+  ppr (FoundName _p n) = text "Found:" <+> ppr n
   ppr (FoundFL fls) = text "FoundFL:" <+> ppr fls
   ppr (NameErr _) = text "Error"
   ppr (IncorrectParent p n ns) = text "IncorrectParent"
@@ -608,10 +616,10 @@ instance Outputable ChildLookupResult where
 instance Monoid ChildLookupResult where
   mempty = NameNotFound
   NameNotFound `mappend` m2 = m2
-  NameErr m `mappend` _ = NameErr m -- Abort from the first error
+  e@NameErr {} `mappend` _ = e -- Abort from the first error
   i@IncorrectParent {} `mappend` _ = i
-  FoundName n1 `mappend` _ = FoundName n1
-  FoundFL fls `mappend` _ = FoundFL fls
+  f@FoundName {} `mappend` _ = f
+  f@FoundFL {} `mappend` _ = f
 
 lookupSubBndrOcc :: Bool
                  -> Name     -- Parent
@@ -621,13 +629,16 @@ lookupSubBndrOcc :: Bool
 -- Find all the things the rdr-name maps to
 -- and pick the one with the right parent namep
 lookupSubBndrOcc _warn_if_deprec the_parent doc rdr_name = do
-  res <- lookupSubBndrOcc_helper the_parent rdr_name
+  res <-
+    lookupExactOrOrig rdr_name (FoundName NoParent) $
+      -- This happens for built-in classes, see mod052 for example
+      lookupSubBndrOcc_helper the_parent rdr_name
   case res of
     NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
-    FoundName n ->  return (Right n)
+    FoundName _p n ->  return (Right n)
     FoundFL fl  ->  return (Right (flSelector fl)) -- Don't think this ever happens
     NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
-    IncorrectParent{} -> panic "ha"
+    IncorrectParent p g ns -> pprPanic "IncorrectParent" (ppr p <+> ppr g <+> ppr ns)
 
 
 {-

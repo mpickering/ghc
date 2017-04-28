@@ -423,7 +423,7 @@ lookupChildrenExport parent rdr_items =
 
           name <-  fmap mconcat . mapM lkup $
                     choosePossibleNamespaces (rdrNameSpace bareName)
-
+          traceRn "lookupChildrenExport" (ppr name)
           -- Default to data constructors for slightly better error
           -- messages
           let unboundName :: RdrName
@@ -431,14 +431,17 @@ lookupChildrenExport parent rdr_items =
                                 then bareName
                                 else setRdrNameSpace bareName dataName
 
+          -- Might need to check here for FLs as well
           name' <- case name of
-                     FoundName n -> checkPatSynParent parent n
+                     FoundName NoParent n -> checkPatSynParent parent n
                      _ -> return name
+
+          traceRn "lookupChildrenExport" (ppr name')
 
           case name' of
             NameNotFound -> Left . L (getLoc n) <$> reportUnboundName unboundName
             FoundFL fls -> return $ Right (L (getLoc n) fls)
-            FoundName name -> return $ Left (L (getLoc n) name)
+            FoundName _p name -> return $ Left (L (getLoc n) name)
             NameErr err_msg -> reportError err_msg >> failM
             IncorrectParent p g gs -> mkDcErrMsg p g gs >>= reportError >> failM
 
@@ -515,7 +518,10 @@ checkPatSynParent    :: Name   -- ^ Type constructor
                                --   a) Pattern Synonym Constructor
                                --   b) A pattern synonym selector
                -> TcM ChildLookupResult
-checkPatSynParent parent mpat_syn = do
+checkPatSynParent parent mpat_syn
+  | isUnboundName parent -- Avoid an error cascade
+  = return (FoundName NoParent mpat_syn)
+  | otherwise = do
   parent_ty_con <- tcLookupTyCon parent
   mpat_syn_thing <- tcLookupGlobal mpat_syn
   let expected_res_ty =
@@ -552,11 +558,11 @@ checkPatSynParent parent mpat_syn = do
       -- 2. See note [Types of TyCon]
       | not $ isTyConWithSrcDataCons ty_con = mkNameErr assocClassErr
       -- 3. Is the head a type variable?
-      | Nothing <- mtycon = return (FoundName mpat_syn)
+      | Nothing <- mtycon = return (FoundName (ParentIs parent) mpat_syn)
       -- 4. Ok. Check they are actually the same type constructor.
       | Just p_ty_con <- mtycon, p_ty_con /= ty_con = mkNameErr typeMismatchError
       -- 5. We passed!
-      | otherwise = return (FoundName mpat_syn)
+      | otherwise = return (FoundName (ParentIs parent) mpat_syn)
 
       where
         (_, _, _, _, _, res_ty) = patSynSig pat_syn
