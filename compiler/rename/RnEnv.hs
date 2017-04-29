@@ -658,7 +658,10 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
       lookupSubBndrOcc_helper warn_if_deprec the_parent rdr_name
   case res of
     NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
-    FoundName _p n ->  return (Right n)
+    FoundName p n ->
+      if p == NoParent
+        then return $ Left (unknownSubordinateErr doc rdr_name)
+        else return $ (Right n)
     FoundFL fl  ->  return (Right (flSelector fl)) -- Don't think this ever happens
     NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
     IncorrectParent {} ->
