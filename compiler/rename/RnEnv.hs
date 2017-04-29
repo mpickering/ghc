@@ -1004,16 +1004,24 @@ The final result (after the renamer) will be:
 lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName -> RnM (Maybe r)
 lookupOccRnX_maybe globalLookup wrapper rdr_name
   = do { local_env <- getLocalRdrEnv
+       ; pprTrace "lookupOcc" (ppr rdr_name) (return ())
        ; case lookupLocalRdrEnv local_env rdr_name of
-          Just n -> return $ Just $ wrapper n
-          Nothing -> globalLookup rdr_name }
+          Just n -> pprTrace "Just" empty (return $ Just $ wrapper n)
+          Nothing -> pprTrace "Nothing" empty (globalLookup rdr_name) }
 
 lookupOccRn_maybe :: RdrName -> RnM (Maybe Name)
 lookupOccRn_maybe = lookupOccRnX_maybe lookupGlobalOccRn_maybe id
 
 lookupOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
 lookupOccRn_overloaded overload_ok
-  = lookupOccRnX_maybe (lookupGlobalOccRn_overloaded overload_ok) Left
+  = lookupOccRnX_maybe global_lookup Left
+      where
+        global_lookup :: RdrName -> RnM (Maybe (Either Name [Name]))
+        global_lookup n =
+          runMaybeT . msum . map MaybeT $
+            [ lookupGlobalOccRn_overloaded overload_ok n
+            , fmap Left . listToMaybe <$> lookupQualifiedNameGHCi n ]
+
 
 
 lookupGlobalOccRn_maybe :: RdrName -> RnM (Maybe Name)
@@ -1024,7 +1032,7 @@ lookupGlobalOccRn_maybe :: RdrName -> RnM (Maybe Name)
 -- Uses addUsedRdrName to record use and deprecations
 lookupGlobalOccRn_maybe rdr_name =
   lookupExactOrOrig rdr_name Just $
-    fmap msum . sequence $
+    runMaybeT . msum . map MaybeT $
       [ fmap gre_name <$> lookupGreRn_maybe rdr_name
       , listToMaybe <$> lookupQualifiedNameGHCi rdr_name ]
                       -- This test is not expensive,
