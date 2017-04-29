@@ -524,11 +524,16 @@ lookupSubBndrOcc_helper warn_if_deprec parent rdr_name
           overload_ok <- xoptM LangExt.DuplicateRecordFields
           case original_gres of
             [] ->  return NameNotFound
-            [g] -> return $ IncorrectParent parent (gre_name g) [p | Just p <- [getParent g]]
+            [g] -> return $ IncorrectParent parent
+                              (gre_name g) (ppr $ gre_name g)
+                              [p | Just p <- [getParent g]]
             gss@(g:_:_) ->
               if all isRecFldGRE gss && overload_ok
-                then return $ IncorrectParent parent (gre_name g)
-                                [p | x <- gss, Just p <- [getParent x]]
+                then return $
+                      IncorrectParent parent
+                        (gre_name g)
+                        (ppr $ expectJust "noMatchingParentErr" (greLabel g))
+                        [p | x <- gss, Just p <- [getParent x]]
                 else mkNameClashErr gss
 
         mkNameClashErr :: [GlobalRdrElt] -> RnM ChildLookupResult
@@ -602,7 +607,8 @@ data ChildLookup
                                     --  but there's another error
                                     --  we should abort from
       | IncorrectParent' Name        -- Parent
-                        Name        -- GRE
+                        Name        -- Name of thing we were looking for
+                        SDoc        -- How to print the name
                         [Name]      -- List of possible parents
       | FoundName' Parent Name  --  We resolved to a normal name
       | FoundFL' FieldLabel       --  We resolved to a FL
@@ -618,8 +624,8 @@ pattern NameNotFound :: ChildLookupResult
 pattern NameNotFound = ChildLookupResult Nothing
 pattern NameErr :: ErrMsg -> ChildLookupResult
 pattern NameErr e = ChildLookupResult ( Just (NameErr' e))
-pattern IncorrectParent :: Name -> Name -> [Name] -> ChildLookupResult
-pattern IncorrectParent n n' ns = ChildLookupResult ( Just (IncorrectParent' n n' ns))
+pattern IncorrectParent :: Name -> Name -> SDoc -> [Name] -> ChildLookupResult
+pattern IncorrectParent n n' td ns = ChildLookupResult ( Just (IncorrectParent' n n' td ns))
 pattern FoundName :: Parent -> Name -> ChildLookupResult
 pattern FoundName p n = ChildLookupResult ( Just (FoundName' p n))
 pattern FoundFL :: FieldLabel -> ChildLookupResult
@@ -630,8 +636,8 @@ instance Outputable ChildLookup where
   ppr (FoundName' _p n) = text "Found:" <+> ppr n
   ppr (FoundFL' fls) = text "FoundFL:" <+> ppr fls
   ppr (NameErr' _) = text "Error"
-  ppr (IncorrectParent' p n ns) = text "IncorrectParent"
-                                  <+> hsep [ppr p, ppr n, ppr ns]
+  ppr (IncorrectParent' p n td ns) = text "IncorrectParent"
+                                  <+> hsep [ppr p, ppr n, td, ppr ns]
 
 {-
 -- Left biased accumulation monoid. Chooses the left-most positive occurrence.

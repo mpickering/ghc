@@ -443,7 +443,7 @@ lookupChildrenExport parent rdr_items =
             FoundFL fls -> return $ Right (L (getLoc n) fls)
             FoundName _p name -> return $ Left (L (getLoc n) name)
             NameErr err_msg -> reportError err_msg >> failM
-            IncorrectParent p g gs -> mkDcErrMsg p g gs >>= reportError >> failM
+            IncorrectParent p g td gs -> mkDcErrMsg p g td gs >>= reportError >> failM
             _ -> panic "lookupChildrenExport: Unable to use COMPLETE pragma"
 
 
@@ -537,9 +537,9 @@ checkPatSynParent parent mpat_syn
         | isId i               ->
         case idDetails i of
           RecSelId { sel_tycon = RecSelPatSyn p } -> handlePatSyn (selErr i) p
-          _ -> NameErr <$> mkDcErrMsg parent mpat_syn []
+          _ -> NameErr <$> mkDcErrMsg parent mpat_syn (ppr mpat_syn) []
       AConLike (PatSynCon p)    ->  handlePatSyn (psErr p) p
-      _ -> NameErr <$> mkDcErrMsg parent mpat_syn []
+      _ -> NameErr <$> mkDcErrMsg parent mpat_syn (ppr mpat_syn) []
   where
 
     psErr = exportErrCtxt "pattern synonym"
@@ -689,11 +689,11 @@ dupExportWarn occ_name ie1 ie2
           text "is exported by", quotes (ppr ie1),
           text "and",            quotes (ppr ie2)]
 
-dcErrMsg :: Outputable a => Name -> String -> a -> [SDoc] -> SDoc
+dcErrMsg :: Name -> String -> SDoc -> [SDoc] -> SDoc
 dcErrMsg ty_con what_is thing parents =
           text "The type constructor" <+> quotes (ppr ty_con)
                 <+> text "is not the parent of the" <+> text what_is
-                <+> quotes (ppr thing) <> char '.'
+                <+> quotes thing <> char '.'
                 $$ text (capitalise what_is)
                 <> text "s can only be exported with their parent type constructor."
                 $$ (case parents of
@@ -701,10 +701,10 @@ dcErrMsg ty_con what_is thing parents =
                       [_] -> text "Parent:"
                       _  -> text "Parents:") <+> fsep (punctuate comma parents)
 
-mkDcErrMsg :: Name -> Name -> [Name] -> TcM ErrMsg
-mkDcErrMsg parent thing parents = do
+mkDcErrMsg :: Name -> Name -> SDoc -> [Name] -> TcM ErrMsg
+mkDcErrMsg parent thing thing_doc parents = do
   ty_thing <- tcLookupGlobal thing
-  mkErrTc $ dcErrMsg parent (tyThingCategory' ty_thing) thing (map ppr parents)
+  mkErrTc $ dcErrMsg parent (tyThingCategory' ty_thing) thing_doc (map ppr parents)
   where
     tyThingCategory' :: TyThing -> String
     tyThingCategory' (AnId i)
