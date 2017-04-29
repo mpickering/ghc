@@ -459,8 +459,8 @@ lookupRecFieldOcc parent doc rdr_name
 
 
 -- | Used in export lists to lookup the children.
-lookupSubBndrOcc_helper :: Name -> RdrName -> RnM ChildLookupResult
-lookupSubBndrOcc_helper parent rdr_name
+lookupSubBndrOcc_helper :: Bool -> Name -> RdrName -> RnM ChildLookupResult
+lookupSubBndrOcc_helper warn_if_deprec parent rdr_name
   | isUnboundName parent
     -- Avoid an error cascade
   = return (FoundName NoParent (mkUnboundNameRdr rdr_name))
@@ -489,7 +489,7 @@ lookupSubBndrOcc_helper parent rdr_name
         -- Convert into FieldLabel if necessary
         checkFld :: GlobalRdrElt -> RnM ChildLookupResult
         checkFld g@GRE{gre_name, gre_par} = do
-          addUsedGRE True g
+          addUsedGRE warn_if_deprec g -- TODO: Might be nicer to push this outwards but would require FoundName returning the GRE
           return $ case gre_par of
             FldParent _ mfs ->  do
               FoundFL  (fldParentToFieldLabel gre_name mfs)
@@ -628,17 +628,18 @@ lookupSubBndrOcc :: Bool
                  -> RnM (Either MsgDoc Name)
 -- Find all the things the rdr-name maps to
 -- and pick the one with the right parent namep
-lookupSubBndrOcc _warn_if_deprec the_parent doc rdr_name = do
+lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
   res <-
     lookupExactOrOrig rdr_name (FoundName NoParent) $
       -- This happens for built-in classes, see mod052 for example
-      lookupSubBndrOcc_helper the_parent rdr_name
+      lookupSubBndrOcc_helper warn_if_deprec the_parent rdr_name
   case res of
     NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
     FoundName _p n ->  return (Right n)
     FoundFL fl  ->  return (Right (flSelector fl)) -- Don't think this ever happens
     NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
-    IncorrectParent p g ns -> pprPanic "IncorrectParent" (ppr p <+> ppr g <+> ppr ns)
+    IncorrectParent {} ->
+      return $ Left (unknownSubordinateErr doc rdr_name)
 
 
 {-
@@ -979,9 +980,9 @@ The final result (after the renamer) will be:
 lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName -> RnM (Maybe r)
 lookupOccRnX_maybe globalLookup wrapper rdr_name
   = do { local_env <- getLocalRdrEnv
-       ; fmap msum . sequence $
-         [ return (wrapper <$> lookupLocalRdrEnv local_env rdr_name)
-         , globalLookup rdr_name ] }
+       ; case lookupLocalRdrEnv local_env rdr_name of
+          Just n -> return $ Just $ wrapper n
+          Nothing -> globalLookup rdr_name }
 
 lookupOccRn_maybe :: RdrName -> RnM (Maybe Name)
 lookupOccRn_maybe = lookupOccRnX_maybe lookupGlobalOccRn_maybe id
@@ -1065,7 +1066,7 @@ lookupGlobalOccRn_overloaded overload_ok rdr_name =
                 GreNotFound  -> return Nothing
                 OneNameMatch gre -> do
                   let wrapper = if isRecFldGRE gre then (Right . (:[])) else Left
-                  addUsedGRE True gre
+                  -- addUsedGRE True gre
                   return $ Just (wrapper (gre_name gre))
                 MultipleNames gres  | all isRecFldGRE gres && overload_ok ->
                   -- Don't record usage for ambiguous selectors
@@ -1096,6 +1097,7 @@ lookupGreRn_maybe rdr_name
       case res of
         OneNameMatch gre ->  return $ Just gre
         MultipleNames gres -> do
+          traceRn "lookupGreRn_maybe:NameClash" (ppr gres)
           addNameClashErrRn rdr_name gres
           return $ Just (head gres)
         GreNotFound -> return Nothing
@@ -1158,7 +1160,8 @@ lookupGreAvailRn rdr_name
             return (unbound_name, avail unbound_name)
                         -- Returning an unbound name here prevents an error
                         -- cascade
-        OneNameMatch gre -> return (gre_name gre, availFromGRE gre)
+        OneNameMatch gre ->
+          return (gre_name gre, availFromGRE gre)
 
 
 {-

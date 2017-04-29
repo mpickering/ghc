@@ -419,7 +419,7 @@ lookupChildrenExport parent rdr_items =
         doOne n = do
 
           let bareName = unLoc n
-              lkup v = lookupSubBndrOcc_helper parent (setRdrNameSpace bareName v)
+              lkup v = lookupSubBndrOcc_helper True parent (setRdrNameSpace bareName v)
 
           name <-  fmap mconcat . mapM lkup $
                     choosePossibleNamespaces (rdrNameSpace bareName)
