@@ -583,18 +583,15 @@ instance Monoid DisambigInfo where
   mempty = NoOccurrence
   -- This is the key line: We prefer disambiguated occurrences to other
   -- names.
-  UniqueOccurrence _ `mappend` DisambiguatedOccurrence g' = DisambiguatedOccurrence g'
-  DisambiguatedOccurrence g' `mappend` UniqueOccurrence _ = DisambiguatedOccurrence g'
+  _ `mappend` DisambiguatedOccurrence g' = DisambiguatedOccurrence g'
+  DisambiguatedOccurrence g' `mappend` _ = DisambiguatedOccurrence g'
 
 
   NoOccurrence `mappend` m = m
   m `mappend` NoOccurrence = m
   UniqueOccurrence g `mappend` UniqueOccurrence g' = AmbiguousOccurrence [g, g']
   UniqueOccurrence g `mappend` AmbiguousOccurrence gs = AmbiguousOccurrence (g:gs)
-  DisambiguatedOccurrence g `mappend` DisambiguatedOccurrence g'  = AmbiguousOccurrence [g, g']
-  DisambiguatedOccurrence g `mappend` AmbiguousOccurrence gs = AmbiguousOccurrence (g:gs)
   AmbiguousOccurrence gs `mappend` UniqueOccurrence g' = AmbiguousOccurrence (g':gs)
-  AmbiguousOccurrence gs `mappend` DisambiguatedOccurrence g' = AmbiguousOccurrence (g':gs)
   AmbiguousOccurrence gs `mappend` AmbiguousOccurrence gs' = AmbiguousOccurrence (gs ++ gs')
 -- Lookup SubBndrOcc can never be ambiguous
 --
