@@ -552,9 +552,9 @@ lookupSubBndrOcc_helper warn_if_deprec parent rdr_name
         right_parent :: GlobalRdrElt -> DisambigInfo
         right_parent p
           | Just cur_parent <- getParent p
-            = if pprTrace "right_parent" (ppr (parent, cur_parent)) (parent == cur_parent)
+            = if parent == cur_parent
                 then DisambiguatedOccurrence p
-                else pprTrace "noOcc" (ppr ()) NoOccurrence
+                else NoOccurrence
           | otherwise
             = UniqueOccurrence p
 
@@ -1004,10 +1004,9 @@ The final result (after the renamer) will be:
 lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName -> RnM (Maybe r)
 lookupOccRnX_maybe globalLookup wrapper rdr_name
   = do { local_env <- getLocalRdrEnv
-       ; pprTrace "lookupOcc" (ppr rdr_name) (return ())
        ; case lookupLocalRdrEnv local_env rdr_name of
-          Just n -> pprTrace "Just" empty (return $ Just $ wrapper n)
-          Nothing -> pprTrace "Nothing" empty (globalLookup rdr_name) }
+          Just n -> return $ Just $ wrapper n
+          Nothing -> globalLookup rdr_name }
 
 lookupOccRn_maybe :: RdrName -> RnM (Maybe Name)
 lookupOccRn_maybe = lookupOccRnX_maybe lookupGlobalOccRn_maybe id
@@ -1332,6 +1331,11 @@ and should instead check the qualified import but at the moment
 this requires some refactoring so leave as a TODO
 -}
 
+
+
+-- This function is used when we are in GHCi, we want to allow
+-- users to qualify functions even though they were not imported as
+-- qualified. It is example by the flag
 lookupQualifiedNameGHCi :: RdrName -> RnM [Name]
 lookupQualifiedNameGHCi rdr_name
   = -- We want to behave as we would for a source file import here,
