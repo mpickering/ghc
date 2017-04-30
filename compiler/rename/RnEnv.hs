@@ -492,7 +492,7 @@ lookupSubBndrOcc_helper must_have_parent warn_if_deprec parent rdr_name
         -- Convert into FieldLabel if necessary
         checkFld :: GlobalRdrElt -> RnM ChildLookupResult
         checkFld g@GRE{gre_name, gre_par} = do
-          addUsedGRE warn_if_deprec g -- TODO: Might be nicer to push this outwards but would require FoundName returning the GRE
+          addUsedGRE warn_if_deprec g
           return $ case gre_par of
             FldParent _ mfs ->
               FoundFL  (fldParentToFieldLabel gre_name mfs)
