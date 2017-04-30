@@ -640,17 +640,6 @@ instance Outputable ChildLookup where
   ppr (IncorrectParent' p n td ns) = text "IncorrectParent"
                                   <+> hsep [ppr p, ppr n, td, ppr ns]
 
-{-
--- Left biased accumulation monoid. Chooses the left-most positive occurrence.
-instance Monoid ChildLookupResult where
-  mempty = NameNotFound
-  NameNotFound `mappend` m2 = m2
-  e@NameErr {} `mappend` _ = e -- Abort from the first error
-  i@IncorrectParent {} `mappend` _ = i
-  f@FoundName {} `mappend` _ = f
-  f@FoundFL {} `mappend` _ = f
--}
-
 lookupSubBndrOcc :: Bool
                  -> Name     -- Parent
                  -> SDoc
