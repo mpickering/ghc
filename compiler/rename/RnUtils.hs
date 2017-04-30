@@ -90,7 +90,6 @@ bindLocalNamesFV names enclosed_scope
 -------------------------------------
 
 extendTyVarEnvFVRn :: [Name] -> RnM (a, FreeVars) -> RnM (a, FreeVars)
-        -- This function is used only in rnSourceDecl on InstDecl
 extendTyVarEnvFVRn tyvars thing_inside = bindLocalNamesFV tyvars thing_inside
 
 -------------------------------------

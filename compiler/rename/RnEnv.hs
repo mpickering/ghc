@@ -826,8 +826,8 @@ lookupKindOccRn rdr_name
        ; if | typeintype           -> lookupTypeOccRn rdr_name
       -- With -XNoTypeInType, treat any usage of * in kinds as in scope
       -- this is a dirty hack, but then again so was the old * kind.
-            | is_star rdr_name     -> return starKindTyConName
-            | is_uni_star rdr_name -> return unicodeStarKindTyConName
+            | isStar rdr_name     -> return starKindTyConName
+            | isUniStar rdr_name -> return unicodeStarKindTyConName
             | otherwise            -> lookupOccRn rdr_name }
 
 -- lookupPromotedOccRn looks up an optionally promoted RdrName.
@@ -873,7 +873,7 @@ lookup_demoted rdr_name dflags
            , quotes (ppr name) <> dot ]
 
     star_info
-      | is_star rdr_name || is_uni_star rdr_name
+      | isStar rdr_name || isUniStar rdr_name
       = if xopt LangExt.TypeInType dflags
         then text "NB: With TypeInType, you must import" <+>
              ppr rdr_name <+> text "from Data.Kind"
@@ -882,9 +882,6 @@ lookup_demoted rdr_name dflags
       | otherwise
       = empty
 
-is_star, is_uni_star :: RdrName -> Bool
-is_star     = (fsLit "*" ==) . occNameFS . rdrNameOcc
-is_uni_star = (fsLit "★" ==) . occNameFS . rdrNameOcc
 
 badVarInType :: RdrName -> RnM Name
 badVarInType rdr_name
