@@ -465,8 +465,8 @@ lookupRecFieldOcc parent doc rdr_name
 
 
 -- | Used in export lists to lookup the children.
-lookupSubBndrOcc_helper :: Bool -> Name -> RdrName -> RnM ChildLookupResult
-lookupSubBndrOcc_helper warn_if_deprec parent rdr_name
+lookupSubBndrOcc_helper :: Bool -> Bool -> Name -> RdrName -> RnM ChildLookupResult
+lookupSubBndrOcc_helper must_have_parent warn_if_deprec parent rdr_name
   | isUnboundName parent
     -- Avoid an error cascade
   = return (FoundName NoParent (mkUnboundNameRdr rdr_name))
@@ -486,7 +486,8 @@ lookupSubBndrOcc_helper warn_if_deprec parent rdr_name
     NoOccurrence ->
       noMatchingParentErr original_gres
     UniqueOccurrence g ->
-      checkFld g
+      if must_have_parent then noMatchingParentErr original_gres
+                          else checkFld g
     DisambiguatedOccurrence g ->
       checkFld g
     AmbiguousOccurrence gres ->
@@ -661,13 +662,10 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
   res <-
     lookupExactOrOrig rdr_name (FoundName NoParent) $
       -- This happens for built-in classes, see mod052 for example
-      lookupSubBndrOcc_helper warn_if_deprec the_parent rdr_name
+      lookupSubBndrOcc_helper True warn_if_deprec the_parent rdr_name
   case res of
     NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
-    FoundName p n ->
-      if p == NoParent
-        then return $ Left (unknownSubordinateErr doc rdr_name)
-        else return $ (Right n)
+    FoundName _p n -> return $ (Right n)
     FoundFL fl  ->  return (Right (flSelector fl)) -- Don't think this ever happens
     NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
     IncorrectParent {} ->
