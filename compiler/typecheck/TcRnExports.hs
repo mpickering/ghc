@@ -444,16 +444,14 @@ lookupChildrenExport parent rdr_items =
             FoundFL fls -> return $ Right (L (getLoc n) fls)
             FoundName _p name -> return $ Left (L (getLoc n) name)
             NameErr err_msg -> reportError err_msg >> failM
-            IncorrectParent p g td gs -> mkDcErrMsg p g td gs >>= reportError >> failM
+            IncorrectParent p g td gs -> do
+              mkDcErrMsg p g td gs >>= reportError
+              failM
 
 
 -- | Also captures the current context
 mkNameErr :: SDoc -> TcM ChildLookupResult
 mkNameErr errMsg = NameErr <$> mkErrTc errMsg
-
-
-
-
 
 
 
@@ -704,7 +702,8 @@ dcErrMsg ty_con what_is thing parents =
 mkDcErrMsg :: Name -> Name -> SDoc -> [Name] -> TcM ErrMsg
 mkDcErrMsg parent thing thing_doc parents = do
   ty_thing <- tcLookupGlobal thing
-  mkErrTc $ dcErrMsg parent (tyThingCategory' ty_thing) thing_doc (map ppr parents)
+  mkErrTc $
+    dcErrMsg parent (tyThingCategory' ty_thing) thing_doc (map ppr parents)
   where
     tyThingCategory' :: TyThing -> String
     tyThingCategory' (AnId i)

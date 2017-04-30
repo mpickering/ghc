@@ -76,6 +76,7 @@ import ListSetOps       ( minusList )
 import qualified GHC.LanguageExtensions as LangExt
 import RnUnbound
 import RnUtils
+import Data.Functor (($>))
 
 {-
 *********************************************************
@@ -461,7 +462,8 @@ lookupRecFieldOcc parent doc rdr_name
 
 
 -- | Used in export lists to lookup the children.
-lookupSubBndrOcc_helper :: Bool -> Bool -> Name -> RdrName -> RnM ChildLookupResult
+lookupSubBndrOcc_helper :: Bool -> Bool -> Name -> RdrName
+                        -> RnM ChildLookupResult
 lookupSubBndrOcc_helper must_have_parent warn_if_deprec parent rdr_name
   | isUnboundName parent
     -- Avoid an error cascade
@@ -547,8 +549,10 @@ lookupSubBndrOcc_helper must_have_parent warn_if_deprec parent rdr_name
 
         picked_gres :: [GlobalRdrElt] -> DisambigInfo
         picked_gres gres
-          | isUnqual rdr_name = mconcat (map right_parent gres)
-          | otherwise         = mconcat (map right_parent (pickGREs rdr_name gres))
+          | isUnqual rdr_name
+              = mconcat (map right_parent gres)
+          | otherwise
+              = mconcat (map right_parent (pickGREs rdr_name gres))
 
 
         right_parent :: GlobalRdrElt -> DisambigInfo
@@ -591,10 +595,14 @@ instance Monoid DisambigInfo where
 
   NoOccurrence `mappend` m = m
   m `mappend` NoOccurrence = m
-  UniqueOccurrence g `mappend` UniqueOccurrence g' = AmbiguousOccurrence [g, g']
-  UniqueOccurrence g `mappend` AmbiguousOccurrence gs = AmbiguousOccurrence (g:gs)
-  AmbiguousOccurrence gs `mappend` UniqueOccurrence g' = AmbiguousOccurrence (g':gs)
-  AmbiguousOccurrence gs `mappend` AmbiguousOccurrence gs' = AmbiguousOccurrence (gs ++ gs')
+  UniqueOccurrence g `mappend` UniqueOccurrence g'
+    = AmbiguousOccurrence [g, g']
+  UniqueOccurrence g `mappend` AmbiguousOccurrence gs
+    = AmbiguousOccurrence (g:gs)
+  AmbiguousOccurrence gs `mappend` UniqueOccurrence g'
+    = AmbiguousOccurrence (g':gs)
+  AmbiguousOccurrence gs `mappend` AmbiguousOccurrence gs'
+    = AmbiguousOccurrence (gs ++ gs')
 -- Lookup SubBndrOcc can never be ambiguous
 --
 -- Records the result of looking up a child.
@@ -610,6 +618,7 @@ data ChildLookupResult
       | FoundName Parent Name  --  We resolved to a normal name
       | FoundFL FieldLabel       --  We resolved to a FL
 
+-- | Specialised version of msum for RnM ChildLookupResult
 combineChildLookupResult :: [RnM ChildLookupResult] -> RnM ChildLookupResult
 combineChildLookupResult [] = return NameNotFound
 combineChildLookupResult (x:xs) = do
@@ -641,8 +650,9 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
   case res of
     NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
     FoundName _p n -> return (Right n)
-    FoundFL fl  ->  return (Right (flSelector fl)) -- Don't think this ever happens
-    NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
+    FoundFL fl  ->  return (Right (flSelector fl))
+      -- Don't think this ever happens
+    NameErr err ->  reportError err $> (Right $ mkUnboundNameRdr rdr_name)
     IncorrectParent {} ->
       return $ Left (unknownSubordinateErr doc rdr_name)
 
@@ -934,7 +944,8 @@ The final result (after the renamer) will be:
 --                                         , let gres' = filter isLocalGRE gres, not (null gres') ] ]
 --       ; return mb_res }
 
-lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName -> RnM (Maybe r)
+lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName
+                   -> RnM (Maybe r)
 lookupOccRnX_maybe globalLookup wrapper rdr_name
   = do { local_env <- getLocalRdrEnv
        ; case lookupLocalRdrEnv local_env rdr_name of
@@ -1004,7 +1015,8 @@ lookupInfoOccRn rdr_name =
 --                        if overload_ok was False, this list will be
 --                        a singleton.
 
-lookupGlobalOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
+lookupGlobalOccRn_overloaded :: Bool -> RdrName
+                             -> RnM (Maybe (Either Name [Name]))
 lookupGlobalOccRn_overloaded overload_ok rdr_name =
   lookupExactOrOrig rdr_name (Just . Left) $
      do  { res <- lookupGreRn_helper rdr_name
