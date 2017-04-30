@@ -649,51 +649,6 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
 
 
 {-
-  lookupExactOrOrig rdr_name Right $
-    if isUnboundName the_parent
-        -- Avoid an error cascade from malformed decls:
-        --   instance Int where { foo = e }
-        -- We have already generated an error in rnLHsInstDecl
-        then return (Right (mkUnboundNameRdr rdr_name))
-        else
-          do
-       { env <- getGlobalRdrEnv
-       ; let gres = lookupGlobalRdrEnv env (rdrNameOcc rdr_name)
-                -- NB: lookupGlobalRdrEnv, not lookupGRE_RdrName!
-                --     The latter does pickGREs, but we want to allow 'x'
-                --     even if only 'M.x' is in scope
-       ; traceRn "lookupSubBndrOcc"
-            (vcat [ ppr the_parent, ppr rdr_name
-                  , ppr gres, ppr (pick_gres rdr_name gres)])
-       ; case pick_gres rdr_name gres of
-            (gre:_) -> do { addUsedGRE warn_if_deprec gre
-                            -- Add a usage; this is an *occurrence* site
-                            -- Note [Usage for sub-bndrs]
-                          ; return (Right (gre_name gre)) }
-                 -- If there is more than one local GRE for the
-                 -- same OccName 'f', that will be reported separately
-                 -- as a duplicate top-level binding for 'f'
-            [] -> do { ns <- lookupQualifiedNameGHCi rdr_name
-                     ; case ns of
-                         (n:_) -> return (Right n)  -- Unlikely to be more than one...?
-                         [] -> return (Left (unknownSubordinateErr doc rdr_name))} }
-  where
-    -- If Parent = NoParent, just do a normal lookup
-    -- If Parent = Parent p then find all GREs that
-    --   (a) have parent p
-    --   (b) for Unqual, are in scope qualified or unqualified
-    --       for Qual, are in scope with that qualification
-    pick_gres rdr_name gres
-      | isUnqual rdr_name = filter right_parent gres
-      | otherwise         = filter right_parent (pickGREs rdr_name gres)
-
-    right_parent (GRE { gre_par = p })
-      | ParentIs parent <- p               = parent == the_parent
-      | FldParent { par_is = parent } <- p = parent == the_parent
-      | otherwise                          = False
--}
-
-{-
 Note [Family instance binders]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Consider
@@ -1052,24 +1007,6 @@ lookupInfoOccRn rdr_name =
 --   * Just (Right xs) -> name refers to one or more record selectors;
 --                        if overload_ok was False, this list will be
 --                        a singleton.
-{-
-lookupOccRn_overloaded  :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
-lookupOccRn_overloaded overload_ok rdr_name
-  = do { local_env <- getLocalRdrEnv
-       ; case lookupLocalRdrEnv local_env rdr_name of {
-          Just name -> return (Just (Left name)) ;
-          Nothing   -> do
-       { mb_name <- lookupGlobalOccRn_overloaded overload_ok rdr_name
-       ; case mb_name of {
-           Just name -> return (Just name) ;
-           Nothing   -> do
-       { ns <- lookupQualifiedNameGHCi rdr_name
-                      -- This test is not expensive,
-                      -- and only happens for failed lookups
-       ; case ns of
-           (n:_) -> return $ Just $ Left n  -- Unlikely to be more than one...?
-           []    -> return Nothing  } } } } }
--}
 
 lookupGlobalOccRn_overloaded :: Bool -> RdrName -> RnM (Maybe (Either Name [Name]))
 lookupGlobalOccRn_overloaded overload_ok rdr_name =
