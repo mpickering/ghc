@@ -422,7 +422,7 @@ lookupChildrenExport parent rdr_items =
               lkup v = lookupSubBndrOcc_helper False True
                         parent (setRdrNameSpace bareName v)
 
-          name <-  fmap ChildLookupResult . runMaybeT . msum . map (MaybeT . fmap runChildLookup . lkup) $
+          name <-  combineChildLookupResult . map lkup $
                     choosePossibleNamespaces (rdrNameSpace bareName)
           traceRn "lookupChildrenExport" (ppr name)
           -- Default to data constructors for slightly better error
@@ -445,7 +445,6 @@ lookupChildrenExport parent rdr_items =
             FoundName _p name -> return $ Left (L (getLoc n) name)
             NameErr err_msg -> reportError err_msg >> failM
             IncorrectParent p g td gs -> mkDcErrMsg p g td gs >>= reportError >> failM
-            _ -> panic "lookupChildrenExport: Unable to use COMPLETE pragma"
 
 
 -- | Also captures the current context

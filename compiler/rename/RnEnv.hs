@@ -5,7 +5,7 @@ RnEnv contains functions which convert RdrNames into Names.
 
 -}
 
-{-# LANGUAGE CPP, MultiWayIf, NamedFieldPuns, PatternSynonyms #-}
+{-# LANGUAGE CPP, MultiWayIf, NamedFieldPuns #-}
 
 module RnEnv (
         newTopSrcBinder,
@@ -18,12 +18,9 @@ module RnEnv (
         lookupOccRn_overloaded, lookupGlobalOccRn_overloaded, lookupExactOcc,
 
         lookupSubBndrOcc_helper,
-        ChildLookupResult( ..
-                         , NameNotFound
-                         , IncorrectParent
-                         , NameErr
-                         , FoundName
-                         , FoundFL ),
+        ChildLookupResult(..),
+
+        combineChildLookupResult,
 
         HsSigCtxt(..), lookupLocalTcNames, lookupSigOccRn,
         lookupSigCtxtOccRn,
@@ -602,42 +599,32 @@ instance Monoid DisambigInfo where
 -- Lookup SubBndrOcc can never be ambiguous
 --
 -- Records the result of looking up a child.
-data ChildLookup
-      =  --NameNotFound                --  We couldn't find a suitable name
-        NameErr' ErrMsg              --  We found an unambiguous name
+data ChildLookupResult
+      = NameNotFound                --  We couldn't find a suitable name
+      | NameErr ErrMsg              --  We found an unambiguous name
                                     --  but there's another error
                                     --  we should abort from
-      | IncorrectParent' Name        -- Parent
+      | IncorrectParent Name        -- Parent
                         Name        -- Name of thing we were looking for
                         SDoc        -- How to print the name
                         [Name]      -- List of possible parents
-      | FoundName' Parent Name  --  We resolved to a normal name
-      | FoundFL' FieldLabel       --  We resolved to a FL
+      | FoundName Parent Name  --  We resolved to a normal name
+      | FoundFL FieldLabel       --  We resolved to a FL
 
-newtype ChildLookupResult
-  = ChildLookupResult { runChildLookup :: Maybe ChildLookup }
+combineChildLookupResult :: [RnM ChildLookupResult] -> RnM ChildLookupResult
+combineChildLookupResult [] = return NameNotFound
+combineChildLookupResult (x:xs) = do
+  res <- x
+  case res of
+    NameNotFound -> combineChildLookupResult xs
+    _ -> return res
 
 instance Outputable ChildLookupResult where
-  ppr (ChildLookupResult Nothing) = text "NameNotFound"
-  ppr (ChildLookupResult (Just x)) = ppr x
-
-pattern NameNotFound :: ChildLookupResult
-pattern NameNotFound = ChildLookupResult Nothing
-pattern NameErr :: ErrMsg -> ChildLookupResult
-pattern NameErr e = ChildLookupResult ( Just (NameErr' e))
-pattern IncorrectParent :: Name -> Name -> SDoc -> [Name] -> ChildLookupResult
-pattern IncorrectParent n n' td ns = ChildLookupResult ( Just (IncorrectParent' n n' td ns))
-pattern FoundName :: Parent -> Name -> ChildLookupResult
-pattern FoundName p n = ChildLookupResult ( Just (FoundName' p n))
-pattern FoundFL :: FieldLabel -> ChildLookupResult
-pattern FoundFL fl = ChildLookupResult ( Just (FoundFL' fl))
-
-instance Outputable ChildLookup where
---  ppr NameNotFound = text "NameNotFound"
-  ppr (FoundName' _p n) = text "Found:" <+> ppr n
-  ppr (FoundFL' fls) = text "FoundFL:" <+> ppr fls
-  ppr (NameErr' _) = text "Error"
-  ppr (IncorrectParent' p n td ns) = text "IncorrectParent"
+  ppr NameNotFound = text "NameNotFound"
+  ppr (FoundName _p n) = text "Found:" <+> ppr n
+  ppr (FoundFL fls) = text "FoundFL:" <+> ppr fls
+  ppr (NameErr _) = text "Error"
+  ppr (IncorrectParent p n td ns) = text "IncorrectParent"
                                   <+> hsep [ppr p, ppr n, td, ppr ns]
 
 lookupSubBndrOcc :: Bool
@@ -659,7 +646,6 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
     NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
     IncorrectParent {} ->
       return $ Left (unknownSubordinateErr doc rdr_name)
-    _ -> panic "lookupSubBndrOcc: Unable to use COMPLETE pragma with 8.0"
 
 
 {-
