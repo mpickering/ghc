@@ -64,12 +64,11 @@ import DataCon
 import TyCon
 import PrelNames        ( rOOT_MAIN )
 import ErrUtils         ( MsgDoc, ErrMsg )
-import BasicTypes       ( pprWarningTxtForMsg )
+import BasicTypes       ( pprWarningTxtForMsg, TopLevelFlag(..))
 import SrcLoc
 import Outputable
 import Util
 import Maybes
-import BasicTypes       ( TopLevelFlag(..) )
 import DynFlags
 import FastString
 import Control.Monad
@@ -495,7 +494,7 @@ lookupSubBndrOcc_helper must_have_parent warn_if_deprec parent rdr_name
         checkFld g@GRE{gre_name, gre_par} = do
           addUsedGRE warn_if_deprec g -- TODO: Might be nicer to push this outwards but would require FoundName returning the GRE
           return $ case gre_par of
-            FldParent _ mfs ->  do
+            FldParent _ mfs ->
               FoundFL  (fldParentToFieldLabel gre_name mfs)
             _ -> FoundName gre_par gre_name
 
@@ -641,7 +640,7 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
       lookupSubBndrOcc_helper True warn_if_deprec the_parent rdr_name
   case res of
     NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
-    FoundName _p n -> return $ (Right n)
+    FoundName _p n -> return (Right n)
     FoundFL fl  ->  return (Right (flSelector fl)) -- Don't think this ever happens
     NameErr err ->  reportError err >> return (Right $ mkUnboundNameRdr rdr_name)
     IncorrectParent {} ->
@@ -1012,7 +1011,7 @@ lookupGlobalOccRn_overloaded overload_ok rdr_name =
          ; case res of
                 GreNotFound  -> return Nothing
                 OneNameMatch gre -> do
-                  let wrapper = if isRecFldGRE gre then (Right . (:[])) else Left
+                  let wrapper = if isRecFldGRE gre then Right . (:[]) else Left
                   -- addUsedGRE True gre
                   return $ Just (wrapper (gre_name gre))
                 MultipleNames gres  | all isRecFldGRE gres && overload_ok ->
