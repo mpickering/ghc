@@ -48,7 +48,7 @@
 	ignore = untracked
 [submodule "libraries/time"]
 	path = libraries/time
-	url = git://github.com/bgamari/time
+	url = ../packages/time.git
 	ignore = untracked
 [submodule "libraries/random"]
 	path = libraries/random

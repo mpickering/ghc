@@ -29,7 +29,7 @@ before_install:
 
 # Be explicit about which protocol to use, such that we don't have to repeat the rewrite command for each.
  - git config remote.origin.url git://github.com/${TRAVIS_REPO_SLUG}.git
- - git config --global url."git://github.com/${TRAVIS_REPO_SLUG%/*}/packages-".insteadOf "git://github.com/${TRAVIS_REPO_SLUG%/*}/packages/"
+ - git config --global url."git://github.com/${TRAVIS_REPO_SLUG%/*}/packages-".insteadOf "git://github.com/${TRAVIS_REPO_SLUG%/*}/"
  - git submodule init # Be quiet about these urls, as we may override them later.
 
 # Check if submodule repositories exist.
