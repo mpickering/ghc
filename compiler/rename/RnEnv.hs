@@ -649,8 +649,7 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
     FoundName _p n -> return (Right n)
     FoundFL fl  ->  return (Right (flSelector fl))
     NameErr err ->  reportError err $> (Right $ mkUnboundNameRdr rdr_name)
-    IncorrectParent {} ->
-      return $ Left (unknownSubordinateErr doc rdr_name)
+    IncorrectParent {} -> return $ Left (unknownSubordinateErr doc rdr_name)
 
 
 {-
@@ -925,28 +924,12 @@ The final result (after the renamer) will be:
   HsTyVar ("Zero", DataName)
 -}
 
---              Use this version to get tracing
---
--- lookupOccRn_maybe, lookupOccRn_maybe' :: RdrName -> RnM (Maybe Name)
--- lookupOccRn_maybe rdr_name
---  = do { mb_res <- lookupOccRn_maybe' rdr_name
---       ; gbl_rdr_env   <- getGlobalRdrEnv
---       ; local_rdr_env <- getLocalRdrEnv
---       ; traceRn $ text "lookupOccRn_maybe" <+>
---           vcat [ ppr rdr_name <+> ppr (getUnique (rdrNameOcc rdr_name))
---                , ppr mb_res
---                , text "Lcl env" <+> ppr local_rdr_env
---                , text "Gbl env" <+> ppr [ (getUnique (nameOccName (gre_name (head gres'))),gres') | gres <- occEnvElts gbl_rdr_env
---                                         , let gres' = filter isLocalGRE gres, not (null gres') ] ]
---       ; return mb_res }
-
 lookupOccRnX_maybe :: (RdrName -> RnM (Maybe r)) -> (Name -> r) -> RdrName
                    -> RnM (Maybe r)
 lookupOccRnX_maybe globalLookup wrapper rdr_name
-  = do { local_env <- getLocalRdrEnv
-       ; case lookupLocalRdrEnv local_env rdr_name of
-          Just n -> return $ Just $ wrapper n
-          Nothing -> globalLookup rdr_name }
+  = runMaybeT . msum . map MaybeT $
+      [ fmap wrapper <$> lookupLocalOccRn_maybe rdr_name
+      , globalLookup rdr_name ]
 
 lookupOccRn_maybe :: RdrName -> RnM (Maybe Name)
 lookupOccRn_maybe = lookupOccRnX_maybe lookupGlobalOccRn_maybe id
@@ -1020,7 +1003,6 @@ lookupGlobalOccRn_overloaded overload_ok rdr_name =
                 GreNotFound  -> return Nothing
                 OneNameMatch gre -> do
                   let wrapper = if isRecFldGRE gre then Right . (:[]) else Left
-                  -- addUsedGRE True gre
                   return $ Just (wrapper (gre_name gre))
                 MultipleNames gres  | all isRecFldGRE gres && overload_ok ->
                   -- Don't record usage for ambiguous selectors
@@ -1418,8 +1400,8 @@ lookupBindGroupOcc ctxt what rdr_name
                (gre:_)            -> return (Right (gre_name gre)) }
 
     lookup_group bound_names  -- Look in the local envt (not top level)
-      = do { local_env <- getLocalRdrEnv
-           ; case lookupLocalRdrEnv local_env rdr_name of
+      = do { mname <- lookupLocalOccRn_maybe rdr_name
+           ; case mname of
                Just n
                  | n `elemNameSet` bound_names -> return (Right n)
                  | otherwise                   -> bale_out_with local_msg
