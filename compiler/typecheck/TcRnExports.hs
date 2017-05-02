@@ -591,7 +591,11 @@ data DisambigInfo
 instance Monoid DisambigInfo where
   mempty = NoOccurrence
   -- This is the key line: We prefer disambiguated occurrences to other
-  -- names.
+  -- names. Notice that two disambiguated occurences are not ambiguous as
+  -- there is an internal invariant that a list of `DisambigInfo` arises
+  -- from a list of GREs which all have the same OccName. Thus, if we ever
+  -- have two DisambiguatedOccurences then they must have arisen from the
+  -- same GRE and hence it's safe to discard one.
   _ `mappend` DisambiguatedOccurrence g' = DisambiguatedOccurrence g'
   DisambiguatedOccurrence g' `mappend` _ = DisambiguatedOccurrence g'
 
