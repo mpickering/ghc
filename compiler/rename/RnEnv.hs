@@ -384,9 +384,6 @@ lookupInstDeclBndr cls what rdr
   where
     doc = what <+> text "of class" <+> quotes (ppr cls)
 
--- MP: This looks good enough
-
-
 -----------------------------------------------
 lookupFamInstName :: Maybe Name -> Located RdrName -> RnM (Located Name)
 -- Used for TyData and TySynonym family instances only,
@@ -508,7 +505,7 @@ lookupSubBndrOcc_helper must_have_parent warn_if_deprec parent rdr_name
               in FieldLabel fs False name
             Just fs -> FieldLabel fs True name
 
-        -- Called when we fine no matching GREs after disambiguation but
+        -- Called when we find no matching GREs after disambiguation but
         -- there are three situations where this happens.
         -- 1. There were none to begin with.
         -- 2. None of the matching ones were the parent but
@@ -651,7 +648,6 @@ lookupSubBndrOcc warn_if_deprec the_parent doc rdr_name = do
     NameNotFound -> return (Left (unknownSubordinateErr doc rdr_name))
     FoundName _p n -> return (Right n)
     FoundFL fl  ->  return (Right (flSelector fl))
-      -- Don't think this ever happens
     NameErr err ->  reportError err $> (Right $ mkUnboundNameRdr rdr_name)
     IncorrectParent {} ->
       return $ Left (unknownSubordinateErr doc rdr_name)
@@ -1247,9 +1243,15 @@ all: we try to load the interface if we don't already have it, just
 as if there was an "import qualified M" declaration for every
 module.
 
+For example, writing `Data.List.sort` will load the interface file for
+`Data.List` as if the user had written `import qualified Data.List`.
+
 If we fail we just return Nothing, rather than bleating
 about "attempting to use module ‘D’ (./D.hs) which is not loaded"
 which is what loadSrcInterface does.
+
+It is enabled by default and disabled by the flag
+`-fno-implicit-import-qualified`.
 
 Note [Safe Haskell and GHCi]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1260,9 +1262,6 @@ this requires some refactoring so leave as a TODO
 
 
 
--- This function is used when we are in GHCi, we want to allow
--- users to qualify functions even though they were not imported as
--- qualified. It is example by the flag
 lookupQualifiedNameGHCi :: RdrName -> RnM [Name]
 lookupQualifiedNameGHCi rdr_name
   = -- We want to behave as we would for a source file import here,
