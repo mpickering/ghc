@@ -228,8 +228,6 @@ OccName.  We use OccName.isSymOcc to detect that case, which isn't
 terribly efficient, but there seems to be no better way.
 -}
 
--- Can be made to not be exposed
--- Only used unwrapped in rnAnnProvenance
 lookupTopBndrRn :: RdrName -> RnM Name
 lookupTopBndrRn n = do nopt <- lookupTopBndrRn_maybe n
                        case nopt of
