@@ -462,7 +462,7 @@ lookupChildrenExport parent rdr_items =
             NameErr err_msg -> reportError err_msg >> failM
 
 tryChildLookupResult :: [RnM ChildLookupResult] -> RnM ChildLookupResult
-tryChildLookupResult [x] = x
+tryChildLookupResult [] = return NameNotFound
 tryChildLookupResult (x:xs) = do
   res <- x
   case res of
@@ -470,7 +470,6 @@ tryChildLookupResult (x:xs) = do
     FoundName {} -> return res
     NameErr {}   -> return res
     _ -> tryChildLookupResult xs
-tryChildLookupResult _ = panic "tryChildLookupResult:empty list"
 
 
 
