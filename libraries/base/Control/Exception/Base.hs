@@ -29,6 +29,7 @@ module Control.Exception.Base (
         asyncExceptionToException, asyncExceptionFromException,
         NonTermination(..),
         NestedAtomically(..),
+        ThawAlreadyThawed(..),
         BlockedIndefinitelyOnMVar(..),
         BlockedIndefinitelyOnSTM(..),
         AllocationLimitExceeded(..),
@@ -95,7 +96,7 @@ module Control.Exception.Base (
         recSelError, recConError, irrefutPatError, runtimeError,
         nonExhaustiveGuardsError, patError, noMethodBindingError,
         absentError, typeError,
-        nonTermination, nestedAtomically,
+        nonTermination, nestedAtomically, thawAlreadyThawed
   ) where
 
 import GHC.Base
@@ -374,6 +375,20 @@ instance Exception NestedAtomically
 
 -----
 
+-- |Thrown when the program attempts to call @unsafeThawArary#@ on an @Array#@
+-- which is already thawed.
+data ThawAlreadyThawed = ThawAlreadyThawed
+
+-- | @since 4.11
+instance Show ThawAlreadyThawed where
+    showsPrec _ ThawAlreadyThawed =
+        showString "GHC.Exts.unsafeThawArray# was called on already thawed array"
+
+-- | @since 4.11
+instance Exception ThawAlreadyThawed
+
+-----
+
 recSelError, recConError, irrefutPatError, runtimeError,
   nonExhaustiveGuardsError, patError, noMethodBindingError,
   absentError, typeError
@@ -398,3 +413,7 @@ nonTermination = toException NonTermination
 -- GHC's RTS calls this
 nestedAtomically :: SomeException
 nestedAtomically = toException NestedAtomically
+
+-- GHC's RTS calls this
+thawAlreadyThawed :: SomeException
+thawAlreadyThawed = toException ThawAlreadyThawed

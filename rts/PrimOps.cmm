@@ -30,6 +30,7 @@ import pthread_mutex_lock;
 import pthread_mutex_unlock;
 #endif
 import CLOSURE base_ControlziExceptionziBase_nestedAtomically_closure;
+import CLOSURE base_ControlziExceptionziBase_thawAlreadyThawed_closure;
 import EnterCriticalSection;
 import LeaveCriticalSection;
 import CLOSURE ghczmprim_GHCziTypes_False_closure;
@@ -278,14 +279,31 @@ stg_unsafeThawArrayzh ( gcptr arr )
     // we put it on the mutable list more than once, but it would get scavenged
     // multiple times during GC, which would be unnecessarily slow.
     //
-    if (StgHeader_info(arr) != stg_MUT_ARR_PTRS_FROZEN0_info) {
-        SET_INFO(arr,stg_MUT_ARR_PTRS_DIRTY_info);
-        recordMutable(arr);
-        // must be done after SET_INFO, because it ASSERTs closure_MUTABLE()
-        return (arr);
+    // This update is a bit subtle in the face of parallelism as we might have
+    // multiple threads racing to thaw the same array (although this is an
+    // error).
+
+    W_ old_info;
+  again:
+    old_info = StgHeader_info(arr);
+    if (old_info == stg_MUT_ARR_PTRS_DIRTY_info) {
+        jump stg_raisezh(base_ControlziExceptionziBase_nestedAtomically_closure);
     } else {
-        SET_INFO(arr,stg_MUT_ARR_PTRS_DIRTY_info);
-        return (arr);
+        W_ res;
+        (res) = prim %cmpxchgW(arr + OFFSET_StgHeader_info, old_info, stg_MUT_ARR_PTRS_DIRTY_info);
+        if (res != old_info) {
+            // Someone beat us to updating the info pointer
+            goto again;
+        }
+
+        // add the array to the mutable list if necessary
+        if (old_info != stg_MUT_ARR_PTRS_FROZEN0_info) {
+            recordMutable(arr);
+            // must be done after SET_INFO, because it ASSERTs closure_MUTABLE()
+            return (arr);
+        } else {
+            return (arr);
+        }
     }
 }
 

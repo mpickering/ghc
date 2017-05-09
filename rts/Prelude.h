@@ -45,6 +45,7 @@ PRELUDE_CLOSURE(base_GHCziIOziException_cannotCompactPinned_closure);
 PRELUDE_CLOSURE(base_GHCziIOziException_cannotCompactMutable_closure);
 PRELUDE_CLOSURE(base_ControlziExceptionziBase_nonTermination_closure);
 PRELUDE_CLOSURE(base_ControlziExceptionziBase_nestedAtomically_closure);
+PRELUDE_CLOSURE(base_ControlziExceptionziBase_thawAlreadyThawed_closure);
 PRELUDE_CLOSURE(base_GHCziEventziThread_blockedOnBadFD_closure);
 
 PRELUDE_CLOSURE(base_GHCziConcziSync_runSparks_closure);
@@ -98,6 +99,7 @@ PRELUDE_INFO(base_GHCziStable_StablePtr_con_info);
 #define cannotCompactMutable_closure DLL_IMPORT_DATA_REF(base_GHCziIOziException_cannotCompactMutable_closure)
 #define nonTermination_closure    DLL_IMPORT_DATA_REF(base_ControlziExceptionziBase_nonTermination_closure)
 #define nestedAtomically_closure  DLL_IMPORT_DATA_REF(base_ControlziExceptionziBase_nestedAtomically_closure)
+#define thawAlreadyThawed_closure  DLL_IMPORT_DATA_REF(base_ControlziExceptionziBase_thawAlreadyThawed_closure)
 #define blockedOnBadFD_closure    DLL_IMPORT_DATA_REF(base_GHCziEventziThread_blockedOnBadFD_closure)
 
 #define Czh_con_info              DLL_IMPORT_DATA_REF(ghczmprim_GHCziTypes_Czh_con_info)
