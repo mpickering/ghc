@@ -35,6 +35,10 @@ hole_constraints.hs:16:35: warning: [-Wtyped-holes (in -Wdefault)]
     • Relevant bindings include
         f3 :: [a] (bound at hole_constraints.hs:16:30)
       Constraints include Eq a (from hole_constraints.hs:16:10-22)
+      Valid substitutions include
+        mempty :: forall a. Monoid a => a
+          (imported from ‘Prelude’ at hole_constraints.hs:3:8-22
+           (and originally defined in ‘GHC.Base’))
 
 hole_constraints.hs:20:19: warning: [-Wtyped-holes (in -Wdefault)]
     • Found hole: _ :: b
@@ -59,3 +63,11 @@ hole_constraints.hs:27:32: warning: [-Wtyped-holes (in -Wdefault)]
         a :: AnyShow (bound at hole_constraints.hs:27:5)
         foo :: AnyShow -> String (bound at hole_constraints.hs:27:1)
       Constraints include Show a (from hole_constraints.hs:27:19-27)
+      Valid substitutions include
+        f1 :: forall a. Eq a => a (defined at hole_constraints.hs:8:1)
+        f2 :: forall a. (Show a, Eq a) => a
+          (defined at hole_constraints.hs:12:1)
+        f3 :: forall a. C a => a (defined at hole_constraints.hs:15:17)
+        mempty :: forall a. Monoid a => a
+          (imported from ‘Prelude’ at hole_constraints.hs:3:8-22
+           (and originally defined in ‘GHC.Base’))
