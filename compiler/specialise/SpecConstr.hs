@@ -702,7 +702,7 @@ specConstrProgram guts@(ModGuts { mg_rules = local_rules
       ; hpt_rules <- getRuleBase
       ; let rule_base = extendRuleBaseList hpt_rules local_rules
       ; (new_rules, spec_binds) <- specConstrImports rule_base env emptyVarSet (scu_calls uds)
-      ; pprTrace "spec_binds" (ppr spec_binds) (return ())
+      ; -- pprTrace "spec_binds" (ppr spec_binds) (return ())
 
       return (guts { mg_binds = binds'' ++ spec_binds
                    , mg_rules = local_rules ++ new_rules })
@@ -726,7 +726,6 @@ specConstrProgram guts@(ModGuts { mg_rules = local_rules
     -- Arg list of bindings is in reverse order
     go _   usg   []           = return ([], usg)
     go env usg (bind:binds) = do (usg', bind') <- scTopBind env usg bind
-                                 pprTrace "go" (ppr bind) (return ())
                                  (binds', usg'') <- go env usg' binds
                                  return ((bind' : binds'), usg'')
 
@@ -751,7 +750,7 @@ specConstrImports rule_base top_env done call_env
     go :: RuleBase -> [[Call]] -> CoreM ([CoreRule], [CoreBind])
     go _ [] = (return ([], []))
     go rb (cs@(Call fn _ _ : _) : other_calls)
-      = do { pprTrace "fn" (ppr fn) (return ())
+      = do { --pprTrace "fn" (ppr fn) (return ())
            ; (rules1, spec_binds1) <- specImport rb top_env done fn cs
            ; (rules2, spec_binds2) <- go (extendRuleBaseList rb rules1) other_calls
            ; return (rules1 ++ rules2, spec_binds1 ++ spec_binds2) }
@@ -768,10 +767,10 @@ specImport rb top_env done fn calls_for_fn
   | fn `elemVarSet` done
   = return ([], [])
   | null calls_for_fn   -- We filtered out all the calls in deleteCallsMentioning
-  = pprTrace "NULL" (ppr fn) $ return ([], [])
+  =return ([], [])
   | wantSpecImport (sc_dflags top_env) unfolding
   , Just rhs <- maybeUnfoldingTemplate unfolding
-  = pprTrace "DOING" (ppr fn) $
+  =
     do {     -- Get rules from the external package state
              -- We keep doing this in case we "page-fault in"
              -- more rules as we go along
@@ -787,7 +786,6 @@ specImport rb top_env done fn calls_for_fn
        ; let (scUsage, ri') = initUs_ us $ do
                                 rhs_info <- scRecRhs top_env (fn,rhs)
                                 specConstrCalls top_env rhs_info ri rules_for_fn calls_for_fn
-       ; pprTrace "DONE:" (ppr scUsage <+> ppr ri') (return ())
        ; let (rules1, spec_binds1) = getRulesSpecs ri'
              -- After the rules kick in we may get recursion, but
              -- we rely on a global GlomBinds to sort that out later
@@ -806,8 +804,7 @@ specImport rb top_env done fn calls_for_fn
        ; return (rules2 ++ rules1, final_binds) }
 
   | otherwise
-  = pprTrace "FELL" (ppr fn <+> ppr (wantSpecImport (sc_dflags top_env) unfolding)
-                            <+> ppr (maybeUnfoldingTemplate unfolding) ) $ return ([], [])
+  =  return ([], [])
   where
     unfolding = realIdUnfolding fn   -- We want to see the unfolding even for loop breakers
 
@@ -1404,7 +1401,6 @@ scExpr' env (Let (Rec prs) body)
         ; (body_usg, body')     <- scExpr rhs_env2 body
 
         -- NB: start specLoop from body_usg
-        ; pprTrace "scExpr" (ppr prs) (return ())
         ; (spec_usg, specs) <- specRec NotTopLevel (scForce rhs_env2 force_spec)
                                        body_usg rhs_infos
                 -- Do not unconditionally generate specialisations from rhs_usgs
@@ -1472,7 +1468,7 @@ scApp env (other_fn, args)
 mkVarUsage :: ScEnv -> Id -> [CoreExpr] -> ScUsage
 mkVarUsage env fn args
   = case lookupHowBound env fn of
-        Just RecFun -> pprTrace "RecFun" (ppr fn) $ SCU { scu_calls = unitVarEnv fn [Call fn args (sc_vals env)]
+        Just RecFun -> SCU { scu_calls = unitVarEnv fn [Call fn args (sc_vals env)]
                            , scu_occs  = emptyVarEnv }
         Just RecArg -> SCU { scu_calls = emptyVarEnv
                            , scu_occs  = unitVarEnv fn arg_occ }
@@ -1513,7 +1509,7 @@ scTopBind env body_usage (Rec prs)
   , not force_spec
   , not (all (couldBeSmallEnoughToInline (sc_dflags env) threshold) rhss)
                 -- No specialisation
-  =  pprTrace "scTopBind: nospec" (ppr bndrs) $
+  =  -- pprTrace "scTopBind: nospec" (ppr bndrs) $
     do  { (rhs_usgs, rhss')   <- mapAndUnzipM (scExpr env) rhss
         ; return (body_usage `combineUsage` combineUsages rhs_usgs, Rec (bndrs `zip` rhss')) }
 
@@ -1522,7 +1518,7 @@ scTopBind env body_usage (Rec prs)
 
         ; (spec_usage, specs) <- specRec TopLevel (scForce env force_spec)
                                          body_usage rhs_infos
-        ; pprTrace "scTopBind" (ppr prs) (return ())
+       --  ; pprTrace "scTopBind" (ppr prs) (return ())
 
         ; return (body_usage `combineUsage` spec_usage,
                   Rec (concat (zipWith ruleInfoBinds rhs_infos specs))) }
@@ -1678,13 +1674,13 @@ specialise env bind_calls ri@(RI { ri_fn = fn, ri_lam_bndrs = arg_bndrs })
 
   | isNeverActive (idInlineActivation fn) -- See Note [Transfer activation]
     || null arg_bndrs                     -- Only specialise functions
-  = pprTrace "specialise inactive" (ppr fn) $
+  = -- pprTrace "specialise inactive" (ppr fn) $
     case mb_unspec of    -- Behave as if there was a single, boring call
       Just rhs_usg -> return (rhs_usg, SI specs spec_count Nothing)
                          -- See Note [spec_usg includes rhs_usg]
       Nothing      -> return (nullUsage, spec_info)
 
-  | Just all_calls <- lookupVarEnv bind_calls (pprTrace "looking" (ppr fn) fn)
+  | Just all_calls <- lookupVarEnv bind_calls fn
   = specConstrCalls env ri spec_info (idCoreRules fn) all_calls
 
   | otherwise  -- No new seeds, so return nullUsage
@@ -1697,7 +1693,7 @@ specConstrCalls env
                 spec_info@(SI specs spec_count mb_unspec)
                 rules_for_me
                  all_calls
-  =  pprTrace "specialise entry {" (ppr fn <+> ppr all_calls) $
+  =  -- pprTrace "specialise entry {" (ppr fn <+> ppr all_calls) $
     do  { (boring_call, all_pats) <- callsToPats env specs arg_occs all_calls
                 -- Bale out if too many specialisations
         ; let pats = filter (is_small_enough . fst) all_pats
@@ -1728,7 +1724,7 @@ specConstrCalls env
                               else text "Use -dppr-debug to see specialisations"
 
             _normal_case -> do {
-
+{-
         ; if (not (null pats) || isJust mb_unspec) then
             pprTrace "specialise" (vcat [ ppr fn <+> text "with" <+> int (length pats) <+> text "good patterns"
                                         , text "mb_unspec" <+> ppr (isJust mb_unspec)
@@ -1736,6 +1732,7 @@ specConstrCalls env
                                         , text "good pats" <+> ppr pats])  $
                return ()
           else return ()
+          -}
 
         ; let spec_env = decreaseSpecCount env n_pats
         ; (spec_usgs, new_specs) <- unzip <$> mapMaybeM (spec_one spec_env rules_for_me fn arg_bndrs body)
@@ -2013,10 +2010,11 @@ callsToPats env done_specs bndr_occs calls
               done_pats = [p | OS p _ _ _ <- done_specs]
               is_done p = any (samePat p) done_pats
               no_recursive = map fst (filterOut (is_too_recursive env) good_pats)
-
+{-
          ; pprTrace "callsToPats" (vcat [ text "calls:" <+> ppr calls
                                        , text "good_pats:" <+> ppr good_pats
                                        , text "no_recursive:" <+> ppr no_recursive ])  (return ())
+                                       -}
           ; return (any isNothing mb_pats,
                     filterOut is_done (nubBy samePat no_recursive)) }
 
