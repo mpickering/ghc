@@ -508,6 +508,7 @@ data GeneralFlag
    | Opt_DeferTypedHoles
    | Opt_DeferOutOfScopeVariables
    | Opt_PIC
+   | Opt_PICExecutable
    | Opt_SccProfilingOn
    | Opt_Ticky
    | Opt_Ticky_Allocd
@@ -2648,6 +2649,8 @@ dynamic_flags_deps = [
 #endif
   , make_ord_flag defGhcFlag "relative-dynlib-paths"
       (NoArg (setGeneralFlag Opt_RelativeDynlibPaths))
+  , make_ord_flag defGhcFlag "pie"            (NoArg (setGeneralFlag Opt_PICExecutable))
+  , make_ord_flag defGhcFlag "no-pie"         (NoArg (unSetGeneralFlag Opt_PICExecutable))
 
         ------- Specific phases  --------------------------------------------
     -- need to appear before -pgmL to be parsed as LLVM flags.

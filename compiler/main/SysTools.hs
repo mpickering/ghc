@@ -8,7 +8,7 @@
 -----------------------------------------------------------------------------
 -}
 
-{-# LANGUAGE CPP, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, MultiWayIf, ScopedTypeVariables #-}
 
 module SysTools (
         -- Initialisation
@@ -28,6 +28,7 @@ module SysTools (
 
         getLinkerInfo,
         getCompilerInfo,
+        pieFlags,
 
         linkDynLib,
 
@@ -1573,6 +1574,13 @@ are producing an executable. Consequently, we must manually pass -no-pie to gcc
 when joining object files or linking dynamic libraries. See #12759.
 -}
 
+pieFlags :: DynFlags -> [String]
+pieFlags dflags
+  | gopt Opt_PICExecutable dflags       = ["-pie"]
+    -- See Note [No PIE eating when linking]
+  | sGccSupportsNoPie (settings dflags) = ["-no-pie"]
+  | otherwise                           = []
+
 linkDynLib :: DynFlags -> [String] -> [InstalledUnitId] -> IO ()
 linkDynLib dflags0 o_files dep_packages
  = do
@@ -1738,10 +1746,7 @@ linkDynLib dflags0 o_files dep_packages
                  ++ [ Option "-o"
                     , FileOption "" output_fn
                     ]
-                    -- See Note [No PIE eating when linking]
-                 ++ (if sGccSupportsNoPie (settings dflags)
-                     then [Option "-no-pie"]
-                     else [])
+                 ++ map Option (pieFlags dflags)
                  ++ map Option o_files
                  ++ [ Option "-shared" ]
                  ++ map Option bsymbolicFlag
