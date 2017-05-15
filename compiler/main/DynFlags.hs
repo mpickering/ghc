@@ -1723,7 +1723,7 @@ defaultDynFlags mySettings myLlvmTargets =
 
         maxWorkerArgs = 10,
 
-        maxCprDepth = 3,
+        maxCprDepth = 4,
 
         ghciHistSize = 50, -- keep a log of length 50 by default
 
