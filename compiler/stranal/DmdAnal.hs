@@ -273,7 +273,7 @@ dmdAnal' env dmd (Case scrut case_bndr ty [(DataAlt dc, bndrs, rhs)])
 
         -- Compute demand on the scrutinee
         -- See Note [Demand on scrutinee of a product case]
-        scrut_dmd          = mkProdDmd (addDataConStrictness dc id_dmds)
+        scrut_dmd          = mkProdDmd id_dmds
         (scrut_ty, scrut') = dmdAnal env scrut_dmd scrut
         res_ty             = alt_ty3 `bothDmdType` toBothDmdArg scrut_ty
         case_bndr'         = setIdDemandInfo case_bndr case_bndr_dmd
@@ -521,11 +521,27 @@ dmdTransform env var dmd
   = -- pprTrace "dmdTransform" (vcat [ppr var, ppr sig, ppr dmd, ppr fn_ty]) $
     if isTopLevel top_lvl
     then fn_ty   -- Don't record top level things
-    else addVarDmd fn_ty var (mkOnceUsedDmd dmd)
+    else addVarDmd fn_ty var (mkOnceUsedDmd' env (idType var) dmd)
 
   | otherwise                                    -- Local non-letrec-bound thing
-  = DmdType (unitVarEnv var (mkOnceUsedDmd dmd)) [] $
+  = DmdType (unitVarEnv var (mkOnceUsedDmd' env (idType var) dmd)) [] $
       if isUnliftedType (idType var) then convRes else topRes
+
+----------------
+
+-- | Make a use-once demand, possibly with deep strictness demand in case of a
+-- product type with strictness annotations.
+mkOnceUsedDmd' :: AnalEnv -> Type -> CleanDemand -> Demand
+mkOnceUsedDmd' env ty0 dmd = mkOnceUsedDmd dmd `bothDmd` additionalDmd ty0
+  where
+    additionalDmd ty
+      | Just (_, _, arg_tys, _)
+        <- deepSplitProductType_maybe (ae_fam_envs env) ty
+      = mkNeverUsedDmd $ mkProdDmd $ map fieldDmd arg_tys
+      | otherwise = strictFieldDmd
+
+    fieldDmd (ty, MarkedStrict) = additionalDmd ty
+    fieldDmd (_, NotMarkedStrict) = absDmd
 
 ----------------
 dmdAnalApp :: AnalEnv -> CleanDemand -> CoreExpr
@@ -1358,17 +1374,6 @@ extendEnvForProdAltVar env scrut_var case_bndr dc bndrs
 
     ids           = filter isId bndrs
     case_bndr_sig = cprProdSig (maxCprDepth (ae_dflags env)) results
-
-addDataConStrictness :: DataCon -> [Demand] -> [Demand]
--- See Note [Add demands for strict constructors]
-addDataConStrictness con ds
-  = ASSERT2( equalLength strs ds, ppr con $$ ppr strs $$ ppr ds )
-    zipWith add ds strs
-  where
-    strs = dataConRepStrictness con
-    add dmd str | isMarkedStrict str
-                , not (isAbsDmd dmd) = dmd `bothDmd` seqDmd
-                | otherwise          = dmd
 
 findBndrsDmds :: AnalEnv -> DmdType -> [Var] -> (DmdType, [Demand])
 -- Return the demands on the Ids in the [Var]

@@ -11,9 +11,10 @@ module Demand (
         StrDmd, UseDmd(..), Count,
 
         Demand, CleanDemand, getStrDmd, getUseDmd,
-        mkProdDmd, mkOnceUsedDmd, mkManyUsedDmd, mkHeadStrict, oneifyDmd,
+        mkProdDmd, mkOnceUsedDmd, mkManyUsedDmd, mkNeverUsedDmd,
+        mkHeadStrict, oneifyDmd,
         toCleanDmd,
-        absDmd, topDmd, botDmd, seqDmd,
+        absDmd, topDmd, botDmd, seqDmd, strictFieldDmd,
         lubDmd, bothDmd,
         lazyApply1Dmd, lazyApply2Dmd, strictApply1Dmd,
         catchArgDmd,
@@ -719,9 +720,10 @@ bothCleanDmd (JD { sd = s1, ud = a1}) (JD { sd = s2, ud = a2})
 mkHeadStrict :: CleanDemand -> CleanDemand
 mkHeadStrict cd = cd { sd = HeadStr }
 
-mkOnceUsedDmd, mkManyUsedDmd :: CleanDemand -> Demand
+mkOnceUsedDmd, mkManyUsedDmd, mkNeverUsedDmd :: CleanDemand -> Demand
 mkOnceUsedDmd (JD {sd = s,ud = a}) = JD { sd = Str VanStr s, ud = Use One a }
 mkManyUsedDmd (JD {sd = s,ud = a}) = JD { sd = Str VanStr s, ud = Use Many a }
+mkNeverUsedDmd (JD {sd = s})       = JD { sd = Str VanStr s, ud = Abs }
 
 splitProdCleanDmd :: Arity -> CleanDemand -> Maybe [Demand]
 splitProdCleanDmd arity (JD {sd = s,ud = u}) = do
@@ -810,6 +812,9 @@ botDmd = JD { sd = strBot, ud = useBot }
 
 seqDmd :: Demand
 seqDmd = JD { sd = Str VanStr HeadStr, ud = Use One UHead }
+
+strictFieldDmd :: Demand
+strictFieldDmd = JD { sd = Str VanStr HeadStr, ud = Abs }
 
 oneifyDmd :: Demand -> Demand
 oneifyDmd (JD { sd = s, ud = Use _ a }) = JD { sd = s, ud = Use One a }
