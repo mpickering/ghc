@@ -875,7 +875,7 @@ for example).
 
     This instructs the linker to produce a position-independent executable.
     This flag is only valid while producing executables and all object code
-    being linked must have been produced with :ghc-flag:`-fPIC`.
+    being linked must have been produced with :ghc-flag:`-fPIE`.
 
     Position independent executables are required by some platforms as they
     enable address-space layout randomization (ASLR), a common security measure.

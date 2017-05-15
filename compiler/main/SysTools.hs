@@ -28,7 +28,6 @@ module SysTools (
 
         getLinkerInfo,
         getCompilerInfo,
-        pieFlags,
 
         linkDynLib,
 
@@ -1564,22 +1563,6 @@ linesPlatform xs =
    lineBreak (x:xs) = let (as,bs) = lineBreak xs in (x:as,bs)
 
 #endif
-
-{-
-Note [No PIE eating while linking]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-As of 2016 some Linux distributions (e.g. Debian) have started enabling -pie by
-default in their gcc builds. This is incompatible with -r as it implies that we
-are producing an executable. Consequently, we must manually pass -no-pie to gcc
-when joining object files or linking dynamic libraries. See #12759.
--}
-
-pieFlags :: DynFlags -> [String]
-pieFlags dflags
-  | gopt Opt_PICExecutable dflags       = ["-pie"]
-    -- See Note [No PIE eating when linking]
-  | sGccSupportsNoPie (settings dflags) = ["-no-pie"]
-  | otherwise                           = []
 
 linkDynLib :: DynFlags -> [String] -> [InstalledUnitId] -> IO ()
 linkDynLib dflags0 o_files dep_packages
