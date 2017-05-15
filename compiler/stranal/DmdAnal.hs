@@ -584,7 +584,6 @@ dmdAnalVarApp env dmd fun args
   | Just con <- isDataConWorkId_maybe fun  -- Data constructor
   , isVanillaDataCon con
   , n_val_args == dataConRepArity con      -- Saturated
-  , dataConRepArity con > 0
   , dataConRepArity con < 10
   , Just cxt_ds <- splitProdCleanDmd n_val_args dmd
   , let cpr_info
