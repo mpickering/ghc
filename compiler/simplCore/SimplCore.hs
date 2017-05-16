@@ -19,7 +19,7 @@ import Rules            ( mkRuleBase, unionRuleBase,
 import PprCore          ( pprCoreBindings, pprCoreExpr )
 import OccurAnal        ( occurAnalysePgm, occurAnalyseExpr )
 import IdInfo
-import CoreStats        ( coreBindsSize, coreBindsStats, exprSize )
+import CoreStats        ( coreBindsStats, exprSize )
 import CoreUtils        ( mkTicks, stripTicksTop )
 import CoreLint         ( endPass, lintPassResult, dumpPassResult,
                           lintAnnots )
@@ -707,7 +707,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
 
       -- Try and force thunks off the binds; significantly reduces
       -- space usage, especially with -O.  JRS, 000620.
-      | let sz = coreBindsSize binds
+      | let sz = 10000000
       , () <- sz `seq` ()     -- Force it
       = do {
                 -- Occurrence analysis
