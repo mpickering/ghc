@@ -27,6 +27,7 @@ f = \ (@ a) _ [Occ=Dead] -> T13143.$wf @ a GHC.Prim.void#
 T13143.$trModule4 :: GHC.Prim.Addr#
 [GblId,
  Caf=NoCafRefs,
+ Str=t,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 20 0}]
 T13143.$trModule4 = "main"#
@@ -35,7 +36,7 @@ T13143.$trModule4 = "main"#
 T13143.$trModule3 :: GHC.Types.TrName
 [GblId,
  Caf=NoCafRefs,
- Str=m1,
+ Str=tm1,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
 T13143.$trModule3 = GHC.Types.TrNameS T13143.$trModule4
@@ -44,6 +45,7 @@ T13143.$trModule3 = GHC.Types.TrNameS T13143.$trModule4
 T13143.$trModule2 :: GHC.Prim.Addr#
 [GblId,
  Caf=NoCafRefs,
+ Str=t,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 30 0}]
 T13143.$trModule2 = "T13143"#
@@ -52,7 +54,7 @@ T13143.$trModule2 = "T13143"#
 T13143.$trModule1 :: GHC.Types.TrName
 [GblId,
  Caf=NoCafRefs,
- Str=m1,
+ Str=tm1,
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 20}]
 T13143.$trModule1 = GHC.Types.TrNameS T13143.$trModule2
@@ -61,7 +63,7 @@ T13143.$trModule1 = GHC.Types.TrNameS T13143.$trModule2
 T13143.$trModule :: GHC.Types.Module
 [GblId,
  Caf=NoCafRefs,
- Str=m,
+ Str=tm(tm1,tm1),
  Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 30}]
 T13143.$trModule
@@ -97,7 +99,7 @@ end Rec }
 g [InlPrag=NOUSERINLINE[0]] :: Bool -> Bool -> Int -> Int
 [GblId,
  Arity=3,
- Str=<S,1*U><S,1*U><S(S),1*U(U)>m,
+ Str=<S,1*U><S,1*U><S(S),1*U(U)>m(t),
  Unf=Unf{Src=InlineStable, TopLvl=True, Value=True, ConLike=True,
          WorkFree=True, Expandable=True,
          Guidance=ALWAYS_IF(arity=3,unsat_ok=True,boring_ok=False)

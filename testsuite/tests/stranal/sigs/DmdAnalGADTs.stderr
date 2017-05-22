@@ -1,8 +1,8 @@
 
 ==================== Strictness signatures ====================
-DmdAnalGADTs.$tc'A: tm(t,t,tm(tm1,tm1),tm1)
-DmdAnalGADTs.$tc'B: tm(t,t,tm(tm1,tm1),tm1)
-DmdAnalGADTs.$tcD: tm(t,t,tm(tm1,tm1),tm1)
+DmdAnalGADTs.$tc'A: tm(t,t,tm(tm1,tm1),tm1,t,tm1)
+DmdAnalGADTs.$tc'B: tm(t,t,tm(tm1,tm1),tm1,t,tm1)
+DmdAnalGADTs.$tcD: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
 DmdAnalGADTs.$trModule: tm(tm1,tm1)
 DmdAnalGADTs.diverges: b
 DmdAnalGADTs.f: <S,1*U>
@@ -14,9 +14,9 @@ DmdAnalGADTs.hasStrSig: <S,1*U(U)>m()
 
 
 ==================== Strictness signatures ====================
-DmdAnalGADTs.$tc'A: tm(t,t,tm(tm1,tm1),tm1)
-DmdAnalGADTs.$tc'B: tm(t,t,tm(tm1,tm1),tm1)
-DmdAnalGADTs.$tcD: tm(t,t,tm(tm1,tm1),tm1)
+DmdAnalGADTs.$tc'A: tm(t,t,tm(tm1,tm1),tm1,t,tm1)
+DmdAnalGADTs.$tc'B: tm(t,t,tm(tm1,tm1),tm1,t,tm1)
+DmdAnalGADTs.$tcD: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
 DmdAnalGADTs.$trModule: tm(tm1,tm1)
 DmdAnalGADTs.diverges: b
 DmdAnalGADTs.f: <S,1*U>

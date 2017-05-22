@@ -1,20 +1,20 @@
 
 ==================== Strictness signatures ====================
-InfiniteCPR.$tc'Bar: tm(t,t,tm(tm1,tm1),tm1)
-InfiniteCPR.$tc'Foo: tm(t,t,tm(tm1,tm1),tm1)
-InfiniteCPR.$tcRec1: tm(t,t,tm(tm1,tm1),tm1)
-InfiniteCPR.$tcRec2: tm(t,t,tm(tm1,tm1),tm1)
+InfiniteCPR.$tc'Bar: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
+InfiniteCPR.$tc'Foo: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
+InfiniteCPR.$tcRec1: tm(t,t,tm(tm1,tm1),tm1,t,tm5)
+InfiniteCPR.$tcRec2: tm(t,t,tm(tm1,tm1),tm1,t,tm5)
 InfiniteCPR.$trModule: tm(tm1,tm1)
-InfiniteCPR.f: <L,U>m(,tm(m(,),m(,)))
+InfiniteCPR.f: <L,U>m(,tm(m(,tm(,)),m(,tm(,))))
 
 
 
 ==================== Strictness signatures ====================
-InfiniteCPR.$tc'Bar: tm(t,t,tm(tm1,tm1),tm1)
-InfiniteCPR.$tc'Foo: tm(t,t,tm(tm1,tm1),tm1)
-InfiniteCPR.$tcRec1: tm(t,t,tm(tm1,tm1),tm1)
-InfiniteCPR.$tcRec2: tm(t,t,tm(tm1,tm1),tm1)
+InfiniteCPR.$tc'Bar: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
+InfiniteCPR.$tc'Foo: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
+InfiniteCPR.$tcRec1: tm(t,t,tm(tm1,tm1),tm1,t,tm5)
+InfiniteCPR.$tcRec2: tm(t,t,tm(tm1,tm1),tm1,t,tm5)
 InfiniteCPR.$trModule: tm(tm1,tm1)
-InfiniteCPR.f: <L,U>m(,tm(m(,),m(,)))
+InfiniteCPR.f: <L,U>m(,tm(m(,tm(,)),m(,tm(,))))
 
 

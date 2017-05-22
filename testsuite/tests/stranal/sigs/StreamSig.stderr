@@ -1,16 +1,16 @@
 
 ==================== Strictness signatures ====================
-StreamSig.$tc'Stream: tm(t,t,tm(tm1,tm1),tm1)
-StreamSig.$tcStream: tm(t,t,tm(tm1,tm1),tm1)
+StreamSig.$tc'Stream: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
+StreamSig.$tcStream: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
 StreamSig.$trModule: tm(tm1,tm1)
-StreamSig.forever: <L,U>tm(,m(,m(,)))
+StreamSig.forever: <L,U>tm(,m(,m(,m(,))))
 
 
 
 ==================== Strictness signatures ====================
-StreamSig.$tc'Stream: tm(t,t,tm(tm1,tm1),tm1)
-StreamSig.$tcStream: tm(t,t,tm(tm1,tm1),tm1)
+StreamSig.$tc'Stream: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
+StreamSig.$tcStream: tm(t,t,tm(tm1,tm1),tm1,t,tm4)
 StreamSig.$trModule: tm(tm1,tm1)
-StreamSig.forever: <L,U>tm(,m(,m(,)))
+StreamSig.forever: <L,U>tm(,m(,m(,m(,))))
 
 
