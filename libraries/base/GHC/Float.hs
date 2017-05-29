@@ -565,6 +565,7 @@ instance  RealFloat Double  where
     floatDigits _       =  DBL_MANT_DIG     -- ditto
     floatRange _        =  (DBL_MIN_EXP, DBL_MAX_EXP) -- ditto
 
+    {-# INLINE decodeFloat #-}
     decodeFloat (D# x#)
       = case decodeDoubleInteger x#   of
           (# i, j #) -> (i, I# j)
