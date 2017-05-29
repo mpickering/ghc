@@ -7,8 +7,9 @@ foo (Right x) = Right x
 foo _ = Left True
 {-# NOINLINE foo #-}
 
-bar :: a -> (Either Int a, Either Bool a)
-bar x = (Right x, Right x)
+bar :: a -> [(Either Int a, Either Bool a)]
+-- The use of a list prevents CPR.
+bar x = [(Right x, Right x)]
 {-# NOINLINE bar #-}
 
 nested :: Either Int (Either Int a) -> Either Bool (Either Bool a)
@@ -37,11 +38,11 @@ rec2 x =
 {-# NOINLINE rec2 #-}
 
 test x = do
-    let (r1,r2) = bar x
+    let [(r1,r2)] = bar x
     (same $! r1) $! r2
     let r3 = foo r1
     (same $! r1) $! r3
-    let (r4,_) = bar r1
+    let [(r4,_)] = bar r1
     let r5 = nested r4
     (same $! r4) $! r5
     let (T _ r6 r7) = rec1 x
