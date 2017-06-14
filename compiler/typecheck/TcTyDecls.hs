@@ -845,7 +845,9 @@ mkOneRecordSelector all_cons idDetails fl
 
     -- Selector type; Note [Polymorphic selectors]
     field_ty   = conLikeFieldType con1 lbl
-    data_tvs   = tyCoVarsOfTypeWellScoped data_ty
+    data_tvs   =
+      let (univ_tvs, _, _, _, _, _, _) = conLikeFullSig con1
+      in toposortTyVars univ_tvs
     data_tv_set= mkVarSet data_tvs
     is_naughty = not (tyCoVarsOfType field_ty `subVarSet` data_tv_set)
     (field_tvs, field_theta, field_tau) = tcSplitSigmaTy field_ty

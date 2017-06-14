@@ -633,22 +633,24 @@ the forkM stuff.
 -}
 
 tcIfaceDecl :: Bool     -- ^ True <=> discard IdInfo on IfaceId bindings
+            -> Maybe Fingerprint
             -> IfaceDecl
             -> IfL TyThing
 tcIfaceDecl = tc_iface_decl Nothing
 
 tc_iface_decl :: Maybe Class  -- ^ For associated type/data family declarations
               -> Bool         -- ^ True <=> discard IdInfo on IfaceId bindings
+              -> Maybe Fingerprint
               -> IfaceDecl
               -> IfL TyThing
-tc_iface_decl _ ignore_prags (IfaceId {ifName = name, ifType = iface_type,
+tc_iface_decl _ ignore_prags fp (IfaceId {ifName = name, ifType = iface_type,
                                        ifIdDetails = details, ifIdInfo = info})
   = do  { ty <- tcIfaceType iface_type
         ; details <- tcIdDetails ty details
-        ; info <- tcIdInfo ignore_prags name ty info
+        ; info <- tcIdInfo ignore_prags name ty fp info
         ; return (AnId (mkGlobalId details name ty info)) }
 
-tc_iface_decl _ _ (IfaceData {ifName = tc_name,
+tc_iface_decl _ _ _ (IfaceData {ifName = tc_name,
                           ifCType = cType,
                           ifBinders = binders,
                           ifResKind = res_kind,
@@ -680,7 +682,7 @@ tc_iface_decl _ _ (IfaceData {ifName = tc_name,
            ; lhs_tys <- tcIfaceTcArgs arg_tys
            ; return (DataFamInstTyCon ax_unbr fam_tc lhs_tys) }
 
-tc_iface_decl _ _ (IfaceSynonym {ifName = tc_name,
+tc_iface_decl _ _ _ (IfaceSynonym {ifName = tc_name,
                                       ifRoles = roles,
                                       ifSynRhs = rhs_ty,
                                       ifBinders = binders,
@@ -694,7 +696,7 @@ tc_iface_decl _ _ (IfaceSynonym {ifName = tc_name,
    where
      mk_doc n = text "Type synonym" <+> ppr n
 
-tc_iface_decl parent _ (IfaceFamily {ifName = tc_name,
+tc_iface_decl parent _ _ (IfaceFamily {ifName = tc_name,
                                      ifFamFlav = fam_flav,
                                      ifBinders = binders,
                                      ifResKind = res_kind,
@@ -723,7 +725,7 @@ tc_iface_decl parent _ (IfaceFamily {ifName = tc_name,
          = pprPanic "tc_iface_decl"
                     (text "IfaceBuiltInSynFamTyCon in interface file")
 
-tc_iface_decl _parent _ignore_prags
+tc_iface_decl _parent _ignore_prags _
             (IfaceClass {ifName = tc_name,
                          ifRoles = roles,
                          ifBinders = binders,
@@ -734,7 +736,7 @@ tc_iface_decl _parent _ignore_prags
     ; cls  <- buildClass tc_name binders' roles fds Nothing
     ; return (ATyCon (classTyCon cls)) }
 
-tc_iface_decl _parent ignore_prags
+tc_iface_decl _parent ignore_prags _
             (IfaceClass {ifName = tc_name,
                          ifRoles = roles,
                          ifBinders = binders,
@@ -788,7 +790,7 @@ tc_iface_decl _parent ignore_prags
              ; return (Just (GenericDM (noSrcSpan, ty'))) }
 
    tc_at cls (IfaceAT tc_decl if_def)
-     = do ATyCon tc <- tc_iface_decl (Just cls) ignore_prags tc_decl
+     = do ATyCon tc <- tc_iface_decl (Just cls) ignore_prags Nothing tc_decl
           mb_def <- case if_def of
                       Nothing  -> return Nothing
                       Just def -> forkM (mk_at_doc tc)                 $
@@ -804,7 +806,7 @@ tc_iface_decl _parent ignore_prags
    mk_at_doc tc = text "Associated type" <+> ppr tc
    mk_op_doc op_name op_ty = text "Class op" <+> sep [ppr op_name, ppr op_ty]
 
-tc_iface_decl _ _ (IfaceAxiom { ifName = tc_name, ifTyCon = tc
+tc_iface_decl _ _ _ (IfaceAxiom { ifName = tc_name, ifTyCon = tc
                               , ifAxBranches = branches, ifRole = role })
   = do { tc_tycon    <- tcIfaceTyCon tc
        ; tc_branches <- tc_ax_branches branches
@@ -816,7 +818,7 @@ tc_iface_decl _ _ (IfaceAxiom { ifName = tc_name, ifTyCon = tc
                              , co_ax_implicit = False }
        ; return (ACoAxiom axiom) }
 
-tc_iface_decl _ _ (IfacePatSyn{ ifName = name
+tc_iface_decl _ _ _ (IfacePatSyn{ ifName = name
                               , ifPatMatcher = if_matcher
                               , ifPatBuilder = if_builder
                               , ifPatIsInfix = is_infix
@@ -1433,7 +1435,7 @@ tcIfaceExpr (IfaceLet (IfaceNonRec (IfLetBndr fs ty info ji) rhs) body)
   = do  { name    <- newIfaceName (mkVarOccFS fs)
         ; ty'     <- tcIfaceType ty
         ; id_info <- tcIdInfo False {- Don't ignore prags; we are inside one! -}
-                              name ty' info
+                              name ty' Nothing info
         ; let id = mkLocalIdOrCoVarWithInfo name ty' id_info
                      `asJoinId_maybe` tcJoinInfo ji
         ; rhs' <- tcIfaceExpr rhs
@@ -1454,7 +1456,7 @@ tcIfaceExpr (IfaceLet (IfaceRec pairs) body)
    tc_pair (IfLetBndr _ _ info _, rhs) id
      = do { rhs' <- tcIfaceExpr rhs
           ; id_info <- tcIdInfo False {- Don't ignore prags; we are inside one! -}
-                                (idName id) (idType id) info
+                                (idName id) (idType id) Nothing info
           ; return (setIdInfo id id_info, rhs') }
 
 tcIfaceExpr (IfaceTick tickish expr) = do
@@ -1538,20 +1540,20 @@ tcIdDetails ty IfDFunId
 
 tcIdDetails _ (IfRecSelId tc naughty)
   = do { tc' <- either (fmap RecSelData . tcIfaceTyCon)
-                       (fmap (RecSelPatSyn . tyThingPatSyn) . tcIfaceDecl False)
+                       (fmap (RecSelPatSyn . tyThingPatSyn) . tcIfaceDecl False Nothing)
                        tc
        ; return (RecSelId { sel_tycon = tc', sel_naughty = naughty }) }
   where
     tyThingPatSyn (AConLike (PatSynCon ps)) = ps
     tyThingPatSyn _ = panic "tcIdDetails: expecting patsyn"
 
-tcIdInfo :: Bool -> Name -> Type -> IfaceIdInfo -> IfL IdInfo
-tcIdInfo ignore_prags name ty info = do
+tcIdInfo :: Bool -> Name -> Type -> Maybe Fingerprint -> IfaceIdInfo -> IfL IdInfo
+tcIdInfo ignore_prags name ty fp info = do
     lcl_env <- getLclEnv
     -- Set the CgInfo to something sensible but uninformative before
     -- we start; default assumption is that it has CAFs
     let init_info | if_boot lcl_env = vanillaIdInfo `setUnfoldingInfo` BootUnfolding
-                  | otherwise       = vanillaIdInfo
+                  | otherwise       = vanillaIdInfo `setFingerprintInfo` fp
     if ignore_prags
         then return init_info
         else case info of

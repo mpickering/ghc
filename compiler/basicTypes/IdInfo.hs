@@ -77,7 +77,10 @@ module IdInfo (
 
         -- ** Levity info
         LevityInfo, levityInfo, setNeverLevPoly, setLevityInfoWithType,
-        isNeverLevPolyIdInfo
+        isNeverLevPolyIdInfo,
+
+        -- ** Fingerprint info
+        setFingerprintInfo, fingerprintInfo
     ) where
 
 #include "HsVersions.h"
@@ -98,6 +101,7 @@ import Outputable
 import Module
 import Demand
 import Util
+import GHC.Fingerprint
 
 -- infixl so you can say (id `set` a `set` b)
 infixl  1 `setRuleInfo`,
@@ -110,7 +114,8 @@ infixl  1 `setRuleInfo`,
           `setStrictnessInfo`,
           `setDemandInfo`,
           `setNeverLevPoly`,
-          `setLevityInfoWithType`
+          `setLevityInfoWithType`,
+          `setFingerprintInfo`
 
 {-
 ************************************************************************
@@ -250,8 +255,10 @@ data IdInfo
         callArityInfo   :: !ArityInfo,   -- ^ How this is called.
                                          -- n <=> all calls have at least n arguments
 
-        levityInfo      :: LevityInfo    -- ^ when applied, will this Id ever have a levity-polymorphic type?
+        levityInfo      :: LevityInfo,    -- ^ when applied, will this Id ever have a levity-polymorphic type?
+        fingerprintInfo :: Maybe Fingerprint
     }
+
 
 -- Setters
 
@@ -270,6 +277,9 @@ setUnfoldingInfo info uf
     -- waste of time.
     -- seqUnfolding uf `seq`
     info { unfoldingInfo = uf }
+
+setFingerprintInfo :: IdInfo -> Maybe Fingerprint -> IdInfo
+setFingerprintInfo info fp = info { fingerprintInfo = fp }
 
 setArityInfo :: IdInfo -> ArityInfo -> IdInfo
 setArityInfo      info ar  = info { arityInfo = ar  }
@@ -301,7 +311,8 @@ vanillaIdInfo
             demandInfo          = topDmd,
             strictnessInfo      = nopSig,
             callArityInfo       = unknownArity,
-            levityInfo          = NoLevityInfo
+            levityInfo          = NoLevityInfo,
+            fingerprintInfo         = Nothing
            }
 
 -- | More informative 'IdInfo' we can use when we know the 'Id' has no CAF references

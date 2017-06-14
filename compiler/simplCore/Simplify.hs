@@ -52,6 +52,8 @@ import Pair
 import Util
 import ErrUtils
 import Module          ( moduleName, pprModuleName )
+import VarEnv
+import Control.Applicative ( (<|>) )
 
 {-
 The guts of the simplifier is in this module, but the driver loop for
@@ -1719,10 +1721,13 @@ completeCall :: SimplEnv -> OutId -> SimplCont -> SimplM (SimplEnv, OutExpr)
 completeCall env var cont
   = do  {   ------------- Try inlining ----------------
           dflags <- getDynFlags
+        ; unf_env <- getUnfEnv
         ; let  (lone_variable, arg_infos, call_cont) = contArgs cont
                n_val_args = length arg_infos
                interesting_cont = interestingCallContext call_cont
                unfolding    = activeUnfolding env var
+               -- First lookup in the cache
+               opt = lookupVarEnv unf_env var
                maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
         ; case maybe_inline of
@@ -1730,6 +1735,8 @@ completeCall env var cont
               ->  do { checkedTick (UnfoldingDone var)
                      ; dump_inline dflags expr cont
                      ; simplExprF (zapSubstEnv env) expr cont }
+                     --; pprTrace "e" (ppr var <+> ppr (snd e) <+> ppr cont) (return ())
+                     -- ; return e }
 
             ; Nothing -> do { rule_base <- getSimplRules
                             ; let info = mkArgInfo var (getRules rule_base var)
