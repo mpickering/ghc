@@ -10,8 +10,9 @@ import CoreSyn     ( CoreRule )
 import HscTypes    ( TypeEnv, VectInfo, IfaceVectInfo, CompleteMatch )
 import Module      ( Module )
 import Annotations ( Annotation )
+import GHC.Fingerprint ( Fingerprint )
 
-tcIfaceDecl         :: Bool -> IfaceDecl -> IfL TyThing
+tcIfaceDecl         :: Bool -> Maybe Fingerprint -> IfaceDecl -> IfL TyThing
 tcIfaceRules        :: Bool -> [IfaceRule] -> IfL [CoreRule]
 tcIfaceVectInfo     :: Module -> TypeEnv -> IfaceVectInfo -> IfL VectInfo
 tcIfaceInst         :: IfaceClsInst -> IfL ClsInst

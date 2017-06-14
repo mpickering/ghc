@@ -8,7 +8,7 @@ module SimplMonad (
         -- The monad
         SimplM,
         initSmpl, traceSmpl,
-        getSimplRules, getFamEnvs,
+        getSimplRules, getFamEnvs, getUnfEnv,
 
         -- Unique supply
         MonadUnique(..), newId, newJoinId,
@@ -25,7 +25,7 @@ import Id               ( Id, mkSysLocalOrCoVar )
 import IdInfo           ( IdDetails(..), vanillaIdInfo, setArityInfo )
 import Type             ( Type, mkLamTypes )
 import FamInstEnv       ( FamInstEnv )
-import CoreSyn          ( RuleEnv(..) )
+import CoreSyn          ( RuleEnv(..), CoreExpr )
 import UniqSupply
 import DynFlags
 import CoreMonad
@@ -35,6 +35,7 @@ import MonadUtils
 import ErrUtils
 import BasicTypes          ( IntWithInf, treatZeroAsInf, mkIntWithInf )
 import Control.Monad       ( when, liftM, ap )
+import VarEnv
 
 {-
 ************************************************************************
@@ -59,7 +60,13 @@ data SimplTopEnv
   = STE { st_flags     :: DynFlags
         , st_max_ticks :: IntWithInf  -- Max #ticks in this simplifier run
         , st_rules     :: RuleEnv
-        , st_fams      :: (FamInstEnv, FamInstEnv) }
+        , st_fams      :: (FamInstEnv, FamInstEnv)
+        , st_unfenv    :: UnfEnv  }
+
+type UnfEnv = IdEnv CoreExpr
+
+getUnfEnv :: SimplM (IdEnv CoreExpr)
+getUnfEnv = SM (\st_env us sc -> return (st_unfenv st_env, us, sc))
 
 initSmpl :: DynFlags -> RuleEnv -> (FamInstEnv, FamInstEnv)
          -> UniqSupply          -- No init count; set to 0
@@ -74,7 +81,8 @@ initSmpl dflags rules fam_envs us size m
   where
     env = STE { st_flags = dflags, st_rules = rules
               , st_max_ticks = computeMaxTicks dflags size
-              , st_fams = fam_envs }
+              , st_fams = fam_envs
+              , st_unfenv = emptyVarEnv }
 
 computeMaxTicks :: DynFlags -> Int -> IntWithInf
 -- Compute the max simplifier ticks as

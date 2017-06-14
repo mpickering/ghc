@@ -663,7 +663,7 @@ loadDecl :: Bool                    -- Don't load pragmas into the decl pool
           -> (Fingerprint, IfaceDecl)
           -> IfL [(Name,TyThing)]   -- The list can be poked eagerly, but the
                                     -- TyThings are forkM'd thunks
-loadDecl ignore_prags (_version, decl)
+loadDecl ignore_prags (version, decl)
   = do  {       -- Populate the name cache with final versions of all
                 -- the names associated with the decl
           let main_name = ifName decl
@@ -676,7 +676,7 @@ loadDecl ignore_prags (_version, decl)
         -- which includes its nameParent.
 
         ; thing <- forkM doc $ do { bumpDeclStats main_name
-                                  ; tcIfaceDecl ignore_prags decl }
+                                  ; tcIfaceDecl ignore_prags (Just version) decl }
 
         -- Populate the type environment with the implicitTyThings too.
         --
