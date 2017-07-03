@@ -49,6 +49,7 @@ essential to make this work well!
 -}
 
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
 module SAT ( doStaticArgs ) where
 
 import Var
@@ -85,9 +86,11 @@ doStaticArgs us binds = snd $ mapAccumL sat_bind_threaded_us us binds
 -- but we want to recurse into the others anyway to discover other binds
 satBind :: CoreBind -> IdSet -> SatM (CoreBind, IdSATInfo)
 satBind (NonRec binder expr) interesting_ids = do
+    pprTrace "NR:SATTING" (ppr binder) (return ())
     (expr', sat_info_expr, expr_app) <- satExpr expr interesting_ids
     return (NonRec binder expr', finalizeApp expr_app sat_info_expr)
 satBind (Rec [(binder, rhs)]) interesting_ids = do
+    pprTrace "SATTING" (ppr binder) (return ())
     let interesting_ids' = interesting_ids `addOneToUniqSet` binder
         (rhs_binders, rhs_body) = collectBinders rhs
     (rhs_body', sat_info_rhs_body) <- satTopLevelExpr rhs_body interesting_ids'
@@ -103,6 +106,7 @@ satBind (Rec [(binder, rhs)]) interesting_ids = do
                               rhs_binders rhs_body'
     return (bind', sat_info_rhs'')
 satBind (Rec pairs) interesting_ids = do
+    pprTrace "IGNORING" (ppr pairs) (return ())
     let (binders, rhss) = unzip pairs
     rhss_SATed <- mapM (\e -> satTopLevelExpr e interesting_ids) rhss
     let (rhss', sat_info_rhss') = unzip rhss_SATed
@@ -111,6 +115,9 @@ satBind (Rec pairs) interesting_ids = do
 data App = VarApp Id | TypeApp Type | CoApp Coercion
 data Staticness a = Static a | NotStatic
 
+instance (a ~ App) => Outputable (Staticness a) where
+  ppr = pprStaticness
+
 type IdAppInfo = (Id, SATInfo)
 
 type SATInfo = [Staticness App]
@@ -118,28 +125,28 @@ type IdSATInfo = IdEnv SATInfo
 emptyIdSATInfo :: IdSATInfo
 emptyIdSATInfo = emptyUFM
 
-{-
-pprIdSATInfo id_sat_info = vcat (map pprIdAndSATInfo (Map.toList id_sat_info))
+pprIdSATInfo id_sat_info = vcat (map pprIdAndSATInfo (nonDetUFMToList id_sat_info))
   where pprIdAndSATInfo (v, sat_info) = hang (ppr v <> colon) 4 (pprSATInfo sat_info)
--}
 
 pprSATInfo :: SATInfo -> SDoc
-pprSATInfo staticness = hcat $ map pprStaticness staticness
+pprSATInfo staticness = hsep $ map pprStaticness staticness
 
 pprStaticness :: Staticness App -> SDoc
-pprStaticness (Static (VarApp _))  = text "SV"
+pprStaticness (Static (VarApp v))  = text "SV:" <> ppr v
 pprStaticness (Static (TypeApp _)) = text "ST"
 pprStaticness (Static (CoApp _))   = text "SC"
 pprStaticness NotStatic            = text "NS"
 
 
 mergeSATInfo :: SATInfo -> SATInfo -> SATInfo
-mergeSATInfo l r = zipWith mergeSA l r
+mergeSATInfo l r =
+    pprTrace "mergeSatInfo" (ppr l <+> ppr r) $
+      zipWith mergeSA l r
   where
     mergeSA NotStatic _ = NotStatic
     mergeSA _ NotStatic = NotStatic
     mergeSA (Static (VarApp v)) (Static (VarApp v'))
-      | v == v'   = Static (VarApp v)
+      | v == v' = Static (VarApp v)
       | otherwise = NotStatic
     mergeSA (Static (TypeApp t)) (Static (TypeApp t'))
       | t `eqType` t' = Static (TypeApp t)
@@ -147,7 +154,9 @@ mergeSATInfo l r = zipWith mergeSA l r
     mergeSA (Static (CoApp c)) (Static (CoApp c'))
       | c `eqCoercion` c' = Static (CoApp c)
       | otherwise             = NotStatic
-    mergeSA _ _  = pprPanic "mergeSATInfo" $
+    mergeSA _ _  = -- NotStatic
+
+                 pprPanic "mergeSATInfo" $
                           text "Left:"
                        <> pprSATInfo l <> text ", "
                        <> text "Right:"
@@ -176,6 +185,10 @@ finalizeApp (Just (v, sat_info')) id_sat_info =
 satTopLevelExpr :: CoreExpr -> IdSet -> SatM (CoreExpr, IdSATInfo)
 satTopLevelExpr expr interesting_ids = do
     (expr', sat_info_expr, expr_app) <- satExpr expr interesting_ids
+    pprTrace "Expr:Before" (ppr expr) (return ())
+    pprTrace "Expr:After" (ppr expr') (return ())
+    pprTrace "Expr:After" (ppr expr_app) (return ())
+    pprTrace "satTopLevelExpr" (pprIdSATInfo sat_info_expr) (return ())
     return (expr', finalizeApp expr_app sat_info_expr)
 
 satExpr :: CoreExpr -> IdSet -> SatM (CoreExpr, IdSATInfo, Maybe IdAppInfo)
@@ -227,7 +240,10 @@ satExpr (Case expr bndr ty alts) interesting_ids = do
 
 satExpr (Let bind body) interesting_ids = do
     (body', sat_info_body, body_app) <- satExpr body interesting_ids
+    pprTrace "sa:Let" (ppr sat_info_body) (return ())
     (bind', sat_info_bind) <- satBind bind interesting_ids
+    pprTrace "sa:LetBind" (ppr sat_info_bind) (return ())
+    pprTrace "sa:Let:Merge" (ppr $ mergeIdSATInfo sat_info_body sat_info_bind) (return ())
     return (Let bind' body', mergeIdSATInfo sat_info_body sat_info_bind, body_app)
 
 satExpr (Tick tickish expr) interesting_ids = do
@@ -365,13 +381,15 @@ is not well typed.
 
 saTransformMaybe :: Id -> Maybe SATInfo -> [Id] -> CoreExpr -> SatM CoreBind
 saTransformMaybe binder maybe_arg_staticness rhs_binders rhs_body
+  | pprTrace "saTransformMaybe" (ppr binder <+> ppr maybe_arg_staticness) False
+  = undefined
   | Just arg_staticness <- maybe_arg_staticness
   , should_transform arg_staticness
   = saTransform binder arg_staticness rhs_binders rhs_body
   | otherwise
   = return (Rec [(binder, mkLams rhs_binders rhs_body)])
   where
-    should_transform staticness = n_static_args > 1 -- THIS IS THE DECISION POINT
+    should_transform staticness = n_static_args >= 1 -- THIS IS THE DECISION POINT
       where
         n_static_args = count isStaticValue staticness
 

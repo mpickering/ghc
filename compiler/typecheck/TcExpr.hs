@@ -9,6 +9,7 @@
 {-# LANGUAGE CPP, TupleSections, ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DisambiguateRecordFields #-}
 
 module TcExpr ( tcPolyExpr, tcMonoExpr, tcMonoExprNC,
                 tcInferSigma, tcInferSigmaNC, tcInferRho, tcInferRhoNC,
@@ -662,7 +663,7 @@ tcExpr (HsStatic fvs expr) res_ty
 tcExpr expr@(RecordCon { rcon_con_name = L loc con_name
                        , rcon_flds = rbinds }) res_ty
   = do  { con_like <- tcLookupConLike con_name
-
+        ; pprTrace "tcExpr" (ppr rbinds) (return ())
         -- Check for missing fields
         ; checkMissingFields con_like rbinds
 
@@ -1255,6 +1256,7 @@ tcArgs fun orig_fun_ty fun_orig orig_args herald
                     ; return ( inner_wrap <.> inst_wrap <.> wrap1
                              , Right hs_ty_arg : args'
                              , res_ty ) }
+--               _ | isUnboundName ->
                _ -> ty_app_err upsilon_ty hs_ty_arg }
 
     go acc_args n fun_ty (Left arg : args)
@@ -1277,7 +1279,7 @@ tcArgs fun orig_fun_ty fun_orig orig_args herald
       = do { (_, ty) <- zonkTidyTcType emptyTidyEnv ty
            ; failWith $
                text "Cannot apply expression of type" <+> quotes (ppr ty) $$
-               text "to a visible type argument" <+> quotes (ppr arg) }
+               text "to a visible type argument" <+> quotes (ppr arg) <+> ppr fun }
 
 ----------------
 tcArg :: LHsExpr GhcRn                   -- The function (for error messages)

@@ -582,6 +582,7 @@ specProgram guts@(ModGuts { mg_module = this_mod
 
              -- Specialise the bindings of this module
        ; (binds', uds) <- runSpecM dflags this_mod (go binds)
+       ; pprTrace "specProgam" (ppr uds) (return ())
 
              -- Specialise imported functions
        ; hpt_rules <- getRuleBase
@@ -880,7 +881,8 @@ specExpr env expr@(App {})
                                return (App fun' arg', uds_arg `plusUDs` uds_app)
 
     go (Var f)       args = case specVar env f of
-                                Var f' -> return (Var f', mkCallUDs env f' args)
+                                Var f' -> return (Var f',
+                                                   pprTrace "goVar" (ppr $ mkCallUDs env f' args) (mkCallUDs env f' args))
                                 e'     -> return (e', emptyUDs) -- I don't expect this!
     go other         _    = specExpr env other
 
@@ -1045,6 +1047,7 @@ specBind :: SpecEnv                     -- Use this for RHSs
 --    No calls for binders of this bind
 specBind rhs_env (NonRec fn rhs) body_uds
   = do { (rhs', rhs_uds) <- specExpr rhs_env rhs
+       ; pprTrace "rhs_uds" (ppr rhs_uds) (return ())
        ; (fn', spec_defns, body_uds1) <- specDefn rhs_env body_uds fn rhs
 
        ; let pairs = spec_defns ++ [(fn', rhs')]
@@ -1964,19 +1967,20 @@ mkCallUDs env f args
 mkCallUDs' env f args
   | not (want_calls_for f)  -- Imported from elsewhere
   || null theta             -- Not overloaded
-  = emptyUDs
+  = -- pprTrace "mkCallUDs: discarding1" _trace_doc
+    emptyUDs
 
   |  not (all type_determines_value theta)
   || not (spec_tys `lengthIs` n_tyvars)
   || not ( dicts   `lengthIs` n_dicts)
   || not (any (interestingDict env) dicts)    -- Note [Interesting dictionary arguments]
   -- See also Note [Specialisations already covered]
-  = -- pprTrace "mkCallUDs: discarding" _trace_doc
+  =  pprTrace "mkCallUDs: discarding" _trace_doc
     emptyUDs    -- Not overloaded, or no specialisation wanted
 
   | otherwise
   = -- pprTrace "mkCallUDs: keeping" _trace_doc
-    singleCall f spec_tys dicts
+    pprTrace "mkCallUDs: taking" _trace_doc (singleCall f spec_tys dicts)
   where
     _trace_doc = vcat [ppr f, ppr args, ppr n_tyvars, ppr n_dicts
                       , ppr (map (interestingDict env) dicts)]
@@ -2164,7 +2168,7 @@ dumpUDs :: [CoreBndr] -> UsageDetails -> (UsageDetails, Bag DictBind)
 -- Used at a lambda or case binder; just dump anything mentioning the binder
 dumpUDs bndrs uds@(MkUD { ud_binds = orig_dbs, ud_calls = orig_calls })
   | null bndrs = (uds, emptyBag)  -- Common in case alternatives
-  | otherwise  = -- pprTrace "dumpUDs" (ppr bndrs $$ ppr free_uds $$ ppr dump_dbs) $
+  | otherwise  = pprTrace "dumpUDs" (ppr bndrs $$ ppr free_uds $$ ppr dump_dbs) $
                  (free_uds, dump_dbs)
   where
     free_uds = MkUD { ud_binds = free_dbs, ud_calls = free_calls }

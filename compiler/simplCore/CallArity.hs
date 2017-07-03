@@ -19,6 +19,7 @@ import CoreUtils ( exprIsCheap, exprIsTrivial )
 import UnVarGraph
 import Demand
 import Util
+import Outputable
 
 import Control.Arrow ( first, second )
 
@@ -597,8 +598,8 @@ callArityBind boring_vars ae_body int (NonRec v rhs)
 -- Recursive let. See Note [Recursion and fixpointing]
 callArityBind boring_vars ae_body int b@(Rec binds)
   = -- (if length binds > 300 then
-    -- pprTrace "callArityBind:Rec"
-    --           (vcat [ppr (Rec binds'), ppr ae_body, ppr int, ppr ae_rhs]) else id) $
+     pprTrace "callArityBind:Rec"
+               (vcat [ppr (Rec binds'), ppr ae_body, ppr int, ppr ae_rhs]) $
     (final_ae, Rec binds')
   where
     -- See Note [Taking boring variables into account]
@@ -668,7 +669,7 @@ callArityRecEnv any_boring ae_rhss ae_body
   where
     vars = map fst ae_rhss
 
-    ae_combined = lubRess (map snd ae_rhss) `lubRes` ae_body
+    ae_combined = ae_body
 
     cross_calls
         -- See Note [Taking boring variables into account]
