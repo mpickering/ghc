@@ -374,6 +374,9 @@ $tab          { warnTab }
 }
 
 <0> {
+  ".<"         { token ITopenMLQuote }
+  ">."         { token ITcloseMLQuote }
+  ".~"         { token ITMLSplice }
   "[|"        / { ifExtension thQuotesEnabled } { token (ITopenExpQuote NoE
                                                                 NormalSyntax) }
   "[||"       / { ifExtension thQuotesEnabled } { token (ITopenTExpQuote NoE) }
@@ -744,6 +747,10 @@ data Token
     -- ITqQuasiQuote(Qual, quoter, quote, loc)
     -- represents a qualified quasi-quote of the form
     -- [Qual.quoter| quote |]
+
+  | ITopenMLQuote
+  | ITcloseMLQuote
+  | ITMLSplice
 
   -- Arrow notation extension
   | ITproc

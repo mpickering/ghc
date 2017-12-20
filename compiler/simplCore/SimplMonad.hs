@@ -16,7 +16,7 @@ module SimplMonad (
         -- Counting
         SimplCount, tick, freeTick, checkedTick,
         getSimplCount, zeroSimplCount, pprSimplCount,
-        plusSimplCount, isZeroSimplCount
+        plusSimplCount, isZeroSimplCount, increaseHardLevel, checkHardLevel
     ) where
 
 import GhcPrelude
@@ -203,6 +203,17 @@ newJoinId bndrs body_ty
 *                                                                      *
 ************************************************************************
 -}
+
+increaseHardLevel :: SimplM ()
+increaseHardLevel = SM (\st_env us sc n -> return ((), us, incHardLevel sc, n))
+
+checkHardLevel :: SimplM a -> SimplM a -> SimplM a
+checkHardLevel a1 a2 = do
+  hl <- simplCountHardLevel <$> getSimplCount
+  if 100 <= hl
+    then a1
+    else a2
+
 
 getSimplCount :: SimplM SimplCount
 getSimplCount = SM (\_st_env us sc -> return (sc, us, sc))

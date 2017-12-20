@@ -848,6 +848,24 @@ simplExprF env e cont
       ]) $ -}
     simplExprF1 env e cont
 
+simplExprAggressive :: SimplEnv -> InExpr -> SimplCont
+                    -> SimplM (SimplFloats, OutExpr)
+simplExprAggressive env expr cont = do
+    traceSmpl "increasing level" (ppr (getLevel env) <+> ppr expr)
+    increaseHardLevel
+    simplExprF1
+      (increaseLevel
+        (updateSeDynFlags (\dflags -> dflags { ufVeryVeryAggressive = True }) env))
+      expr
+      cont
+
+{-
+Decreasing the level needs to be in the right places
+1. When we enter a bracket decrease the level
+2. When we lose scope, for example, we try to inline a variable we don't have
+an unfolding for, decrease the level.
+-}
+
 simplExprF1 :: SimplEnv -> InExpr -> SimplCont
             -> SimplM (SimplFloats, OutExpr)
 
@@ -856,7 +874,17 @@ simplExprF1 _ (Type ty) _
     -- simplExprF does only with term-valued expressions
     -- The (Type ty) case is handled separately by simplExpr
     -- and by the other callers of simplExprF
-
+simplExprF1 env (Tick (ExprEval Freeze) e) cont = do
+  if (getLevel env) > 0
+    then do
+            (fs, e') <- simplExprF1 (decreaseLevel env) e cont
+            return (fs, e')
+    else traceSmpl "freezing" (ppr e) >> return (emptyFloats env, e)
+simplExprF1 env (Tick (ExprEval Eval) e) cont =
+  checkHardLevel (simplExprF1 env e cont)
+                 (do
+                    (fs, e') <- simplExprAggressive env e cont
+                    return (fs, e'))
 simplExprF1 env (Var v)        cont = simplIdF env v cont
 simplExprF1 env (Lit lit)      cont = rebuild env (Lit lit) cont
 simplExprF1 env (Tick t expr)  cont = simplTick env t expr cont
@@ -1636,7 +1664,9 @@ simplIdF env var cont
                                 -- Don't trim; haven't already simplified e,
                                 -- so the cont is not embodied in e
 
-      DoneId var1 -> completeCall env var1 (trimJoinCont var (isJoinId_maybe var1) cont)
+      DoneId var1 ->
+        traceSmpl "CompleteCall" (ppr var1) >>
+        completeCall env var1 (trimJoinCont var (isJoinId_maybe var1) cont)
 
       DoneEx e mb_join -> simplExprF (zapSubstEnv env) e (trimJoinCont var mb_join cont)
               -- Note [zapSubstEnv]
@@ -1659,11 +1689,15 @@ completeCall env var cont
   -- Inline the variable's RHS
   = do { checkedTick (UnfoldingDone var)
        ; dump_inline expr cont
-       ; simplExprF (zapSubstEnv env) expr cont }
+       --; (floats1, e') <- rebuild env expr cont
+       --; e'' <- simplExpr (zapSubstEnv env) (wrapFloats floats1 e')
+       --; return (emptyFloats env, e'') }
+      ; simplExprF (zapSubstEnv env) expr cont }
 
   | otherwise
   -- Don't inline; instead rebuild the call
-  = do { rule_base <- getSimplRules
+  = do { traceSmpl "Rebuilding" (ppr var)
+       ; rule_base <- getSimplRules
        ; let info = mkArgInfo var (getRules rule_base var)
                               n_val_args call_cont
        ; rebuildCall env info cont }

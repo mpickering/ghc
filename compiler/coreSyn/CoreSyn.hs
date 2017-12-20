@@ -11,6 +11,7 @@ module CoreSyn (
         -- * Main data types
         Expr(..), Alt, Bind(..), AltCon(..), Arg,
         Tickish(..), TickishScoping(..), TickishPlacement(..),
+        EvalRule(..),
         CoreProgram, CoreExpr, CoreAlt, CoreBind, CoreArg, CoreBndr,
         TaggedExpr, TaggedAlt, TaggedBind, TaggedArg, TaggedBndr(..), deTagExpr,
 
@@ -831,7 +832,11 @@ data Tickish id =
                                 --   (uses same names as CCs)
     }
 
+  | ExprEval EvalRule
+
   deriving (Eq, Ord, Data)
+
+data EvalRule = Eval | Freeze deriving (Eq, Ord, Data)
 
 -- | A "counting tick" (where tickishCounts is True) is one that
 -- counts evaluations in some way.  We cannot discard a counting tick,
@@ -920,6 +925,7 @@ tickishScoped Breakpoint{} = CostCentreScope
    -- stacks, but also this helps prevent the simplifier from moving
    -- breakpoints around and changing their result type (see #1531).
 tickishScoped SourceNote{} = SoftScope
+tickishScoped (ExprEval _) = CostCentreScope
 
 -- | Returns whether the tick scoping rule is at least as permissive
 -- as the given scoping rule.
@@ -1027,6 +1033,7 @@ tickishPlace n@ProfNote{}
 tickishPlace HpcTick{}     = PlaceRuntime
 tickishPlace Breakpoint{}  = PlaceRuntime
 tickishPlace SourceNote{}  = PlaceNonLam
+tickishPlace ExprEval{}    = PlaceRuntime
 
 -- | Returns whether one tick "contains" the other one, therefore
 -- making the second tick redundant.

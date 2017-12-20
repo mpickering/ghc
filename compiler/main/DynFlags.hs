@@ -905,6 +905,7 @@ data DynFlags = DynFlags {
   ufKeenessFactor       :: Float,
   ufDearOp              :: Int,
   ufVeryAggressive      :: Bool,
+  ufVeryVeryAggressive      :: Bool,
 
   maxWorkerArgs         :: Int,
 
@@ -1718,6 +1719,7 @@ defaultDynFlags mySettings myLlvmTargets =
         ufKeenessFactor     = 1.5,
         ufDearOp            = 40,
         ufVeryAggressive    = False,
+        ufVeryVeryAggressive    = False,
 
         maxWorkerArgs = 10,
 

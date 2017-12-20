@@ -8,7 +8,8 @@
 
 module SimplEnv (
         -- * The simplifier mode
-        setMode, getMode, updMode, seDynFlags,
+        setMode, getMode, updMode, seDynFlags, updateSeDynFlags,
+        increaseLevel, decreaseLevel, getLevel,
 
         -- * Environments
         SimplEnv(..), pprSimplEnv,   -- Temp not abstract
@@ -99,6 +100,8 @@ data SimplEnv
         -- The current set of in-scope variables
         -- They are all OutVars, and all bound in this module
       , seInScope   :: InScopeSet       -- OutVars only
+
+      , seLevel     :: Int
     }
 
 data SimplFloats
@@ -272,7 +275,8 @@ mkSimplEnv mode
              , seInScope = init_in_scope
              , seTvSubst = emptyVarEnv
              , seCvSubst = emptyVarEnv
-             , seIdSubst = emptyVarEnv }
+             , seIdSubst = emptyVarEnv
+             , seLevel   = 0 }
         -- The top level "enclosing CC" is "SUBSUMED".
 
 init_in_scope :: InScopeSet
@@ -305,11 +309,27 @@ getMode env = seMode env
 seDynFlags :: SimplEnv -> DynFlags
 seDynFlags env = sm_dflags (seMode env)
 
+updateSeDynFlags :: (DynFlags -> DynFlags) -> SimplEnv -> SimplEnv
+updateSeDynFlags f se = updMode (\sm -> sm { sm_dflags = f (sm_dflags sm) }) se
+
 setMode :: SimplMode -> SimplEnv -> SimplEnv
 setMode mode env = env { seMode = mode }
 
 updMode :: (SimplMode -> SimplMode) -> SimplEnv -> SimplEnv
 updMode upd env = env { seMode = upd (seMode env) }
+
+--------------------
+--
+modifyLevel :: (Int -> Int) -> SimplEnv -> SimplEnv
+modifyLevel f se = se { seLevel = f (seLevel se) }
+
+increaseLevel, decreaseLevel :: SimplEnv -> SimplEnv
+increaseLevel = modifyLevel (+1)
+decreaseLevel = modifyLevel (subtract 1)
+
+getLevel :: SimplEnv -> Int
+getLevel se = seLevel se
+
 
 ---------------------
 extendIdSubst :: SimplEnv -> Id -> SimplSR -> SimplEnv

@@ -530,6 +530,10 @@ TH_TY_QUOTE     { L _ ITtyQuote       }      -- ''T
 TH_QUASIQUOTE   { L _ (ITquasiQuote _) }
 TH_QQUASIQUOTE  { L _ (ITqQuasiQuote _) }
 
+'.<' { L _ ITopenMLQuote }
+'>.' { L _ ITcloseMLQuote }
+'.~' { L _ ITMLSplice }
+
 %monad { P } { >>= } { return }
 %lexer { (lexer True) } { L _ ITeof }
 %tokentype { (Located Token) }
@@ -2562,6 +2566,10 @@ aexp2   :: { LHsExpr GhcPs }
         | '[d|' cvtopbody '|]' {% ams (sLL $1 $> $ HsBracket (DecBrL (snd $2)))
                                       (mo $1:mu AnnCloseQ $3:fst $2) }
         | quasiquote          { sL1 $1 (HsSpliceE (unLoc $1)) }
+
+        -- MetaML
+        | '.<' exp '>.' { sLL $1 $3 (HsMLQuote $2) }
+        | '.~' '(' exp ')'     { sLL $1 $> (HsMLSplice $3) }
 
         -- arrow notation extension
         | '(|' aexp2 cmdargs '|)'  {% ams (sLL $1 $> $ HsArrForm $2

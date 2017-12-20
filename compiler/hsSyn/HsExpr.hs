@@ -670,6 +670,8 @@ data HsExpr p
         -- Source text for the four integers used in the span.
         -- See note [Pragma source text] in BasicTypes
      (LHsExpr p)
+  | HsMLQuote (LHsExpr p)
+  | HsMLSplice (LHsExpr p)
 
   ---------------------------------------
   -- These constructors only appear temporarily in the parser.
@@ -1047,6 +1049,10 @@ ppr_expr (HsArrForm op _ args)
   = hang (text "(|" <+> ppr_lexpr op)
          4 (sep (map (pprCmdArg.unLoc) args) <+> text "|)")
 ppr_expr (HsRecFld f) = ppr f
+ppr_expr (HsMLQuote exp)
+  = text ".<" <+> pprLExpr exp <+> text ">."
+ppr_expr (HsMLSplice exp)
+  = text ".~(" <+> pprLExpr exp <+> text ")"
 
 -- We must tiresomely make the "id" parameter to the LHsWcType existential
 -- because it's different in the HsAppType case and the HsAppTypeOut case

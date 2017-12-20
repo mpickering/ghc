@@ -603,6 +603,8 @@ instance Outputable id => Outputable (Tickish id) where
          _            -> hcat [text "scc<",     ppr cc, char '>']
   ppr (SourceNote span _) =
       hcat [ text "src<", pprUserRealSpan True span, char '>']
+  ppr (ExprEval Freeze) = text "Freeze"
+  ppr (ExprEval Eval)   = text "Eval"
 
 {-
 -----------------------------------------------------

@@ -745,6 +745,15 @@ ds_expr _ (HsTickPragma _ _ _ expr) = do
     then panic "dsExpr:HsTickPragma"
     else dsLExpr expr
 
+ds_expr _ (HsMLSplice s) = do
+  e' <- dsLExpr s
+  return (Tick (ExprEval Eval) e')
+
+ds_expr _ (HsMLQuote s) = do
+  e' <- dsLExpr s
+  return (Tick (ExprEval Freeze) e')
+
+
 -- HsSyn constructs that just shouldn't be here:
 ds_expr _ (ExprWithTySig {})  = panic "dsExpr:ExprWithTySig"
 ds_expr _ (HsBracket     {})  = panic "dsExpr:HsBracket"

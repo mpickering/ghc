@@ -1043,6 +1043,9 @@ tcExpr e@(HsBracket brack)         res_ty
 tcExpr e@(HsRnBracketOut brack ps) res_ty
   = tcUntypedBracket e brack ps res_ty
 
+
+tcExpr (HsMLSplice s) res_ty = HsMLSplice <$> (tcMonoExpr s res_ty)
+tcExpr (HsMLQuote q) res_ty  = HsMLQuote  <$> tcMonoExpr q res_ty
 {-
 ************************************************************************
 *                                                                      *

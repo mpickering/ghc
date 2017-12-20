@@ -810,6 +810,9 @@ zonkExpr env (HsWrap co_fn expr)
 
 zonkExpr _ e@(HsUnboundVar {}) = return e
 
+zonkExpr env (HsMLSplice s) = HsMLSplice <$> zonkLExpr env s
+zonkExpr env (HsMLQuote q)  = HsMLQuote <$> zonkLExpr env q
+
 zonkExpr _ expr = pprPanic "zonkExpr" (ppr expr)
 
 -------------------------------------------------------------------------

@@ -20,6 +20,7 @@ module CoreMonad (
     SimplCount, doSimplTick, doFreeSimplTick, simplCountN,
     pprSimplCount, plusSimplCount, zeroSimplCount,
     isZeroSimplCount, hasDetailedCounts, Tick(..),
+    simplCountHardLevel, incHardLevel,
 
     -- * The monad
     CoreM, runCoreM,
@@ -265,10 +266,11 @@ doFreeSimplTick    ::             Tick -> SimplCount -> SimplCount
 plusSimplCount     :: SimplCount -> SimplCount -> SimplCount
 
 data SimplCount
-   = VerySimplCount !Int        -- Used when don't want detailed stats
+   = VerySimplCount !Int !Int   -- Used when don't want detailed stats
 
    | SimplCount {
         ticks   :: !Int,        -- Total ticks
+        hardLevel   :: !Int,
         details :: !TickCounts, -- How many of each type
 
         n_log   :: !Int,        -- N
@@ -282,19 +284,27 @@ data SimplCount
 type TickCounts = Map Tick Int
 
 simplCountN :: SimplCount -> Int
-simplCountN (VerySimplCount n)         = n
+simplCountN (VerySimplCount n _)       = n
 simplCountN (SimplCount { ticks = n }) = n
+
+simplCountHardLevel :: SimplCount -> Int
+simplCountHardLevel (VerySimplCount _ n) = n
+simplCountHardLevel (SimplCount { hardLevel = n }) = n
+
+incHardLevel :: SimplCount -> SimplCount
+incHardLevel (VerySimplCount m n) = VerySimplCount m (n + 1)
+incHardLevel s@(SimplCount {hardLevel = n })    = s { hardLevel = n + 1 }
 
 zeroSimplCount dflags
                 -- This is where we decide whether to do
                 -- the VerySimpl version or the full-stats version
   | dopt Opt_D_dump_simpl_stats dflags
-  = SimplCount {ticks = 0, details = Map.empty,
+  = SimplCount {ticks = 0, hardLevel = 0, details = Map.empty,
                 n_log = 0, log1 = [], log2 = []}
   | otherwise
-  = VerySimplCount 0
+  = VerySimplCount 0 0
 
-isZeroSimplCount (VerySimplCount n)         = n==0
+isZeroSimplCount (VerySimplCount n hl)      = n==0 && hl == 0
 isZeroSimplCount (SimplCount { ticks = n }) = n==0
 
 hasDetailedCounts (VerySimplCount {}) = False
@@ -311,15 +321,16 @@ doSimplTick dflags tick
   where
     sc1 = sc { ticks = tks+1, details = dts `addTick` tick }
 
-doSimplTick _ _ (VerySimplCount n) = VerySimplCount (n+1)
+doSimplTick _ _ (VerySimplCount n hl) = VerySimplCount (n+1) hl
 
 
 addTick :: TickCounts -> Tick -> TickCounts
 addTick fm tick = MapStrict.insertWith (+) tick 1 fm
 
-plusSimplCount sc1@(SimplCount { ticks = tks1, details = dts1 })
-               sc2@(SimplCount { ticks = tks2, details = dts2 })
+plusSimplCount sc1@(SimplCount { ticks = tks1, hardLevel = hl1, details = dts1 })
+               sc2@(SimplCount { ticks = tks2, hardLevel = hl2, details = dts2 })
   = log_base { ticks = tks1 + tks2
+             , hardLevel = hl1 + hl2
              , details = MapStrict.unionWith (+) dts1 dts2 }
   where
         -- A hackish way of getting recent log info
@@ -327,11 +338,11 @@ plusSimplCount sc1@(SimplCount { ticks = tks1, details = dts1 })
              | null (log2 sc2) = sc2 { log2 = log1 sc1 }
              | otherwise       = sc2
 
-plusSimplCount (VerySimplCount n) (VerySimplCount m) = VerySimplCount (n+m)
+plusSimplCount (VerySimplCount n hl) (VerySimplCount m hl2) = VerySimplCount (n+m) (hl + hl2)
 plusSimplCount _                  _                  = panic "plusSimplCount"
        -- We use one or the other consistently
 
-pprSimplCount (VerySimplCount n) = text "Total ticks:" <+> int n
+pprSimplCount (VerySimplCount n hl) = text "Total ticks:" <+> int n <+> text "HL:" <+> ppr hl
 pprSimplCount (SimplCount { ticks = tks, details = dts, log1 = l1, log2 = l2 })
   = vcat [text "Total ticks:    " <+> int tks,
           blankLine,

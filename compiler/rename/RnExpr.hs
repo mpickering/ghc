@@ -205,6 +205,14 @@ rnExpr e@(HsBracket br_body) = rnBracket e br_body
 
 rnExpr (HsSpliceE splice) = rnSpliceExpr splice
 
+rnExpr (HsMLQuote q) =
+                       do { (e', fv_e) <- rnLExpr q
+                          ; return (HsMLQuote e', fv_e) }
+rnExpr (HsMLSplice s) =
+                       do { (e', fv_e) <- rnLExpr s
+                          ; return (HsMLSplice e', fv_e) }
+
+
 ---------------------------------------------
 --      Sections
 -- See Note [Parsing sections] in Parser.y

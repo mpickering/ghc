@@ -1017,7 +1017,7 @@ certainlyWillInline :: DynFlags -> IdInfo -> Maybe Unfolding
 certainlyWillInline dflags fn_info
   = case unfoldingInfo fn_info of
       CoreUnfolding { uf_tmpl = e, uf_guidance = g }
-        | loop_breaker -> Nothing       -- Won't inline, so try w/w
+        -- | loop_breaker -> Nothing       -- Won't inline, so try w/w
         | otherwise    -> do_cunf e g   -- Depends on size, so look at that
 
       DFunUnfolding {} -> Just fn_unf  -- Don't w/w DFuns; it never makes sense
@@ -1145,7 +1145,8 @@ instance Outputable CallCtxt where
   ppr RuleArgCtxt = text "RuleArgCtxt"
 
 callSiteInline dflags id active_unfolding lone_variable arg_infos cont_info
-  = case idUnfolding id of
+  =
+    case (if ufVeryVeryAggressive dflags then unfoldingInfo . idInfo else idUnfolding) id of
       -- idUnfolding checks for loop-breakers, returning NoUnfolding
       -- Things with an INLINE pragma may have an unfolding *and*
       -- be a loop breaker  (maybe the knot is not yet untied)
@@ -1156,7 +1157,7 @@ callSiteInline dflags id active_unfolding lone_variable arg_infos cont_info
                                     arg_infos cont_info unf_template is_top
                                     is_wf is_exp guidance
           | otherwise -> traceInline dflags "Inactive unfolding:" (ppr id) Nothing
-        NoUnfolding      -> Nothing
+        NoUnfolding      -> traceInline dflags "NoUnfolding:" (ppr (ufVeryVeryAggressive dflags) <+> ppr id) Nothing
         BootUnfolding    -> Nothing
         OtherCon {}      -> Nothing
         DFunUnfolding {} -> Nothing     -- Never unfold a DFun
@@ -1178,6 +1179,8 @@ tryUnfolding dflags id lone_variable
      UnfNever -> traceInline dflags str (text "UnfNever") Nothing
 
      UnfWhen { ug_arity = uf_arity, ug_unsat_ok = unsat_ok, ug_boring_ok = boring_ok }
+        | ufVeryVeryAggressive dflags
+        -> traceInline dflags str (mk_doc some_benefit empty True) (Just unf_template)
         | enough_args && (boring_ok || some_benefit || ufVeryAggressive dflags)
                 -- See Note [INLINE for small functions (3)]
         -> traceInline dflags str (mk_doc some_benefit empty True) (Just unf_template)
