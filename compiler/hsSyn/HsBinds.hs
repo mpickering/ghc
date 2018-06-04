@@ -1314,4 +1314,4 @@ instance Traversable RecordPatSynField where
 data HsPatSynDir id
   = Unidirectional
   | ImplicitBidirectional
-  | ExplicitBidirectional (MatchGroup id (LHsExpr id))
+  | ExplicitBidirectional (Maybe (LSig id)) (MatchGroup id (LHsExpr id))

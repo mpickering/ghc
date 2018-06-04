@@ -583,6 +583,8 @@ tc_patsyn_finish lname dir is_infix lpat'
                                          (args, arg_tys)
                                          pat_ty
 
+       ;
+
        -- Make the 'builder'
        ; builder_id <- mkPatSynBuilderId dir lname
                                          univ_tvs req_theta
@@ -732,10 +734,11 @@ mkPatSynBuilderId :: HsPatSynDir a -> Located Name
                   -> [TyVarBinder] -> ThetaType
                   -> [TyVarBinder] -> ThetaType
                   -> [Type] -> Type
+                  -> Maybe Type
                   -> TcM (Maybe (Id, Bool))
 mkPatSynBuilderId dir (L _ name)
                   univ_bndrs req_theta ex_bndrs prov_theta
-                  arg_tys pat_ty
+                  arg_tys pat_ty user_written_ty
   | isUnidirectional dir
   = return Nothing
   | otherwise
@@ -748,7 +751,11 @@ mkPatSynBuilderId dir (L _ name)
                               mkFunTys theta $
                               mkFunTys arg_tys $
                               pat_ty
-             builder_id     = mkExportedVanillaId builder_name builder_sigma
+             builder_id     = mkExportedVanillaId builder_name $
+                                case user_written_ty of
+                                  Just t -> t
+                                  Nothing -> builder_sigma
+             -- This is where the builder id is created.
               -- See Note [Exported LocalIds] in Id
 
              builder_id'    = modifyIdInfo (`setLevityInfoWithType` pat_ty) builder_id
@@ -771,7 +778,7 @@ tcPatSynBuilderBind (PSB { psb_id = L loc name, psb_def = lpat
               2 why
          , text "RHS pattern:" <+> ppr lpat ]
 
-  | Right match_group <- mb_match_group  -- Bidirectional
+  | Right (sig, match_group) <- mb_match_group  -- Bidirectional
   = do { patsyn <- tcLookupPatSyn name
        ; let Just (builder_id, need_dummy_arg) = patSynBuilder patsyn
                    -- Bidirectional, so patSynBuilder returns Just
@@ -797,8 +804,8 @@ tcPatSynBuilderBind (PSB { psb_id = L loc name, psb_def = lpat
   where
     mb_match_group
        = case dir of
-           ExplicitBidirectional explicit_mg -> Right explicit_mg
-           ImplicitBidirectional -> fmap mk_mg (tcPatToExpr name args lpat)
+           ExplicitBidirectional m_sig explicit_mg -> Right (m_sig, explicit_mg)
+           ImplicitBidirectional -> fmap (\e -> (Nothing, mk_mg e)) (tcPatToExpr name args lpat)
            Unidirectional -> panic "tcPatSynBuilderBind"
 
     mk_mg :: LHsExpr GhcRn -> MatchGroup GhcRn (LHsExpr GhcRn)

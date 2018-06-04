@@ -699,11 +699,13 @@ rnPatSynBind sig_fn bind@(PSB { psb_id = L l name
         ; (dir', fvs2) <- case dir of
             Unidirectional -> return (Unidirectional, emptyFVs)
             ImplicitBidirectional -> return (ImplicitBidirectional, emptyFVs)
-            ExplicitBidirectional mg ->
-                do { (mg', fvs) <- bindSigTyVarsFV sig_tvs $
+            ExplicitBidirectional lsig mg ->
+                do { (lsig', sig_fvs) <- renameSig lsig
+                   ; let vs = hsWcScopedTyVars lsig'
+                   ; (mg', fvs) <- bindSigTyVarsFV vs $
                                    rnMatchGroup (mkPrefixFunRhs (L l name))
                                                 rnLExpr mg
-                   ; return (ExplicitBidirectional mg', fvs) }
+                   ; return (ExplicitBidirectional lsig' mg', fvs) }
 
         ; mod <- getModule
         ; let fvs = fvs1 `plusFV` fvs2
