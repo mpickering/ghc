@@ -1,10 +1,13 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Llvm.MetaData where
 
 import GhcPrelude
 
 import Llvm.Types
+import FastString
 import Outputable
 
 -- The LLVM Metadata System.
@@ -71,6 +74,24 @@ data MetaExpr = MetaStr !LMString
               | MetaNode !MetaId
               | MetaVar !LlvmVar
               | MetaStruct [MetaExpr]
+              | MetaDIFile { difFilename  :: !FastString
+                           , difDirectory :: !FastString
+                           }
+              | MetaDISubroutineType { distType     :: ![MetaExpr] }
+              | MetaDICompileUnit { dicuLanguage    :: !FastString
+                                  , dicuFile        :: !MetaId
+                                  , dicuProducer    :: !FastString
+                                  , dicuIsOptimized :: !Bool
+                                  , dicuSubprograms :: !MetaExpr
+                                  }
+              | MetaDISubprogram { disName          :: !FastString
+                                 , disLinkageName   :: !FastString
+                                 , disScope         :: !MetaId
+                                 , disFile          :: !MetaId
+                                 , disLine          :: !Int
+                                 , disType          :: !MetaId
+                                 , disIsDefinition  :: !Bool
+                                 }
               deriving (Eq)
 
 instance Outputable MetaExpr where
@@ -79,17 +100,56 @@ instance Outputable MetaExpr where
   ppr (MetaNode   n ) = ppr n
   ppr (MetaVar    v ) = ppr v
   ppr (MetaStruct es) = char '!' <> braces (ppCommaJoin es)
+  ppr (MetaDIFile {..}) =
+      specialMetadata "DIFile"
+      [ (text "filename" , doubleQuotes $ ftext difFilename)
+      , (text "directory", doubleQuotes $ ftext difDirectory)
+      ]
+  ppr (MetaDISubroutineType {..}) =
+      specialMetadata "DISubroutineType"
+      [ (text "types", ppr $ MetaStruct distType ) ]
+  ppr (MetaDICompileUnit {..}) =
+      specialMetadata "DICompileUnit"
+      [ (text "language"   , ftext dicuLanguage)
+      , (text "file"       , ppr dicuFile)
+      , (text "producer"   , doubleQuotes $ ftext dicuProducer)
+      , (text "isOptimized", if dicuIsOptimized
+                            then text "true"
+                            else text "false")
+      , (text "subprograms", ppr dicuSubprograms)
+      ]
+  ppr (MetaDISubprogram {..}) =
+      specialMetadata "DISubprogram"
+      [ ("name"        , doubleQuotes $ ftext disName)
+      , ("linkageName" , doubleQuotes $ ftext disLinkageName)
+      , ("scope"       , ppr disScope)
+      , ("file"        , ppr disFile)
+      , ("line"        , ppr disLine)
+      , ("type"        , ppr disType)
+      , ("isDefinition", if disIsDefinition
+                              then text "true"
+                              else text "false")
+      ]
+
+
+specialMetadata :: SDoc -> [(SDoc, SDoc)] -> SDoc
+specialMetadata nodeName fields =
+    char '!' <> nodeName
+    <> parens (hsep $ punctuate comma $ map (\(k,v) -> k <> colon <+> v) fields)
 
 -- | Associates some metadata with a specific label for attaching to an
 -- instruction.
 data MetaAnnot = MetaAnnot LMString MetaExpr
                deriving (Eq)
 
+-- | Is a metadata node @distinct@?
+data Distinction = Distinct | NotDistinct
+
 -- | Metadata declarations. Metadata can only be declared in global scope.
 data MetaDecl
     -- | Named metadata. Only used for communicating module information to
     -- LLVM. ('!name = !{ [!<n>] }' form).
-    = MetaNamed !LMString [MetaId]
+    = MetaNamed !LMString Distinction [MetaId]
     -- | Metadata node declaration.
     -- ('!0 = metadata !{ <metadata expression> }' form).
-    | MetaUnnamed !MetaId !MetaExpr
+    | MetaUnnamed !MetaId Distinction !MetaExpr

@@ -22,6 +22,16 @@ import FastString
 import Outputable
 import Unique
 
+import SrcLoc
+import CoreSyn ( Tickish(SourceNote) )
+import Debug
+import Hoopl.Label ( LabelMap )
+import Hoopl.Collections ( IsMap(..) )
+
+
+import Data.Maybe ( maybeToList )
+
+
 -- ----------------------------------------------------------------------------
 -- * Top level
 --
@@ -39,11 +49,11 @@ pprLlvmData (globals, types) =
 
 
 -- | Pretty print LLVM code
-pprLlvmCmmDecl :: LlvmCmmDecl -> LlvmM (SDoc, [LlvmVar])
-pprLlvmCmmDecl (CmmData _ lmdata)
+pprLlvmCmmDecl :: LabelMap DebugBlock -> LlvmCmmDecl -> LlvmM (SDoc, [LlvmVar])
+pprLlvmCmmDecl _ (CmmData _ lmdata)
   = return (vcat $ map pprLlvmData lmdata, [])
 
-pprLlvmCmmDecl (CmmProc mb_info entry_lbl live (ListGraph blks))
+pprLlvmCmmDecl debug_map (CmmProc (label, mb_info) entry_lbl live (ListGraph blks))
   = do let lbl = case mb_info of
                      Nothing                   -> entry_lbl
                      Just (Statics info_lbl _) -> info_lbl
@@ -58,6 +68,7 @@ pprLlvmCmmDecl (CmmProc mb_info entry_lbl live (ListGraph blks))
        let buildArg = fsLit . showSDoc dflags . ppPlainName
            funArgs = map buildArg (llvmFunArgs dflags live)
            funSect = llvmFunSection dflags (decName funDec)
+           defName = decName funDec `appendFS` fsLit "$def"
 
        -- generate the info table
        prefix <- case mb_info of
@@ -67,12 +78,42 @@ pprLlvmCmmDecl (CmmProc mb_info entry_lbl live (ListGraph blks))
                        let infoTy = LMStruct $ map getStatType infoStatics
                        return $ Just $ LMStaticStruc infoStatics infoTy
 
+       -- generate debug information metadata
+       subprogAnnot <-
+           case mapLookup label debug_map >>= dblSourceTick of
+             Just (SourceNote span name) -> do
+               subprogMeta <- getMetaUniqueId
+               fileMeta <- getMetaUniqueId
+               typeMeta <- getMetaUniqueId
+               let fileDef = MetaUnnamed fileMeta NotDistinct
+                             $ MetaDIFile { difFilename = srcSpanFile span
+                                          , difDirectory = fsLit "TODO"
+                                          }
+                   typeMetaDef =
+                       MetaUnnamed typeMeta NotDistinct
+                       $ MetaDISubroutineType [MetaVar $ LMLitVar $ LMNullLit i1]
+                   subprog =
+                       MetaDISubprogram { disName         = fsLit name
+                                        , disLinkageName  = fsLit $ showPpr dflags defName
+                                        , disScope        = fileMeta
+                                        , disFile         = fileMeta
+                                        , disLine         = srcSpanStartLine span
+                                        , disType         = typeMeta
+                                        , disIsDefinition = True
+                                        }
+               addMetaDecl fileDef
+               addMetaDecl typeMetaDef
+               addSubprogram subprogMeta subprog
+               return $ Just $ MetaAnnot (fsLit "dbg") (MetaNode subprogMeta)
+             _   -> return Nothing
+
+       let funcMetas = maybeToList subprogAnnot
+
 
        let attrs = XRayInstrument : llvmStdFunAttrs
            fun = LlvmFunction funDec funArgs attrs funSect
-                              prefix lmblocks
+                              prefix funcMetas lmblocks
            name = decName $ funcDecl fun
-           defName = name `appendFS` fsLit "$def"
            funcDecl' = (funcDecl fun) { decName = defName }
            fun' = fun { funcDecl = funcDecl' }
            funTy = LMFunction funcDecl'

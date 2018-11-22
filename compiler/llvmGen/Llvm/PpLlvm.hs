@@ -108,14 +108,17 @@ ppLlvmMetas metas = vcat $ map ppLlvmMeta metas
 
 -- | Print out an LLVM metadata definition.
 ppLlvmMeta :: MetaDecl -> SDoc
-ppLlvmMeta (MetaUnnamed n m)
-  = ppr n <+> equals <+> ppr m
+ppLlvmMeta meta =
+    case meta of
+      MetaUnnamed n d m -> ppr n <+> equals <+> ppDistinction d <+> ppr m
+      MetaNamed n d m   ->
+          let nodes = hcat $ intersperse comma $ map ppr m
+          in exclamation <> ftext n <+> equals
+             <+> ppDistinction d <+> exclamation <> braces nodes
 
-ppLlvmMeta (MetaNamed n m)
-  = exclamation <> ftext n <+> equals <+> exclamation <> braces nodes
-  where
-    nodes = hcat $ intersperse comma $ map ppr m
-
+ppDistinction :: Distinction -> SDoc
+ppDistinction Distinct    = text "distinct"
+ppDistinction NotDistinct = empty
 
 -- | Print out a list of function definitions.
 ppLlvmFunctions :: LlvmFunctions -> SDoc
@@ -132,7 +135,7 @@ ppLlvmFunction fun =
                         Just v  -> text "prefix" <+> ppr v
                         Nothing -> empty
     in text "define" <+> ppLlvmFunctionHeader (funcDecl fun) (funcArgs fun)
-        <+> attrDoc <+> secDoc <+> prefixDoc
+        <+> attrDoc <+> secDoc <+> prefixDoc <+> ppMetaAnnots (funcMetadata fun)
         $+$ lbrace
         $+$ ppLlvmBlocks (funcBody fun)
         $+$ rbrace
@@ -470,16 +473,16 @@ ppInsert vec elt idx =
 
 
 ppMetaStatement :: [MetaAnnot] -> LlvmStatement -> SDoc
-ppMetaStatement meta stmt = ppLlvmStatement stmt <> ppMetaAnnots meta
+ppMetaStatement meta stmt = ppLlvmStatement stmt <> comma <+> ppMetaAnnots meta
 
 ppMetaExpr :: [MetaAnnot] -> LlvmExpression -> SDoc
-ppMetaExpr meta expr = ppLlvmExpression expr <> ppMetaAnnots meta
+ppMetaExpr meta expr = ppLlvmExpression expr <> comma <+> ppMetaAnnots meta
 
 ppMetaAnnots :: [MetaAnnot] -> SDoc
-ppMetaAnnots meta = hcat $ map ppMeta meta
+ppMetaAnnots meta = hcat $ punctuate comma $ map ppMeta meta
   where
     ppMeta (MetaAnnot name e)
-        = comma <+> exclamation <> ftext name <+>
+        = exclamation <> ftext name <+>
           case e of
             MetaNode n    -> ppr n
             MetaStruct ms -> exclamation <> braces (ppCommaJoin ms)
