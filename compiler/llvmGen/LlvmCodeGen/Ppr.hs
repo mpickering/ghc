@@ -49,11 +49,11 @@ pprLlvmData (globals, types) =
 
 
 -- | Pretty print LLVM code
-pprLlvmCmmDecl :: LabelMap DebugBlock -> LlvmCmmDecl -> LlvmM (SDoc, [LlvmVar])
-pprLlvmCmmDecl _ (CmmData _ lmdata)
+pprLlvmCmmDecl :: MetaId -> LabelMap DebugBlock -> LlvmCmmDecl -> LlvmM (SDoc, [LlvmVar])
+pprLlvmCmmDecl _ _ (CmmData _ lmdata)
   = return (vcat $ map pprLlvmData lmdata, [])
 
-pprLlvmCmmDecl debug_map (CmmProc (label, mb_info) entry_lbl live (ListGraph blks))
+pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGraph blks))
   = do let lbl = case mb_info of
                      Nothing                   -> entry_lbl
                      Just (Statics info_lbl _) -> info_lbl
@@ -100,10 +100,11 @@ pprLlvmCmmDecl debug_map (CmmProc (label, mb_info) entry_lbl live (ListGraph blk
                                         , disLine         = srcSpanStartLine span
                                         , disType         = typeMeta
                                         , disIsDefinition = True
+                                        , disCompileUnit  = cuId
                                         }
                addMetaDecl fileDef
                addMetaDecl typeMetaDef
-               addSubprogram subprogMeta subprog
+               addMetaDecl (MetaUnnamed subprogMeta Distinct subprog)
                return $ Just $ MetaAnnot (fsLit "dbg") (MetaNode subprogMeta)
              _   -> return Nothing
 

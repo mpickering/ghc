@@ -81,8 +81,9 @@ llvmCodeGen' location cmm_stream
         ghcInternalFunctions
         cmmMetaLlvmPrelude
 
+        cuId <- getMetaUniqueId
         -- Procedures
-        let llvmStream = Stream.mapM (llvmGroupLlvmGens location) cmm_stream
+        let llvmStream = Stream.mapM (llvmGroupLlvmGens cuId location) cmm_stream
         _ <- Stream.collect llvmStream
 
         -- Declare aliases for forward references
@@ -92,7 +93,7 @@ llvmCodeGen' location cmm_stream
         cmmUsedLlvmGens
 
         -- Debug metadata
-        debugInfoGen location
+        debugInfoGen cuId location
   where
     header :: SDoc
     header = sdocWithDynFlags $ \dflags ->
@@ -104,16 +105,14 @@ llvmCodeGen' location cmm_stream
          $+$ text ("target triple = \"" ++ target ++ "\"")
 
 
-debugInfoGen :: ModLocation -> LlvmM ()
-debugInfoGen location
+debugInfoGen :: MetaId -> ModLocation -> LlvmM ()
+debugInfoGen cuMeta location
   = do  dflags <- getDynFlags
         fileMeta <- getMetaUniqueId
         subprogramsMeta <- getMetaUniqueId
-        cuMeta <- getMetaUniqueId
         dwarfVersionMeta <- getMetaUniqueId
         debugInfoVersionMeta <- getMetaUniqueId
         getMetaDecls >>= renderLlvm . ppLlvmMetas
-        subprograms <- getSubprograms
         renderLlvm $ ppLlvmMetas
             [ MetaUnnamed fileMeta NotDistinct $ MetaDIFile
               { difFilename     = fsLit $ fromMaybe "TODO" (ml_hs_file location)
@@ -124,7 +123,6 @@ debugInfoGen location
               , dicuFile        = fileMeta
               , dicuProducer    = fsLit "ghc"
               , dicuIsOptimized = optLevel dflags > 0
-              , dicuSubprograms = MetaStruct $ map MetaNode subprograms
               }
             , MetaNamed (fsLit "llvm.dbg.cu") NotDistinct [ cuMeta ]
             , MetaUnnamed subprogramsMeta NotDistinct $ MetaStruct []
@@ -145,8 +143,8 @@ debugInfoGen location
             ]
 
 
-llvmGroupLlvmGens :: ModLocation -> RawCmmGroup -> LlvmM ()
-llvmGroupLlvmGens location cmm = do
+llvmGroupLlvmGens :: MetaId -> ModLocation -> RawCmmGroup -> LlvmM ()
+llvmGroupLlvmGens cuId location cmm = do
 
         dbg_lvl <- debugLevel <$> getDynFlags
         let debug_map :: LabelMap DebugBlock
@@ -169,7 +167,7 @@ llvmGroupLlvmGens location cmm = do
         {-# SCC "llvm_datas_gen" #-}
           cmmDataLlvmGens cdata
         {-# SCC "llvm_procs_gen" #-}
-          mapM_ (cmmLlvmGen debug_map) cmm
+          mapM_ (cmmLlvmGen cuId debug_map) cmm
 
 -- -----------------------------------------------------------------------------
 -- | Do LLVM code generation on all these Cmms data sections.
@@ -219,8 +217,8 @@ fixBottom cp@(CmmProc hdr entry_lbl live g) =
 fixBottom rcd = pure rcd
 
 -- | Complete LLVM code generation phase for a single top-level chunk of Cmm.
-cmmLlvmGen :: LabelMap DebugBlock -> RawCmmDecl -> LlvmM ()
-cmmLlvmGen debug_map cmm@CmmProc{} = do
+cmmLlvmGen :: MetaId -> LabelMap DebugBlock -> RawCmmDecl -> LlvmM ()
+cmmLlvmGen cuId debug_map cmm@CmmProc{} = do
 
     -- rewrite assignments to global regs
     dflags <- getDynFlag id
@@ -234,13 +232,13 @@ cmmLlvmGen debug_map cmm@CmmProc{} = do
     llvmBC <- withClearVars $ genLlvmProc fixed_cmm
 
     -- pretty print
-    (docs, ivars) <- fmap unzip $ mapM (pprLlvmCmmDecl debug_map) llvmBC
+    (docs, ivars) <- fmap unzip $ mapM (pprLlvmCmmDecl cuId debug_map) llvmBC
 
     -- Output, note down used variables
     renderLlvm (vcat docs)
     mapM_ markUsedVar $ concat ivars
 
-cmmLlvmGen _ _ = return ()
+cmmLlvmGen _ _ _ = return ()
 
 -- -----------------------------------------------------------------------------
 -- | Generate meta data nodes

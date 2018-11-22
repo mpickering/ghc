@@ -82,7 +82,6 @@ data MetaExpr = MetaStr !LMString
                                   , dicuFile        :: !MetaId
                                   , dicuProducer    :: !FastString
                                   , dicuIsOptimized :: !Bool
-                                  , dicuSubprograms :: !MetaExpr
                                   }
               | MetaDISubprogram { disName          :: !FastString
                                  , disLinkageName   :: !FastString
@@ -91,6 +90,7 @@ data MetaExpr = MetaStr !LMString
                                  , disLine          :: !Int
                                  , disType          :: !MetaId
                                  , disIsDefinition  :: !Bool
+                                 , disCompileUnit   :: !MetaId
                                  }
               deriving (Eq)
 
@@ -116,7 +116,6 @@ instance Outputable MetaExpr where
       , (text "isOptimized", if dicuIsOptimized
                             then text "true"
                             else text "false")
-      , (text "subprograms", ppr dicuSubprograms)
       ]
   ppr (MetaDISubprogram {..}) =
       specialMetadata "DISubprogram"
@@ -129,6 +128,7 @@ instance Outputable MetaExpr where
       , ("isDefinition", if disIsDefinition
                               then text "true"
                               else text "false")
+      , ("unit" , ppr disCompileUnit)
       ]
 
 
