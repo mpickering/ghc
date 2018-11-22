@@ -68,7 +68,8 @@ pprLlvmCmmDecl (CmmProc mb_info entry_lbl live (ListGraph blks))
                        return $ Just $ LMStaticStruc infoStatics infoTy
 
 
-       let fun = LlvmFunction funDec funArgs llvmStdFunAttrs funSect
+       let attrs = XRayInstrument : llvmStdFunAttrs
+           fun = LlvmFunction funDec funArgs attrs funSect
                               prefix lmblocks
            name = decName $ funcDecl fun
            defName = name `appendFS` fsLit "$def"

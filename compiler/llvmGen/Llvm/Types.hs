@@ -556,6 +556,8 @@ data LlvmFuncAttr
   -- | This attribute disables prologue / epilogue emission for the function.
   -- This can have very system-specific consequences.
   | Naked
+  -- | This attribute enables xray-instrumentation for a function
+  | XRayInstrument
   deriving (Eq)
 
 instance Outputable LlvmFuncAttr where
@@ -572,6 +574,7 @@ instance Outputable LlvmFuncAttr where
   ppr NoRedZone          = text "noredzone"
   ppr NoImplicitFloat    = text "noimplicitfloat"
   ppr Naked              = text "naked"
+  ppr XRayInstrument     = text "\"function-instrument\"=\"xray-always\""
 
 
 -- | Different types to call a function.
