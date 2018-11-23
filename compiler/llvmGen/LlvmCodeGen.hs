@@ -109,9 +109,9 @@ debugInfoGen :: MetaId -> ModLocation -> LlvmM ()
 debugInfoGen cuMeta location
   = do  dflags <- getDynFlags
         fileMeta <- getMetaUniqueId
-        subprogramsMeta <- getMetaUniqueId
         dwarfVersionMeta <- getMetaUniqueId
         debugInfoVersionMeta <- getMetaUniqueId
+        identMeta <- getMetaUniqueId
         getMetaDecls >>= renderLlvm . ppLlvmMetas
         renderLlvm $ ppLlvmMetas
             [ MetaUnnamed fileMeta NotDistinct $ MetaDIFile
@@ -125,7 +125,9 @@ debugInfoGen cuMeta location
               , dicuIsOptimized = optLevel dflags > 0
               }
             , MetaNamed (fsLit "llvm.dbg.cu") NotDistinct [ cuMeta ]
-            , MetaUnnamed subprogramsMeta NotDistinct $ MetaStruct []
+            , MetaNamed (fsLit "llvm.ident") NotDistinct [ identMeta ]
+            , MetaUnnamed identMeta NotDistinct
+              $ MetaStruct [MetaStr $ fsLit "Glasgow Haskell Compiler"]
             , MetaNamed (fsLit "llvm.module.flags") NotDistinct
               [ dwarfVersionMeta
               , debugInfoVersionMeta

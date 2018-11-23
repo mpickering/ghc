@@ -254,7 +254,6 @@ runLlvm dflags ver out us m = do
                       , envStackRegs = []
                       , envUsedVars = []
                       , envMetaDecls = []
-                      , envSubprograms = []
                       , envAliases = emptyUniqSet
                       , envVersion = ver
                       , envDynFlags = dflags

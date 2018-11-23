@@ -110,12 +110,14 @@ instance Outputable MetaExpr where
       [ (text "types", ppr $ MetaStruct distType ) ]
   ppr (MetaDICompileUnit {..}) =
       specialMetadata "DICompileUnit"
-      [ (text "language"   , ftext dicuLanguage)
-      , (text "file"       , ppr dicuFile)
-      , (text "producer"   , doubleQuotes $ ftext dicuProducer)
-      , (text "isOptimized", if dicuIsOptimized
-                            then text "true"
-                            else text "false")
+      [ (text "language"      , ftext dicuLanguage)
+      , (text "file"          , ppr dicuFile)
+      , (text "producer"      , doubleQuotes $ ftext dicuProducer)
+      , (text "isOptimized"   , if dicuIsOptimized
+                                then text "true"
+                                else text "false")
+      , (text "runtimeVersion", text "0")
+      , (text "emissionKind"  , text "FullDebug")
       ]
   ppr (MetaDISubprogram {..}) =
       specialMetadata "DISubprogram"
