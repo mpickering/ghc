@@ -92,10 +92,6 @@ data MetaExpr = MetaStr !LMString
                                  , disIsDefinition  :: !Bool
                                  , disCompileUnit   :: !MetaId
                                  }
-              | MetaDILocation   { dilLine :: !Int
-                                 , dilColumn :: !Int
-                                 , dilScope  :: !MetaId
-                                 }
               deriving (Eq)
 
 instance Outputable MetaExpr where
@@ -130,18 +126,12 @@ instance Outputable MetaExpr where
       , ("scope"       , ppr disScope)
       , ("file"        , ppr disFile)
       , ("line"        , ppr disLine)
-      , ("scopeLine"   , ppr disLine)
       , ("type"        , ppr disType)
       , ("isDefinition", if disIsDefinition
                               then text "true"
                               else text "false")
       , ("unit" , ppr disCompileUnit)
       ]
-  ppr (MetaDILocation {..}) =
-    specialMetadata "DILocation"
-    [ ("line", ppr dilLine)
-    , ("column", ppr dilColumn)
-    , ("scope", ppr dilScope ) ]
 
 
 specialMetadata :: SDoc -> [(SDoc, SDoc)] -> SDoc

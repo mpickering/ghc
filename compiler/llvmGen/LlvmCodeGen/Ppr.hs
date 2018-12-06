@@ -94,7 +94,7 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
                        $ MetaDISubroutineType [MetaVar $ LMLitVar $ LMNullLit i1]
                    subprog =
                        MetaDISubprogram { disName         = fsLit name
-                                        , disLinkageName  = fsLit name
+                                        , disLinkageName  = fsLit $ showPpr dflags defName
                                         , disScope        = fileMeta
                                         , disFile         = fileMeta
                                         , disLine         = srcSpanStartLine span
@@ -102,11 +102,6 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
                                         , disIsDefinition = True
                                         , disCompileUnit  = cuId
                                         }
-                   location = MetaDILocation { dilLine = srcSpanStartLine span
-                                              , dilColumn = srcSpanStartCol span
-                                              , dilScope  = subprogMeta }
-               locationMeta <- getMetaUniqueId
-               addMetaDecl (MetaUnnamed locationMeta NotDistinct location)
                addMetaDecl fileDef
                addMetaDecl typeMetaDef
                addMetaDecl (MetaUnnamed subprogMeta Distinct subprog)
