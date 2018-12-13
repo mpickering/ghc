@@ -61,7 +61,7 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
                       then ExternallyVisible
                       else Internal
            lmblocks = map (\(BasicBlock id stmts) ->
-                                LlvmBlock (getUnique id) stmts) blks
+                                LlvmBlock (getUnique id) stmts (mapLookup id debug_map)) blks
 
        funDec <- llvmFunSig live lbl link
        dflags <- getDynFlags
@@ -134,7 +134,7 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
                             (Just $ LMBitc (LMStaticPointer defVar)
                                            i8Ptr)
 
-       return (ppLlvmGlobal alias $+$ ppLlvmFunction fun', [])
+       return (ppLlvmGlobal alias $+$ ppLlvmFunction debug_map fun', [])
 
 
 -- | The section we are putting info tables and their entry code into, should

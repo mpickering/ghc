@@ -10,6 +10,7 @@ import Llvm.MetaData
 import Llvm.Types
 
 import Unique
+import Debug
 
 -- | Block labels
 type LlvmBlockId = Unique
@@ -17,11 +18,15 @@ type LlvmBlockId = Unique
 -- | A block of LLVM code.
 data LlvmBlock = LlvmBlock {
     -- | The code label for this block
-    blockLabel :: LlvmBlockId,
+    blockLabel :: LlvmBlockId
 
     -- | A list of LlvmStatement's representing the code for this block.
     -- This list must end with a control flow statement.
-    blockStmts :: [LlvmStatement]
+  , blockStmts :: [LlvmStatement]
+
+  -- | Metadata associated with this block
+  , blockDebug :: Maybe DebugBlock
+
   }
 
 type LlvmBlocks = [LlvmBlock]
