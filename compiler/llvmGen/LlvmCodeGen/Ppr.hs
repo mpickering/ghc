@@ -60,8 +60,6 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
            link = if externallyVisibleCLabel lbl
                       then ExternallyVisible
                       else Internal
-           lmblocks = map (\(BasicBlock id stmts) ->
-                                LlvmBlock (getUnique id) stmts (mapLookup id debug_map)) blks
 
        funDec <- llvmFunSig live lbl link
        dflags <- getDynFlags
@@ -79,7 +77,7 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
                        return $ Just $ LMStaticStruc infoStatics infoTy
 
        -- generate debug information metadata
-       subprogAnnot <-
+       subprogMeta <-
            case mapLookup label debug_map >>= dblSourceTick of
              Just (SourceNote span name) -> do
                subprogMeta <- getMetaUniqueId
@@ -106,14 +104,40 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
                                               , dilColumn = srcSpanStartCol span
                                               , dilScope  = subprogMeta }
                locationMeta <- getMetaUniqueId
-               addMetaDecl (MetaUnnamed locationMeta NotDistinct location)
+               --addMetaDecl (MetaUnnamed locationMeta NotDistinct location)
                addMetaDecl fileDef
                addMetaDecl typeMetaDef
                addMetaDecl (MetaUnnamed subprogMeta Distinct subprog)
-               return $ Just $ MetaAnnot (fsLit "dbg") (MetaNode subprogMeta)
+               return $ Just subprogMeta
              _   -> return Nothing
 
-       let funcMetas = maybeToList subprogAnnot
+       let
+          addDebugLocation :: MetaId -> LlvmStatement -> LlvmStatement
+          addDebugLocation mid llvm =
+            case llvm of
+              MetaStmt ms s -> MetaStmt (dbg_meta : ms) s
+              s -> MetaStmt [dbg_meta] s
+            where
+              dbg_meta = MetaAnnot (fsLit "dbg") (MetaNode mid)
+
+          mkLlvmBlock (BasicBlock id stmts) = do
+            llvm_stmts <-
+                  case (,) <$> (mapLookup id debug_map >>= dblSourceTick)
+                           <*> subprogMeta  of
+                    Just ((SourceNote span _name), subprogMeta) -> do
+                      locationMeta <- getMetaUniqueId
+                      let location = MetaDILocation { dilLine = srcSpanStartLine span
+                                                    , dilColumn = srcSpanStartCol span
+                          -- This causes errors at -O2 if you set it to subprogMeta
+                                                    , dilScope  = subprogMeta }
+                      addMetaDecl (MetaUnnamed locationMeta NotDistinct location)
+                      return (map (addDebugLocation locationMeta) stmts)
+                    _ -> return stmts
+            return $ LlvmBlock (getUnique id) llvm_stmts
+       lmblocks <- mapM mkLlvmBlock blks
+
+       let subprogAnnot = MetaAnnot (fsLit "dbg") . MetaNode <$> subprogMeta
+           funcMetas = maybeToList subprogAnnot
 
 
        let attrs = XRayInstrument : llvmStdFunAttrs
@@ -139,7 +163,7 @@ pprLlvmCmmDecl cuId debug_map (CmmProc (label, mb_info) entry_lbl live (ListGrap
                             (Just $ LMBitc (LMStaticPointer defVar)
                                            i8Ptr)
 
-       return (ppLlvmGlobal alias $+$ ppLlvmFunction debug_map fun', [])
+       return (ppLlvmGlobal alias $+$ ppLlvmFunction fun', [])
 
 
 -- | The section we are putting info tables and their entry code into, should

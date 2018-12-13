@@ -24,9 +24,6 @@ data LlvmBlock = LlvmBlock {
     -- This list must end with a control flow statement.
   , blockStmts :: [LlvmStatement]
 
-  -- | Metadata associated with this block
-  , blockDebug :: Maybe DebugBlock
-
   }
 
 type LlvmBlocks = [LlvmBlock]

@@ -135,6 +135,7 @@ instance Outputable MetaExpr where
       , ("isDefinition", if disIsDefinition
                               then text "true"
                               else text "false")
+      , ("isOptimized", text "true")
       , ("unit" , ppr disCompileUnit)
       ]
   ppr (MetaDILocation {..}) =

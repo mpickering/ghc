@@ -52,7 +52,7 @@ ppLlvmModule (LlvmModule comments aliases meta globals decls funcs)
     $+$ ppLlvmMetas meta $+$ newLine
     $+$ ppLlvmGlobals globals $+$ newLine
     $+$ ppLlvmFunctionDecls decls $+$ newLine
-    $+$ ppLlvmFunctions mapEmpty funcs
+    $+$ ppLlvmFunctions funcs
 
 -- | Print out a multi-line comment, can be inside a function or on its own
 ppLlvmComments :: [LMString] -> SDoc
@@ -125,12 +125,12 @@ ppDistinction Distinct    = text "distinct"
 ppDistinction NotDistinct = empty
 
 -- | Print out a list of function definitions.
-ppLlvmFunctions :: LabelMap DebugBlock -> LlvmFunctions -> SDoc
-ppLlvmFunctions debug_map funcs = vcat $ map (ppLlvmFunction debug_map) funcs
+ppLlvmFunctions :: LlvmFunctions -> SDoc
+ppLlvmFunctions funcs = vcat $ map ppLlvmFunction funcs
 
 -- | Print out a function definition.
-ppLlvmFunction :: LabelMap DebugBlock -> LlvmFunction -> SDoc
-ppLlvmFunction debug_map fun =
+ppLlvmFunction :: LlvmFunction -> SDoc
+ppLlvmFunction fun =
     let attrDoc = ppSpaceJoin (funcAttrs fun)
         secDoc = case funcSect fun of
                       Just s' -> text "section" <+> (doubleQuotes $ ftext s')
@@ -191,20 +191,15 @@ ppLlvmBlocks  blocks = vcat $ map ppLlvmBlock blocks
 -- | Print out an LLVM block.
 -- It must be part of a function definition.
 ppLlvmBlock :: LlvmBlock -> SDoc
-ppLlvmBlock  (LlvmBlock blockId stmts dbg) =
+ppLlvmBlock  (LlvmBlock blockId stmts) =
   let isLabel (MkLabel _) = True
       isLabel _           = False
       (block, rest)       = break isLabel stmts
       ppRest = case rest of
-        MkLabel id:xs -> ppLlvmBlock (LlvmBlock id xs Nothing)
+        MkLabel id:xs -> ppLlvmBlock (LlvmBlock id xs)
         _             -> empty
-      debug_suffix =
-        case dbg of
-          Nothing -> empty
-          Just info -> text ", !dbg !0"
-  in pprTrace "ppLlvmBlock" (ppr dbg) $
-      ppLlvmBlockLabel blockId
-           $+$ (vcat $ map (ppLlvmStatement debug_suffix) block)
+  in ppLlvmBlockLabel blockId
+           $+$ (vcat $ map ppLlvmStatement block)
            $+$ newLine
            $+$ ppRest
 
@@ -214,12 +209,12 @@ ppLlvmBlockLabel id = pprUniqueAlways id <> colon
 
 
 -- | Print out an LLVM statement.
-ppLlvmStatement :: SDoc -> LlvmStatement -> SDoc
-ppLlvmStatement debug_suffix stmt =
+ppLlvmStatement :: LlvmStatement -> SDoc
+ppLlvmStatement stmt =
   let ind = (text "  " <>)
   in case stmt of
         Assignment  dst expr      ->
-          ind $ ppAssignment dst (ppLlvmExpression expr) <> debug_suffix
+          ind $ ppAssignment dst (ppLlvmExpression expr)
         Fence       st ord        -> ind $ ppFence st ord
         Branch      target        -> ind $ ppBranch target
         BranchIf    cond ifT ifF  -> ind $ ppBranchIf cond ifT ifF
@@ -483,7 +478,7 @@ ppInsert vec elt idx =
 
 
 ppMetaStatement :: [MetaAnnot] -> LlvmStatement -> SDoc
-ppMetaStatement meta stmt = ppLlvmStatement empty stmt <> comma <+> ppMetaAnnots meta
+ppMetaStatement meta stmt = ppLlvmStatement stmt <> comma <+> ppMetaAnnots meta
 
 ppMetaExpr :: [MetaAnnot] -> LlvmExpression -> SDoc
 ppMetaExpr meta expr = ppLlvmExpression expr <> comma <+> ppMetaAnnots meta
