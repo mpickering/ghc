@@ -198,15 +198,12 @@ instance Applicative Q where
 -----------------------------------------------------
 
 type role TExp nominal   -- See Note [Role of TExp]
-newtype TExp a = TExp { unType :: Exp }
+newtype TExp a = TExp { unType :: String }
 
-unTypeQ :: Q (TExp a) -> Q Exp
-unTypeQ m = do { TExp e <- m
-               ; return e }
+unsafeTExpCoerce :: String -> Q (TExp a)
+unsafeTExpCoerce m = do { return (TExp m) }
 
-unsafeTExpCoerce :: Q Exp -> Q (TExp a)
-unsafeTExpCoerce m = do { e <- m
-                        ; return (TExp e) }
+
 
 {- Note [Role of TExp]
 ~~~~~~~~~~~~~~~~~~~~~~

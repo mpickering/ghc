@@ -30,6 +30,7 @@ import Name
 import NameEnv
 import FamInstEnv( topNormaliseType )
 import DsMeta
+import qualified DsMetaTc
 import HsSyn
 
 -- NB: The desugarer, which straddles the source and Core worlds, sometimes
@@ -62,6 +63,12 @@ import Outputable
 import PatSyn
 
 import Control.Monad
+
+import Binary
+import BinIface
+import TcIface
+import IfaceEnv
+import NameCache
 
 {-
 ************************************************************************
@@ -719,7 +726,8 @@ ds_expr _ expr@(RecordUpd { rupd_expr = record_expr, rupd_flds = fields
 -- Template Haskell stuff
 
 ds_expr _ (HsRnBracketOut _ _ _)  = panic "dsExpr HsRnBracketOut"
-ds_expr _ (HsTcBracketOut _ x ps) = dsBracket x ps
+ds_expr _ (HsTcBracketOut _ x ps) = DsMetaTc.dsBracketTc x ps
+ds_expr _ (HsSpliceE _ (HsSplicedD s)) = loadCoreExpr s
 ds_expr _ (HsSpliceE _ s)         = pprPanic "dsExpr:splice" (ppr s)
 
 -- Arrow notation extension
@@ -761,6 +769,22 @@ ds_expr _ (ELazyPat      {})  = panic "dsExpr:ELazyPat"
 ds_expr _ (HsDo          {})  = panic "dsExpr:HsDo"
 ds_expr _ (HsRecFld      {})  = panic "dsExpr:HsRecFld"
 ds_expr _ (XExpr         {})  = panic "dsExpr: XExpr"
+
+
+-- Load a core expr from a file
+loadCoreExpr :: String -> DsM CoreExpr
+loadCoreExpr s = do
+  env <- getGblEnv
+  us <- newUniqueSupply --mkSplitUniqSupply 'a'
+  let nc = initNameCache us []
+      ncu = NCU (\f -> return $ snd (f nc))
+  i <- liftIO $ do
+    bh <- readBinMem s
+    getWithUserData ncu bh
+  pprTrace "loadCoreExpr" (ppr i) (return ())
+  setEnvs (ds_if_env env) $
+    tcIfaceExpr i
+
 
 
 ------------------------------

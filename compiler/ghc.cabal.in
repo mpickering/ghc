@@ -522,6 +522,7 @@ Library
         Class
         Coercion
         DsMeta
+        DsMetaTc
         THNames
         FamInstEnv
         FunDeps

@@ -61,6 +61,7 @@ module HscTypes (
         MetaRequest(..),
         MetaResult, -- data constructors not exported to ensure correct response type
         metaRequestE, metaRequestP, metaRequestT, metaRequestD, metaRequestAW,
+        metaRequestC,
         MetaHook,
 
         -- * Annotations
@@ -720,6 +721,7 @@ data MetaRequest
   | MetaP  (LPat GhcPs      -> MetaResult)
   | MetaT  (LHsType GhcPs   -> MetaResult)
   | MetaD  ([LHsDecl GhcPs] -> MetaResult)
+  | MetaC  (String          -> MetaResult)
   | MetaAW (Serialized     -> MetaResult)
 
 -- | data constructors not exported to ensure correct result type
@@ -728,12 +730,16 @@ data MetaResult
   | MetaResP  { unMetaResP  :: LPat GhcPs      }
   | MetaResT  { unMetaResT  :: LHsType GhcPs   }
   | MetaResD  { unMetaResD  :: [LHsDecl GhcPs] }
-  | MetaResAW { unMetaResAW :: Serialized        }
+  | MetaResC  { unMetaResC  :: String          }
+  | MetaResAW { unMetaResAW :: Serialized      }
 
 type MetaHook f = MetaRequest -> LHsExpr GhcTc -> f MetaResult
 
 metaRequestE :: Functor f => MetaHook f -> LHsExpr GhcTc -> f (LHsExpr GhcPs)
 metaRequestE h = fmap unMetaResE . h (MetaE MetaResE)
+
+metaRequestC :: Functor f => MetaHook f -> LHsExpr GhcTc -> f String
+metaRequestC h = fmap unMetaResC . h (MetaC MetaResC)
 
 metaRequestP :: Functor f => MetaHook f -> LHsExpr GhcTc -> f (LPat GhcPs)
 metaRequestP h = fmap unMetaResP . h (MetaP MetaResP)

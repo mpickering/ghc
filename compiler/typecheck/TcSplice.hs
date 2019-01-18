@@ -134,6 +134,8 @@ import Data.Data (Data)
 import Data.Proxy    ( Proxy (..) )
 import GHC.Exts         ( unsafeCoerce# )
 
+import CoreSyn
+
 {-
 ************************************************************************
 *                                                                      *
@@ -164,7 +166,7 @@ runAnnotation     :: CoreAnnTarget -> LHsExpr GhcRn -> TcM Annotation
 
 -- See Note [How brackets and nested splices are handled]
 -- tcTypedBracket :: HsBracket Name -> TcRhoType -> TcM (HsExpr TcId)
-tcTypedBracket rn_expr brack@(TExpBr _ expr) res_ty
+tcTypedBracket rn_expr brack@(TExpBr e expr) res_ty
   = addErrCtxt (quotationCtxtDoc brack) $
     do { cur_stage <- getStage
        ; ps_ref <- newMutVar []
@@ -172,12 +174,11 @@ tcTypedBracket rn_expr brack@(TExpBr _ expr) res_ty
                                        -- should get thrown into the constraint set
                                        -- from outside the bracket
 
-       -- Typecheck expr to make sure it is valid,
-       -- Throw away the typechecked expression but return its type.
-       -- We'll typecheck it again when we splice it in somewhere
-       ; (_tc_expr, expr_ty) <- setStage (Brack cur_stage (TcPending ps_ref lie_var)) $
+       ; (tc_expr, expr_ty) <- setStage (Brack cur_stage (TcPending ps_ref lie_var)) $
                                 tcInferRhoNC expr
                                 -- NC for no context; tcBracket does that
+                                --
+       ; let brack' = TExpBr e tc_expr
 
        ; meta_ty <- tcTExpTy expr_ty
        ; ps' <- readMutVar ps_ref
@@ -185,7 +186,7 @@ tcTypedBracket rn_expr brack@(TExpBr _ expr) res_ty
        ; tcWrapResultO (Shouldn'tHappenOrigin "TExpBr")
                        rn_expr
                        (unLoc (mkHsApp (nlHsTyApp texpco [expr_ty])
-                                      (noLoc (HsTcBracketOut noExt brack ps'))))
+                                      (noLoc (HsTcBracketOut noExt brack' ps'))))
                        meta_ty res_ty }
 tcTypedBracket _ other_brack _
   = pprPanic "tcTypedBracket" (ppr other_brack)
@@ -197,7 +198,7 @@ tcUntypedBracket rn_expr brack ps res_ty
        ; meta_ty <- tcBrackTy brack
        ; traceTc "tc_bracket done untyped" (ppr meta_ty)
        ; tcWrapResultO (Shouldn'tHappenOrigin "untyped bracket")
-                       rn_expr (HsTcBracketOut noExt brack ps') meta_ty res_ty }
+                       rn_expr (HsTcBracketOut noExt undefined ps') meta_ty res_ty }
 
 ---------------
 tcBrackTy :: HsBracket GhcRn -> TcM TcType
@@ -521,8 +522,9 @@ runTopSplice (DelayedSplice lcl_env orig_expr res_ty q_expr)
         -- See Note [Collecting modFinalizers in typed splices].
        ; modfinalizers_ref <- newTcRef []
          -- Run the expression
+       ; pprTrace "runTopSplice" (ppr orig_expr) (return ())
        ; expr2 <- setStage (RunSplice modfinalizers_ref) $
-                    runMetaE zonked_q_expr
+                    runMetaC zonked_q_expr
        ; mod_finalizers <- readTcRef modfinalizers_ref
        ; addModFinalizersWithLclEnv $ ThModFinalizers mod_finalizers
        -- We use orig_expr here and not q_expr when tracing as a call to
@@ -535,9 +537,7 @@ runTopSplice (DelayedSplice lcl_env orig_expr res_ty q_expr)
         -- Rename and typecheck the spliced-in expression,
         -- making sure it has type res_ty
         -- These steps should never fail; this is a *typed* splice
-       ; addErrCtxt (spliceResultDoc zonked_q_expr) $ do
-         { (exp3, _fvs) <- rnLExpr expr2
-         ; unLoc <$> tcMonoExpr exp3 (mkCheckExpType zonked_ty)} }
+       ; return (HsSpliceE noExt (HsSplicedD expr2)) }
 
 
 {-
@@ -710,6 +710,8 @@ runMeta unwrap e
 defaultRunMeta :: MetaHook TcM
 defaultRunMeta (MetaE r)
   = fmap r . runMeta' True ppr (runQResult TH.pprint convertToHsExpr runTHExp)
+defaultRunMeta (MetaC r)
+  = fmap r . runMeta' True ppr (runQResult id (\_ s -> return s) runTHCore)
 defaultRunMeta (MetaP r)
   = fmap r . runMeta' True ppr (runQResult TH.pprint convertToPat runTHPat)
 defaultRunMeta (MetaT r)
@@ -720,6 +722,9 @@ defaultRunMeta (MetaAW r)
   = fmap r . runMeta' False (const empty) (const convertAnnotationWrapper)
     -- We turn off showing the code in meta-level exceptions because doing so exposes
     -- the toAnnotationWrapper function that we slap around the user's code
+    --
+convertToCoreExpr :: SrcSpan -> String -> Either MsgDoc CoreExpr
+convertToCoreExpr = undefined
 
 ----------------
 runMetaAW :: LHsExpr GhcTc         -- Of type AnnotationWrapper
@@ -729,6 +734,10 @@ runMetaAW = runMeta metaRequestAW
 runMetaE :: LHsExpr GhcTc          -- Of type (Q Exp)
          -> TcM (LHsExpr GhcPs)
 runMetaE = runMeta metaRequestE
+
+runMetaC :: LHsExpr GhcTc
+         -> TcM String
+runMetaC = runMeta metaRequestC
 
 runMetaP :: LHsExpr GhcTc          -- Of type (Q Pat)
          -> TcM (LPat GhcPs)
@@ -1067,6 +1076,9 @@ finishTH = do
   when (gopt Opt_ExternalInterpreter dflags) $ do
     tcg <- getGblEnv
     writeTcRef (tcg_th_remote_state tcg) Nothing
+
+runTHCore :: ForeignHValue -> TcM String
+runTHCore = runTH THCore
 
 runTHExp :: ForeignHValue -> TcM TH.Exp
 runTHExp = runTH THExp

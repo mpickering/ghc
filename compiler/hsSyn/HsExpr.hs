@@ -557,10 +557,8 @@ data HsExpr p
 
   | HsTcBracketOut
       (XTcBracketOut p)
-      (HsBracket GhcRn)    -- Output of the type checker is the *original*
-                           -- renamed expression, plus
-      [PendingTcSplice]    -- _typechecked_ splices to be
-                           -- pasted back in by the desugarer
+      (HsBracket GhcTc)
+      [PendingTcSplice]
 
   -- | - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnOpen',
   --         'ApiAnnotation.AnnClose'
@@ -2407,6 +2405,7 @@ data HsSplice id
         (HsSplicedThing id) -- The result of splicing
    | HsSplicedT
       DelayedSplice
+   | HsSplicedD String -- Decode this in the desugarer
    | XSplice (XXSplice id)  -- Note [Trees that Grow] extension point
 
 type instance XTypedSplice   (GhcPass _) = NoExt
@@ -2593,6 +2592,7 @@ pprSplice (HsUntypedSplice _ NoParens n e)
 pprSplice (HsQuasiQuote _ n q _ s)      = ppr_quasi n q s
 pprSplice (HsSpliced _ _ thing)         = ppr thing
 pprSplice (HsSplicedT {})               = text "Unevaluated typed splice"
+pprSplice (HsSplicedD s)                = text s
 pprSplice (XSplice x)                   = ppr x
 
 ppr_quasi :: OutputableBndr p => p -> p -> FastString -> SDoc
@@ -2607,7 +2607,7 @@ ppr_splice herald n e trail
 
 -- | Haskell Bracket
 data HsBracket p
-  = ExpBr  (XExpBr p)   (LHsExpr p)    -- [|  expr  |]
+  = ExpBr  (XExpBr p)   (LHsExpr (NoGhcTc p))    -- [|  expr  |]
   | PatBr  (XPatBr p)   (LPat p)      -- [p| pat   |]
   | DecBrL (XDecBrL p)  [LHsDecl p]   -- [d| decls |]; result of parser
   | DecBrG (XDecBrG p)  (HsGroup p)   -- [d| decls |]; result of renamer
