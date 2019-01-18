@@ -70,6 +70,9 @@ import TcIface
 import IfaceEnv
 import NameCache
 
+import Data.IORef
+import HscTypes (hsc_NC)
+
 {-
 ************************************************************************
 *                                                                      *
@@ -775,8 +778,9 @@ ds_expr _ (XExpr         {})  = panic "dsExpr: XExpr"
 loadCoreExpr :: String -> DsM CoreExpr
 loadCoreExpr s = do
   env <- getGblEnv
-  us <- newUniqueSupply --mkSplitUniqSupply 'a'
-  let nc = initNameCache us []
+  hs_env <- env_top <$> getEnv
+  nc <- liftIO $ readIORef (hsc_NC hs_env)
+  let
       ncu = NCU (\f -> return $ snd (f nc))
   i <- liftIO $ do
     bh <- readBinMem s
