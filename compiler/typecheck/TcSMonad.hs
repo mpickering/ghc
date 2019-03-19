@@ -15,7 +15,7 @@ module TcSMonad (
     getWorkList, updWorkListTcS, pushLevelNoWorkList,
 
     -- The TcS monad
-    TcS, runTcS, runTcSDeriveds, runTcSWithEvBinds,
+    TcS, runTcS, runTcSAt, runTcSDeriveds, runTcSWithEvBinds,
     failTcS, warnTcS, addErrTcS,
     runTcSEqualities,
     nestTcS, nestImplicTcS, setEvBindsTcS,
@@ -37,13 +37,14 @@ module TcSMonad (
     newTcEvBinds, newNoTcEvBinds,
     newWantedEq, newWantedEq_SI, emitNewWantedEq,
     newWanted, newWanted_SI, newWantedEvVar,
-    newWantedNC, newWantedEvVarNC,
+    newWantedNC, newWantedEvVarNC, newWantedEvVarNC_Stage,
     newDerivedNC,
     newBoundEvVarId,
     unifyTyVar, unflattenFmv, reportUnifications,
     setEvBind, setWantedEq,
     setWantedEvTerm, setEvBindIfWanted,
     newEvVar, newGivenEvVar, newGivenEvVars,
+    newGivenEvVarWithStage,
     emitNewDeriveds, emitNewDerivedEq,
     checkReductionDepth,
     getSolvedDicts, setSolvedDicts,
@@ -1087,9 +1088,9 @@ instance Outputable InertCans where
       , ppUnless (isEmptyTcAppMap funeqs) $
         text "Type-function equalities =" <+> pprCts (funEqsToBag funeqs)
       , ppUnless (isEmptyTcAppMap dicts) $
-        text "Dictionaries =" <+> pprCts (dictsToBag dicts)
+        text "Dictionaries =" <+> vcat (map ppr (bagToList (dictsToBag safehask)))
       , ppUnless (isEmptyTcAppMap safehask) $
-        text "Safe Haskell unsafe overlap =" <+> pprCts (dictsToBag safehask)
+        text "Safe Haskell unsafe overlap =" <+> vcat (map ppr (bagToList (dictsToBag safehask)))
       , ppUnless (isEmptyCts irreds) $
         text "Irreds =" <+> pprCts irreds
       , ppUnless (null insts) $
@@ -1418,11 +1419,12 @@ maybeEmitShadow :: InertCans -> Ct -> TcS Ct
 maybeEmitShadow ics ct
   | let ev = ctEvidence ct
   , CtWanted { ctev_pred = pred, ctev_loc = loc
-             , ctev_nosh = WDeriv } <- ev
+             , ctev_nosh = WDeriv, ctev_stage = st } <- ev
   , shouldSplitWD (inert_eqs ics) ct
   = do { traceTcS "Emit derived shadow" (ppr ct)
        ; let derived_ev = CtDerived { ctev_pred = pred
-                                    , ctev_loc  = loc }
+                                    , ctev_loc  = loc
+                                    , ctev_stage = st }
              shadow_ct = ct { cc_ev = derived_ev }
                -- Te shadow constraint keeps the canonical shape.
                -- This just saves work, but is sometimes important;
@@ -1649,7 +1651,7 @@ add_item ics@(IC { inert_irreds = irreds, inert_count = count })
 
 
 add_item ics item@(CDictCan { cc_ev = ev, cc_class = cls, cc_tyargs = tys })
-  = ics { inert_dicts = addDict (inert_dicts ics) cls tys item
+  = ics { inert_dicts = addDict (inert_dicts ics)  cls tys (ctLevel item, item)
         , inert_count = bumpUnsolvedCount ev (inert_count ics) }
 
 add_item _ item
@@ -1724,13 +1726,13 @@ kick_out_rewritable new_fr new_tv
     kicked_out = foldr extendWorkListCt
                           (emptyWorkList { wl_eqs    = tv_eqs_out
                                          , wl_funeqs = feqs_out })
-                          ((dicts_out `andCts` irs_out)
+                          ((mapBag snd dicts_out `andCts` irs_out)
                             `extendCtsList` insts_out)
 
     (tv_eqs_out, tv_eqs_in) = foldDVarEnv kick_out_eqs ([], emptyDVarEnv) tv_eqs
     (feqs_out,   feqs_in)   = partitionFunEqs  kick_out_ct funeqmap
            -- See Note [Kicking out CFunEqCan for fundeps]
-    (dicts_out,  dicts_in)  = partitionDicts   kick_out_ct dictmap
+    (dicts_out,  dicts_in)  = partitionDicts   (\(_, ct) -> kick_out_ct ct) dictmap
     (irs_out,    irs_in)    = partitionBag     kick_out_ct irreds
       -- Kick out even insolubles: See Note [Rewrite insolubles]
       -- Of course we must kick out irreducibles like (c a), in case
@@ -1918,7 +1920,7 @@ Hence:
 --------------
 addInertSafehask :: InertCans -> Ct -> InertCans
 addInertSafehask ics item@(CDictCan { cc_class = cls, cc_tyargs = tys })
-  = ics { inert_safehask = addDict (inert_dicts ics) cls tys item }
+  = ics { inert_safehask = addDict (inert_dicts ics) cls tys (ctLevel item, item) }
 
 addInertSafehask _ item
   = pprPanic "addInertSafehask: can't happen! Inserting " $ ppr item
@@ -1933,7 +1935,7 @@ getSafeOverlapFailures :: TcS Cts
 -- See Note [Safe Haskell Overlapping Instances Implementation] in TcSimplify
 getSafeOverlapFailures
  = do { IC { inert_safehask = safehask } <- getInertCans
-      ; return $ foldDicts consCts safehask emptyCts }
+      ; return $ foldDicts (consCts . snd) safehask emptyCts }
 
 --------------
 addSolvedDict :: InstanceWhat -> CtEvidence -> Class -> [Type] -> TcS ()
@@ -1944,7 +1946,7 @@ addSolvedDict what item cls tys
   , instanceReturnsDictCon what
   = do { traceTcS "updSolvedSetTcs:" $ ppr item
        ; updInertTcS $ \ ics ->
-             ics { inert_solved_dicts = addDict (inert_solved_dicts ics) cls tys item } }
+             ics { inert_solved_dicts = addDict (inert_solved_dicts ics) cls tys (ctEvLevel item, item) } }
   | otherwise
   = return ()
 
@@ -2024,7 +2026,7 @@ getInertGivens :: TcS [Ct]
 -- with type functions *not* unflattened
 getInertGivens
   = do { inerts <- getInertCans
-       ; let all_cts = foldDicts (:) (inert_dicts inerts)
+       ; let all_cts = foldDicts ((:) . snd) (inert_dicts inerts)
                      $ foldFunEqs (:) (inert_funeqs inerts)
                      $ concat (dVarEnvElts (inert_eqs inerts))
        ; return (filter isGivenCt all_cts) }
@@ -2051,9 +2053,9 @@ get_sc_pending this_lvl ic@(IC { inert_dicts = dicts, inert_insts = insts })
 
     (sc_pend_insts, insts') = mapAccumL get_pending_inst [] insts
 
-    get_pending :: Ct -> [Ct] -> [Ct]  -- Get dicts with cc_pend_sc = True
+    get_pending :: (ThLevel, Ct) -> [Ct] -> [Ct]  -- Get dicts with cc_pend_sc = True
                                        -- but flipping the flag
-    get_pending dict dicts
+    get_pending (_, dict) dicts
         | Just dict' <- isPendingScDict dict
         , belongs_to_this_level (ctEvidence dict)
         = dict' : dicts
@@ -2062,7 +2064,7 @@ get_sc_pending this_lvl ic@(IC { inert_dicts = dicts, inert_insts = insts })
 
     add :: Ct -> DictMap Ct -> DictMap Ct
     add ct@(CDictCan { cc_class = cls, cc_tyargs = tys }) dicts
-        = addDict dicts cls tys ct
+        = addDict dicts cls tys (ctLevel ct, ct)
     add ct _ = pprPanic "getPendingScDicts" (ppr ct)
 
     get_pending_inst :: [Ct] -> QCInst -> ([Ct], QCInst)
@@ -2096,7 +2098,7 @@ getUnsolvedInerts
       ; let unsolved_tv_eqs  = foldTyEqs add_if_unsolved tv_eqs emptyCts
             unsolved_fun_eqs = foldFunEqs add_if_wanted fun_eqs emptyCts
             unsolved_irreds  = Bag.filterBag is_unsolved irreds
-            unsolved_dicts   = foldDicts add_if_unsolved idicts emptyCts
+            unsolved_dicts   = foldDicts (\(_, ct) -> add_if_unsolved ct) idicts emptyCts
             unsolved_others  = unsolved_irreds `unionBags` unsolved_dicts
 
       ; implics <- getWorkListImplics
@@ -2184,8 +2186,8 @@ getNoGivenEqs tclvl skol_tvs
 -- potentially, match the given pred. This is used when checking to see if a
 -- Given might overlap with an instance. See Note [Instance and Given overlap]
 -- in TcInteract.
-matchableGivens :: CtLoc -> PredType -> InertSet -> Cts
-matchableGivens loc_w pred_w (IS { inert_cans = inert_cans })
+matchableGivens :: CtLoc -> ThLevel -> PredType -> InertSet -> Cts
+matchableGivens loc_w n pred_w (IS { inert_cans = inert_cans })
   = filterBag matchable_given all_relevant_givens
   where
     -- just look in class constraints and irreds. matchableGivens does get called
@@ -2195,7 +2197,7 @@ matchableGivens loc_w pred_w (IS { inert_cans = inert_cans })
     all_relevant_givens :: Cts
     all_relevant_givens
       | Just (clas, _) <- getClassPredTys_maybe pred_w
-      = findDictsByClass (inert_dicts inert_cans) clas
+      = findDictsByClass (inert_dicts inert_cans) n  clas
         `unionBags` inert_irreds inert_cans
       | otherwise
       = inert_irreds inert_cans
@@ -2342,7 +2344,7 @@ removeInertCt is ct =
   case ct of
 
     CDictCan  { cc_class = cl, cc_tyargs = tys } ->
-      is { inert_dicts = delDict (inert_dicts is) cl tys }
+      is { inert_dicts = delDict (inert_dicts is) cl tys (ctLevel ct) }
 
     CFunEqCan { cc_fun  = tf,  cc_tyargs = tys } ->
       is { inert_funeqs = delFunEq (inert_funeqs is) tf tys }
@@ -2374,30 +2376,30 @@ lookupFlatCache fam_tc tys
     lookup_flats flat_cache = findExactFunEq flat_cache fam_tc tys
 
 
-lookupInInerts :: CtLoc -> TcPredType -> TcS (Maybe CtEvidence)
+lookupInInerts :: CtLoc -> ThLevel -> TcPredType -> TcS (Maybe CtEvidence)
 -- Is this exact predicate type cached in the solved or canonicals of the InertSet?
-lookupInInerts loc pty
+lookupInInerts loc n pty
   | ClassPred cls tys <- classifyPredType pty
   = do { inerts <- getTcSInerts
-       ; return (lookupSolvedDict inerts loc cls tys `mplus`
-                 lookupInertDict (inert_cans inerts) loc cls tys) }
+       ; return (lookupSolvedDict inerts loc n cls tys `mplus`
+                 lookupInertDict (inert_cans inerts) loc n cls tys) }
   | otherwise -- NB: No caching for equalities, IPs, holes, or errors
   = return Nothing
 
 -- | Look up a dictionary inert. NB: the returned 'CtEvidence' might not
 -- match the input exactly. Note [Use loose types in inert set].
-lookupInertDict :: InertCans -> CtLoc -> Class -> [Type] -> Maybe CtEvidence
-lookupInertDict (IC { inert_dicts = dicts }) loc cls tys
-  = case findDict dicts loc cls tys of
+lookupInertDict :: InertCans -> CtLoc -> ThLevel -> Class -> [Type] -> Maybe CtEvidence
+lookupInertDict (IC { inert_dicts = dicts }) loc n cls tys
+  = case pprTrace "lookupInertDict" (ppr cls $$ ppr n $$ ppr dicts) findDict dicts loc n cls tys of
       Just ct -> Just (ctEvidence ct)
       _       -> Nothing
 
 -- | Look up a solved inert. NB: the returned 'CtEvidence' might not
 -- match the input exactly. See Note [Use loose types in inert set].
-lookupSolvedDict :: InertSet -> CtLoc -> Class -> [Type] -> Maybe CtEvidence
+lookupSolvedDict :: InertSet -> CtLoc -> ThLevel -> Class -> [Type] -> Maybe CtEvidence
 -- Returns just if exactly this predicate type exists in the solved.
-lookupSolvedDict (IS { inert_solved_dicts = solved }) loc cls tys
-  = case findDict solved loc cls tys of
+lookupSolvedDict (IS { inert_solved_dicts = solved }) loc n cls tys
+  = case findDict solved loc n cls tys of
       Just ev -> Just ev
       _       -> Nothing
 
@@ -2450,23 +2452,27 @@ delTcApp :: TcAppMap a -> Unique -> [Type] -> TcAppMap a
 delTcApp m cls tys = adjustUDFM (deleteTM tys) m cls
 
 insertTcApp :: TcAppMap a -> Unique -> [Type] -> a -> TcAppMap a
-insertTcApp m cls tys ct = alterUDFM alter_tm m cls
+insertTcApp m cls tys ct = alterTcApp m cls tys (\_ -> Just ct)
+
+alterTcApp :: TcAppMap a -> Unique -> [Type] -> (Maybe a -> Maybe a) -> TcAppMap a
+alterTcApp m cls tys f = alterUDFM alter_tm m cls
   where
-    alter_tm mb_tm = Just (insertTM tys ct (mb_tm `orElse` emptyTM))
+    alter_tm mb_tm = Just (alterTM tys f (mb_tm `orElse` emptyTM))
 
 -- mapTcApp :: (a->b) -> TcAppMap a -> TcAppMap b
 -- mapTcApp f = mapUDFM (mapTM f)
 
-filterTcAppMap :: (Ct -> Bool) -> TcAppMap Ct -> TcAppMap Ct
+filterTcAppMap :: ((ThLevel, Ct) -> Bool) -> DictMap Ct -> DictMap Ct
 filterTcAppMap f m
   = mapUDFM do_tm m
   where
     do_tm tm = foldTM insert_mb tm emptyTM
     insert_mb ct tm
-       | f ct      = insertTM tys ct tm
-       | otherwise = tm
+      = case filter f ct of
+          [] -> tm
+          (x:xs) -> insertTM (tys x) (x:xs) tm
        where
-         tys = case ct of
+         tys ct = case snd ct of
                 CFunEqCan { cc_tyargs = tys } -> tys
                 CDictCan  { cc_tyargs = tys } -> tys
                 _ -> pprPanic "filterTcAppMap" (ppr ct)
@@ -2527,13 +2533,13 @@ we ensure this by arranging that findDict always misses when looking
 up souch constraints.
 -}
 
-type DictMap a = TcAppMap a
+type DictMap a = TcAppMap [(ThLevel, a)]
 
 emptyDictMap :: DictMap a
 emptyDictMap = emptyTcAppMap
 
-findDict :: DictMap a -> CtLoc -> Class -> [Type] -> Maybe a
-findDict m loc cls tys
+findDict :: DictMap a -> CtLoc -> ThLevel -> Class -> [Type] -> Maybe a
+findDict m loc n cls tys
   | isCTupleClass cls
   , any hasIPPred tys   -- See Note [Tuples hiding implicit parameters]
   = Nothing
@@ -2543,43 +2549,45 @@ findDict m loc cls tys
   = Nothing             -- See Note [Solving CallStack constraints]
 
   | otherwise
-  = findTcApp m (getUnique cls) tys
+  = lookup n =<< findTcApp m (getUnique cls) tys
 
-findDictsByClass :: DictMap a -> Class -> Bag a
-findDictsByClass m cls
-  | Just tm <- lookupUDFM m cls = foldTM consBag tm emptyBag
+findDictsByClass :: DictMap a -> ThLevel -> Class -> Bag a
+findDictsByClass m st cls
+  | Just tm <- lookupUDFM m cls = foldTM (unionBags . listToBag . map snd . filter ((== st) . fst)) tm emptyBag
   | otherwise                  = emptyBag
 
-delDict :: DictMap a -> Class -> [Type] -> DictMap a
-delDict m cls tys = delTcApp m (getUnique cls) tys
+delDict :: DictMap a -> Class -> [Type] -> ThLevel -> DictMap a
+delDict m cls tys lvl = alterTcApp m (getUnique cls) tys (\m -> filter ((/= lvl) . fst) <$> m)
 
-addDict :: DictMap a -> Class -> [Type] -> a -> DictMap a
-addDict m cls tys item = insertTcApp m (getUnique cls) tys item
+addDict :: DictMap a -> Class -> [Type] -> (ThLevel, a) -> DictMap a
+addDict m cls tys item = alterTcApp m (getUnique cls) tys (\m -> Just $ item : fromMaybe [] m)
 
-addDictsByClass :: DictMap Ct -> Class -> Bag Ct -> DictMap Ct
+addDictsByClass :: DictMap Ct -> Class -> Bag (ThLevel, Ct) -> DictMap Ct
 addDictsByClass m cls items
   = addToUDFM m cls (foldr add emptyTM items)
   where
-    add ct@(CDictCan { cc_tyargs = tys }) tm = insertTM tys ct tm
+    add ct@(_, CDictCan { cc_tyargs = tys }) tm = alterTM tys (\m -> Just (ct : fromMaybe [] m)) tm
     add ct _ = pprPanic "addDictsByClass" (ppr ct)
 
-filterDicts :: (Ct -> Bool) -> DictMap Ct -> DictMap Ct
+filterDicts :: ((ThLevel, Ct) -> Bool) -> DictMap Ct -> DictMap Ct
 filterDicts f m = filterTcAppMap f m
 
-partitionDicts :: (Ct -> Bool) -> DictMap Ct -> (Bag Ct, DictMap Ct)
-partitionDicts f m = foldTcAppMap k m (emptyBag, emptyDicts)
+partitionDicts :: ((ThLevel, Ct) -> Bool) -> DictMap Ct -> (Bag (ThLevel, Ct), DictMap Ct)
+partitionDicts f m = foldTcAppMap (\a b -> foldr k b a) m (emptyBag, emptyDicts)
   where
     k ct (yeses, noes) | f ct      = (ct `consBag` yeses, noes)
                        | otherwise = (yeses,              add ct noes)
-    add ct@(CDictCan { cc_class = cls, cc_tyargs = tys }) m
+    add ct@(_, (CDictCan { cc_class = cls, cc_tyargs = tys })) m
       = addDict m cls tys ct
     add ct _ = pprPanic "partitionDicts" (ppr ct)
 
-dictsToBag :: DictMap a -> Bag a
+dictsToBag :: DictMap a -> Bag [(ThLevel, a)]
 dictsToBag = tcAppMapToBag
 
-foldDicts :: (a -> b -> b) -> DictMap a -> b -> b
-foldDicts = foldTcAppMap
+foldDicts :: ((ThLevel, a) -> b -> b) -> DictMap a -> b -> b
+foldDicts f = foldTcAppMap go
+  where
+    go xs b = foldr f b xs
 
 emptyDicts :: DictMap a
 emptyDicts = emptyTcAppMap
@@ -2794,6 +2802,18 @@ runTcS tcs
        ; res <- runTcSWithEvBinds ev_binds_var tcs
        ; ev_binds <- TcM.getTcEvBindsMap ev_binds_var
        ; return (res, ev_binds) }
+
+
+runTcSAt :: ThLevel
+       -> TcS a                -- What to run
+       -> TcM (a, EvBindMap, EvBindMap)
+runTcSAt n tcs
+  = do { ev_binds_var <- TcM.newTcEvBinds
+       ; res <- runTcSWithEvBinds ev_binds_var tcs
+       ; ev_binds <- TcM.getTcEvBindsMap ev_binds_var
+       ; let (ev_binds_cur, ev_binds_fut) = splitEvBindsMap n ev_binds
+       ; return (res, ev_binds_cur, ev_binds_fut) }
+
 
 -- | This variant of 'runTcS' will keep solving, even when only Deriveds
 -- are left around. It also doesn't return any evidence, as callers won't
@@ -3429,7 +3449,7 @@ setWantedEq :: TcEvDest -> Coercion -> TcS ()
 setWantedEq (HoleDest hole) co
   = do { useVars (coVarsOfCo co)
        ; fillCoercionHole hole co }
-setWantedEq (EvVarDest ev) _ = pprPanic "setWantedEq" (ppr ev)
+setWantedEq ev@(EvVarDest {}) _ = pprPanic "setWantedEq" (ppr ev)
 
 -- | Good for both equalities and non-equalities
 setWantedEvTerm :: TcEvDest -> EvTerm -> TcS ()
@@ -3440,11 +3460,11 @@ setWantedEvTerm (HoleDest hole) tm
   | otherwise
   = -- See Note [Yukky eq_sel for a HoleDest]
     do { let co_var = coHoleCoVar hole
-       ; setEvBind (mkWantedEvBind co_var tm)
+       ; setEvBind (mkWantedEvBind co_var (error "todo") tm)
        ; fillCoercionHole hole (mkTcCoVarCo co_var) }
 
-setWantedEvTerm (EvVarDest ev_id) tm
-  = setEvBind (mkWantedEvBind ev_id tm)
+setWantedEvTerm (EvVarDest n ev_id) tm
+  = setEvBind (mkWantedEvBind ev_id n tm)
 
 {- Note [Yukky eq_sel for a HoleDest]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3485,21 +3505,25 @@ newNoTcEvBinds = wrapTcS TcM.newNoTcEvBinds
 newEvVar :: TcPredType -> TcS EvVar
 newEvVar pred = wrapTcS (TcM.newEvVar pred)
 
-newGivenEvVar :: CtLoc -> (TcPredType, EvTerm) -> TcS CtEvidence
+newGivenEvVarWithStage :: ThLevel -> CtLoc -> (TcPredType, EvTerm) -> TcS CtEvidence
 -- Make a new variable of the given PredType,
 -- immediately bind it to the given term
 -- and return its CtEvidence
 -- See Note [Bind new Givens immediately] in Constraint
-newGivenEvVar loc (pred, rhs)
-  = do { new_ev <- newBoundEvVarId pred rhs
-       ; return (CtGiven { ctev_pred = pred, ctev_evar = new_ev, ctev_loc = loc }) }
+newGivenEvVarWithStage stage loc (pred, rhs)
+  = do { new_ev <- newBoundEvVarId pred stage rhs
+       ; return (CtGiven { ctev_pred = pred, ctev_evar = new_ev, ctev_loc = loc
+                         , ctev_stage = stage })}
+
+newGivenEvVar :: CtLoc -> (TcPredType, EvTerm) -> TcS CtEvidence
+newGivenEvVar ct_loc = newGivenEvVarWithStage (thLevel (tcl_th_ctxt (ctl_env ct_loc))) ct_loc
 
 -- | Make a new 'Id' of the given type, bound (in the monad's EvBinds) to the
 -- given term
-newBoundEvVarId :: TcPredType -> EvTerm -> TcS EvVar
-newBoundEvVarId pred rhs
+newBoundEvVarId :: TcPredType -> ThLevel -> EvTerm -> TcS EvVar
+newBoundEvVarId pred n rhs
   = do { new_ev <- newEvVar pred
-       ; setEvBind (mkGivenEvBind new_ev rhs)
+       ; setEvBind (mkGivenEvBind new_ev n rhs)
        ; return new_ev }
 
 newGivenEvVars :: CtLoc -> [(TcPredType, EvTerm)] -> TcS [CtEvidence]
@@ -3525,7 +3549,8 @@ newWantedEq_SI blocker si loc role ty1 ty2
        ; traceTcS "Emitting new coercion hole" (ppr hole <+> dcolon <+> ppr pty)
        ; return ( CtWanted { ctev_pred = pty, ctev_dest = HoleDest hole
                            , ctev_nosh = si
-                           , ctev_loc = loc}
+                           , ctev_loc = loc
+                          , ctev_stage = thLevel (tcl_th_ctxt (ctl_env loc)) }
                 , mkHoleCo hole ) }
   where
     pty = mkPrimEqPredRole role ty1 ty2
@@ -3534,15 +3559,23 @@ newWantedEq_SI blocker si loc role ty1 ty2
 newWantedEvVarNC :: CtLoc -> TcPredType -> TcS CtEvidence
 newWantedEvVarNC = newWantedEvVarNC_SI WDeriv
 
+newWantedEvVarNC_Stage :: ThLevel -> CtLoc -> TcPredType -> TcS CtEvidence
+newWantedEvVarNC_Stage n = newWantedEvVarNC_SI_Stage n WDeriv
+
 newWantedEvVarNC_SI :: ShadowInfo -> CtLoc -> TcPredType -> TcS CtEvidence
+newWantedEvVarNC_SI si loc = newWantedEvVarNC_SI_Stage  (thLevel (tcl_th_ctxt (ctl_env loc))) si loc
+
+newWantedEvVarNC_SI_Stage :: ThLevel -> ShadowInfo -> CtLoc -> TcPredType -> TcS CtEvidence
 -- Don't look up in the solved/inerts; we know it's not there
-newWantedEvVarNC_SI si loc pty
+newWantedEvVarNC_SI_Stage n si loc pty
   = do { new_ev <- newEvVar pty
        ; traceTcS "Emitting new wanted" (ppr new_ev <+> dcolon <+> ppr pty $$
                                          pprCtLoc loc)
-       ; return (CtWanted { ctev_pred = pty, ctev_dest = EvVarDest new_ev
+       ; return (CtWanted { ctev_pred = pty, ctev_dest = EvVarDest n new_ev
                           , ctev_nosh = si
-                          , ctev_loc = loc })}
+                          , ctev_loc = loc
+                          , ctev_stage = n
+                            })}
 
 newWantedEvVar :: CtLoc -> TcPredType -> TcS MaybeNew
 newWantedEvVar = newWantedEvVar_SI WDeriv
@@ -3550,7 +3583,8 @@ newWantedEvVar = newWantedEvVar_SI WDeriv
 newWantedEvVar_SI :: ShadowInfo -> CtLoc -> TcPredType -> TcS MaybeNew
 -- For anything except ClassPred, this is the same as newWantedEvVarNC
 newWantedEvVar_SI si loc pty
-  = do { mb_ct <- lookupInInerts loc pty
+  = do { st <- wrapTcS $ TcM.getStage
+       ; mb_ct <- lookupInInerts loc (thLevel st) pty
        ; case mb_ct of
             Just ctev
               | not (isDerived ctev)
@@ -3601,7 +3635,7 @@ emitNewDerivedEq loc role ty1 ty2
 newDerivedNC :: CtLoc -> TcPredType -> TcS CtEvidence
 newDerivedNC loc pred
   = do { -- checkReductionDepth loc pred
-       ; return (CtDerived { ctev_pred = pred, ctev_loc = loc }) }
+       ; return (CtDerived { ctev_pred = pred, ctev_loc = loc, ctev_stage = thLevel (tcl_th_ctxt (ctl_env loc)) })}
 
 -- --------- Check done in TcInteract.selectNewWorkItem???? ---------
 -- | Checks if the depth of the given location is too much. Fails if

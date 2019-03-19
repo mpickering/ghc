@@ -43,7 +43,7 @@ module VarEnv (
         delDVarEnvList,
         minusDVarEnv,
         partitionDVarEnv,
-        anyDVarEnv,
+        anyDVarEnv, allDVarEnv,
 
         -- * The InScopeSet type
         InScopeSet,
@@ -630,3 +630,6 @@ extendDVarEnvList = addListToUDFM
 
 anyDVarEnv :: (a -> Bool) -> DVarEnv a -> Bool
 anyDVarEnv = anyUDFM
+
+allDVarEnv :: (a -> Bool) -> DVarEnv a -> Bool
+allDVarEnv = allUDFM

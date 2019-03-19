@@ -17,6 +17,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE BangPatterns #-}
 
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
@@ -50,6 +51,8 @@ import GHC.Core.Type
 import TysWiredIn (mkTupleStr)
 import TcType (TcType)
 import {-# SOURCE #-} TcRnTypes (TcLclEnv)
+
+import Language.Haskell.TH.Syntax(TExpU, TTExp)
 
 -- libraries:
 import Data.Data hiding (Fixity(..))
@@ -496,20 +499,22 @@ data HsExpr p
       (HsBracket GhcRn)    -- Output of the renamer is the *original* renamed
                            -- expression, plus
       [PendingRnSplice]    -- _renamed_ splices to be type checked
-
-  | HsTcBracketOut
+  | HsTcUntypedBracketOut
       (XTcBracketOut p)
       (Maybe QuoteWrapper) -- The wrapper to apply type and dictionary argument
                            -- to the quote.
       (HsBracket GhcRn)    -- Output of the type checker is the *original*
                            -- renamed expression, plus
-      [PendingTcSplice]    -- _typechecked_ splices to be
+      [PendingTcUntypedSplice]    -- _typechecked_ splices to be
                            -- pasted back in by the desugarer
 
-  -- | - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnOpen',
-  --         'ApiAnnotation.AnnClose'
+  | HsTcTypedBracketOut
+      (XTcBracketOut p)
+      (Maybe QuoteWrapper)
+      (HsBracket GhcTc) -- The contents of the bracket
+      [PendingTcTypedSplice] -- Any expression splices
+      [PendingZonkSplice] -- Any type splices (?)
 
-  -- For details on above see note [Api annotations] in ApiAnnotation
   | HsSpliceE  (XSpliceE p) (HsSplice p)
 
   -----------------------------------------------------------
@@ -1061,8 +1066,10 @@ ppr_expr (HsSpliceE _ s)         = pprSplice s
 ppr_expr (HsBracket _ b)         = pprHsBracket b
 ppr_expr (HsRnBracketOut _ e []) = ppr e
 ppr_expr (HsRnBracketOut _ e ps) = ppr e $$ text "pending(rn)" <+> ppr ps
-ppr_expr (HsTcBracketOut _ _wrap e []) = ppr e
-ppr_expr (HsTcBracketOut _ _wrap e ps) = ppr e $$ text "pending(tc)" <+> pprIfTc @p (ppr ps)
+ppr_expr (HsTcUntypedBracketOut _ _wrap e []) = ppr e
+ppr_expr (HsTcUntypedBracketOut _ _wrap e ps) = ppr e $$ text "pending-u(tc)" <+> ppr ps
+ppr_expr (HsTcTypedBracketOut _ _wrap e [] []) = ppr e
+ppr_expr (HsTcTypedBracketOut _ _wrap e ps zs) = ppr e $$ text "pending-t(tc)" <+> ppr ps <+> ppr zs
 
 ppr_expr (HsProc _ pat (L _ (HsCmdTop _ cmd)))
   = hsep [text "proc", ppr pat, ptext (sLit "->"), ppr cmd]
@@ -1192,7 +1199,8 @@ hsExprNeedsParens p = go
     go (HsSpliceE{})                  = False
     go (HsBracket{})                  = False
     go (HsRnBracketOut{})             = False
-    go (HsTcBracketOut{})             = False
+    go (HsTcUntypedBracketOut{})      = False
+    go (HsTcTypedBracketOut{})        = False
     go (HsProc{})                     = p > topPrec
     go (HsStatic{})                   = p >= appPrec
     go (HsTick _ _ (L _ e))           = go e
@@ -2383,6 +2391,8 @@ data HsSplice id
         (XSpliced id)
         ThModFinalizers     -- TH finalizers produced by the splice.
         (HsSplicedThing id) -- The result of splicing
+--   | HsSplicedT DelayedSplice
+   | HsSplicedD [(Int, TTExp)] [(Int, TExpU)] String -- Decode this in the desugarer
    | XSplice (XXSplice id)  -- Note [Trees that Grow] extension point
 
 newtype HsSplicedT = HsSplicedT DelayedSplice deriving (Data)
@@ -2463,9 +2473,14 @@ data UntypedSpliceFlavour
   | UntypedDeclSplice
   deriving Data
 
--- | Pending Type-checker Splice
-data PendingTcSplice
-  = PendingTcSplice SplicePointName (LHsExpr GhcTc)
+type PendingTcUntypedSplice = PendingTcSplice GhcRn
+type PendingTcTypedSplice = PendingTcSplice GhcTc
+
+data PendingTcSplice p
+  = PendingTcSplice (IdP p) (LHsExpr GhcTc)
+
+data PendingZonkSplice
+  = PendingZonkSplice (IdP GhcTc) (EvExpr)
 
 {-
 Note [Pending Splices]
@@ -2523,6 +2538,18 @@ checker:
   * Pending *typed* expression splices, (PendingTcSplice), e.g.,
         [||1 + $$(f 2)||]
 
+and a sixth, which arising implicitly from type applications:
+
+  * Pending *type* splice e.g
+        [|| id @a ||]
+    We need to implicitly lift the |a| like we do for expressions. All types
+    The type must be constrained by a `LiftT` constraint which is
+    solved automatically by the compiler. This is so that we definitely
+    know what a type is before splicing in an expression. We can
+    solve the constraint for all types which is why we do it
+    automatically. The only time when we fail is when there is a
+    variable which wouldn't be bound in the resulting program.
+
 It would be possible to eliminate HsRnBracketOut and use HsBracketOut for the
 output of the renamer. However, when pretty printing the output of the renamer,
 e.g., in a type error message, we *do not* want to print out the pending
@@ -2540,9 +2567,9 @@ instance OutputableBndrId p
 instance (OutputableBndrId p) => Outputable (HsSplice (GhcPass p)) where
   ppr s = pprSplice s
 
-pprPendingSplice :: (OutputableBndrId p)
-                 => SplicePointName -> LHsExpr (GhcPass p) -> SDoc
-pprPendingSplice n e = angleBrackets (ppr n <> comma <+> ppr (stripParensHsExpr e))
+pprPendingSplice :: (Outputable p)
+                 => SplicePointName -> p -> SDoc
+pprPendingSplice n e = angleBrackets (ppr n <> comma <+> ppr e)
 
 pprSpliceDecl ::  (OutputableBndrId p)
           => HsSplice (GhcPass p) -> SpliceExplicitFlag -> SDoc
@@ -2571,6 +2598,8 @@ pprSplice (XSplice x)                   = case ghcPass @p of
                                             GhcRn -> noExtCon x
                                             GhcTc -> case x of
                                                        HsSplicedT _ -> text "Unevaluated typed splice"
+pprSplice (HsSplicedD zs env s)         = ppr (length zs) $$ ppr (length env) $$ text s
+--pprSplice (HsSplicedT {})               = text "Unevaluated typed splice"
 
 ppr_quasi :: OutputableBndr p => p -> p -> FastString -> SDoc
 ppr_quasi n quoter quote = whenPprDebug (brackets (ppr n)) <>
@@ -2584,7 +2613,7 @@ ppr_splice herald n e trail
 
 -- | Haskell Bracket
 data HsBracket p
-  = ExpBr  (XExpBr p)   (LHsExpr p)    -- [|  expr  |]
+  = ExpBr  (XExpBr p)   (LHsExpr (NoGhcTc p))    -- [|  expr  |]
   | PatBr  (XPatBr p)   (LPat p)      -- [p| pat   |]
   | DecBrL (XDecBrL p)  [LHsDecl p]   -- [d| decls |]; result of parser
   | DecBrG (XDecBrG p)  (HsGroup p)   -- [d| decls |]; result of renamer
@@ -2635,8 +2664,11 @@ thTyBrackets pp_body = text "[||" <+> pp_body <+> ptext (sLit "||]")
 instance Outputable PendingRnSplice where
   ppr (PendingRnSplice _ n e) = pprPendingSplice n e
 
-instance Outputable PendingTcSplice where
-  ppr (PendingTcSplice n e) = pprPendingSplice n e
+instance NamedThing (IdP p) => Outputable (PendingTcSplice p) where
+  ppr (PendingTcSplice n e) = pprPendingSplice (getName n) e
+
+instance Outputable PendingZonkSplice where
+  ppr (PendingZonkSplice n e) = pprPendingSplice (getName n) e
 
 {-
 ************************************************************************

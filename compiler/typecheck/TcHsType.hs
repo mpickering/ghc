@@ -71,6 +71,7 @@ module TcHsType (
 import GhcPrelude
 
 import GHC.Hs
+import Id
 import TcRnMonad
 import TcOrigin
 import GHC.Core.Predicate
@@ -87,7 +88,7 @@ import GHC.Core.TyCo.Rep
 import GHC.Core.TyCo.Ppr
 import TcErrors ( reportAllUnsolved )
 import TcType
-import Inst   ( tcInstInvisibleTyBinders, tcInstInvisibleTyBinder )
+--import Inst   ( tcInstInvisibleTyBinders, tcInstInvisibleTyBinder )
 import GHC.Core.Type
 import TysPrim
 import RdrName( lookupLocalRdrOcc )
@@ -101,6 +102,7 @@ import Name
 -- import NameSet
 import VarEnv
 import TysWiredIn
+import THNames
 import BasicTypes
 import SrcLoc
 import Constants ( mAX_CTUPLE_SIZE )
@@ -114,6 +116,8 @@ import FastString
 import PrelNames hiding ( wildCardName )
 import GHC.Driver.Session
 import qualified GHC.LanguageExtensions as LangExt
+
+import Inst
 
 import Maybes
 import Data.List ( find )
@@ -1493,6 +1497,91 @@ tc_hs_context mode ctxt = mapM (tc_lhs_pred mode) (unLoc ctxt)
 tc_lhs_pred :: TcTyMode -> LHsType GhcRn -> TcM PredType
 tc_lhs_pred mode pred = tc_lhs_type mode pred constraintKind
 
+-----------------------------------------------------------------------------
+{- Note [The LiftT Story]
+
+In order to generate well-scoped terms we need to pay attention to the level of
+variables. For example, in foo, x is bound at level 0 and used at level 1.
+
+foo x = [| x |]
+
+After we run `foo arg` we get a code fragment which represents the value of
+`arg` and crucially not of the unbound variable `x` as `x` is only bound at
+compile time. In order to do this, we need to know how to turn `arg` into
+`Q Exp`, this is the job of the `Lift` type class.
+
+class Lift a where
+  lift :: a -> Q Exp
+
+The point of the `LiftT` class is to perform the same kind of persistence but
+for types. How can this happen? (#15437)
+
+get :: forall a . Int
+
+foo :: forall a . Q (TExp a)
+foo = [| get @a |]
+
+The type variable `a` is bound at stage 0 but used in stage 1.
+
+Instead we now write this program using the `LiftT` constraint so that we know
+that we can serialise the type when we are given one.
+
+foo :: forall a . LiftT a => Q (TExp a)
+foo = [| get @a |]
+
+this now means approximately:
+
+foo :: forall a . LiftT a => Q (TExp a)
+foo = [| get @$(liftTyCl @Type @a) |]
+
+So when we splice in foo, we can instantiate |a| and have it turned into its
+representation appropiately.
+
+qux = $(foo @Int)
+
+Q: Why do we solve the class automatically?
+
+We already know how to turn any type into its representation so we magically
+solve all the instances. This also allows us to provide instances for
+polytypes, pred types and so on.
+
+Q: Is this not like Typeable?
+
+Yes it is, but there is no type index which means that we can provide an
+implementation for polytypes, pred types and so on. We also don't
+need to be able to compare these representations or do anything with them.
+
+An implementation in terms of typeable would be perhaps 10-15 lines shorter
+but far less expressive.
+
+-}
+
+
+-----------------------------------------------------------------------------
+-- Functions to do with cross stage persistence of types
+
+checkThLocalTyId :: Name -> Id -> TcM Id
+checkThLocalTyId n id = do
+  sp_name <- newSysName (mkTyVarOcc "$splice")
+  let sp_id = mkTyVar sp_name (idType id)
+  checkThLocalIdX sp_id (mkSpliceTyExpr sp_id) n id
+
+-- Construct the term for `liftTyCl @k @ty`
+mkSpliceTyExpr :: Id -> Name -> Id -> TcM (Either a PendingZonkSplice)
+mkSpliceTyExpr sp_id id_name id = do
+  let id_ty = mkTyVarTy id
+  ev <- emitTypeable id_ty
+  return $ Right $ PendingZonkSplice sp_id (evId ev)
+
+  {-
+  pprTraceM "mkSpliceTy" (ppr id $$ ppr id_ty $$ ppr k)
+  liftTClass <- tcLookupClass liftTClassName
+  let [lift_id] = classMethods liftTClass
+      c = (mkTyConApp (classTyCon liftTClass) [k, id_ty])
+  dict <- instCall (OccurrenceOf id_name) [k, id_ty] [c]
+  return (mkLHsWrap dict (nlHsVar lift_id))
+  -}
+
 ---------------------------
 tcTyVar :: TcTyMode -> Name -> TcM (TcType, TcKind)
 -- See Note [Type checking recursive type and class declarations]
@@ -1501,7 +1590,12 @@ tcTyVar mode name         -- Could be a tyvar, a tycon, or a datacon
   = do { traceTc "lk1" (ppr name)
        ; thing <- tcLookup name
        ; case thing of
-           ATyVar _ tv -> return (mkTyVarTy tv, tyVarKind tv)
+           ATyVar n tv -> do
+                             -- See Note [The LiftT story]
+                            tv' <- checkThLocalTyId n tv
+                            -- MattP: Not sure this is correct, not sure if
+                            -- the variable which is returned is right.
+                            return (mkTyVarTy tv', tyVarKind tv)
 
            ATcTyCon tc_tc
              -> do { -- See Note [GADT kind self-reference]

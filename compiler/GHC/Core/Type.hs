@@ -1036,7 +1036,7 @@ In the compiler we maintain the invariant that all saturated applications of
 See #11714.
 -}
 
-splitFunTy :: Type -> (Type, Type)
+splitFunTy :: HasCallStack => Type -> (Type, Type)
 -- ^ Attempts to extract the argument and result types from a type, and
 -- panics if that is not possible. See also 'splitFunTy_maybe'
 splitFunTy ty | Just ty' <- coreView ty = splitFunTy ty'

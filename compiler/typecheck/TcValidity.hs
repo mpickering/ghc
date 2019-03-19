@@ -69,6 +69,7 @@ import Outputable
 import Unique      ( mkAlphaTyVarUnique )
 import Bag         ( emptyBag )
 import qualified GHC.LanguageExtensions as LangExt
+import qualified THNames
 
 import Control.Monad
 import Data.Foldable
@@ -216,6 +217,7 @@ checkAmbiguity ctxt ty
        ; allow_ambiguous <- xoptM LangExt.AllowAmbiguousTypes
        ; (_wrap, wanted) <- addErrCtxt (mk_msg allow_ambiguous) $
                             captureConstraints $
+                            setStage Comp $
                             tcSubType_NC ctxt ty ty
        ; simplifyAmbiguityCheck ty wanted
 
@@ -1525,9 +1527,11 @@ check_special_inst_head dflags is_boot is_sig ctxt clas cls_args
   , hand_written_bindings
   = failWithTc rejected_class_msg
 
-  -- Handwritten instances of KnownNat/KnownSymbol class
+  -- Handwritten instances of LiftT/KnownNat/KnownSymbol class
   -- are always forbidden (#12837)
-  | clas_nm `elem` [ knownNatClassName, knownSymbolClassName ]
+  | clas_nm `elem` [ THNames.liftTClassName
+                   , knownNatClassName
+                   , knownSymbolClassName ]
   , not is_sig
     -- Note [Instances of built-in classes in signature files]
   , hand_written_bindings

@@ -486,6 +486,7 @@ ifaceDeclFingerprints hash decl
 data IfaceExpr
   = IfaceLcl    IfLclName
   | IfaceExt    IfExtName
+  | IfaceSplice Int                     -- A splice point
   | IfaceType   IfaceType
   | IfaceCo     IfaceCoercion
   | IfaceTuple  TupleSort [IfaceExpr]   -- Saturated; type arguments omitted
@@ -1288,6 +1289,7 @@ pprIfaceExpr :: (SDoc -> SDoc) -> IfaceExpr -> SDoc
 
 pprIfaceExpr _       (IfaceLcl v)       = ppr v
 pprIfaceExpr _       (IfaceExt v)       = ppr v
+pprIfaceExpr _       (IfaceSplice n)    = ppr n
 pprIfaceExpr _       (IfaceLit l)       = ppr l
 pprIfaceExpr _       (IfaceFCall cc ty) = braces (ppr cc <+> ppr ty)
 pprIfaceExpr _       (IfaceType ty)     = char '@' <> pprParendIfaceType ty
@@ -1559,6 +1561,7 @@ freeNamesIfAppArgs IA_Nil          = emptyNameSet
 
 freeNamesIfType :: IfaceType -> NameSet
 freeNamesIfType (IfaceFreeTyVar _)    = emptyNameSet
+freeNamesIfType (IfaceSpliceTyVar _)  = emptyNameSet
 freeNamesIfType (IfaceTyVar _)        = emptyNameSet
 freeNamesIfType (IfaceAppTy s t)      = freeNamesIfType s &&& freeNamesIfAppArgs t
 freeNamesIfType (IfaceTyConApp tc ts) = freeNamesIfTc tc &&& freeNamesIfAppArgs ts
@@ -2256,6 +2259,9 @@ instance Binary IfaceExpr where
         putByte bh 13
         put_ bh a
         put_ bh b
+    put_ bh (IfaceSplice n) = do
+        putByte bh 14
+        put_ bh n
     get bh = do
         h <- getByte bh
         case h of
@@ -2298,6 +2304,8 @@ instance Binary IfaceExpr where
             13 -> do a <- get bh
                      b <- get bh
                      return (IfaceECase a b)
+            14 -> do n <- get bh
+                     return (IfaceSplice n)
             _ -> panic ("get IfaceExpr " ++ show h)
 
 instance Binary IfaceTickish where

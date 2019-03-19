@@ -127,12 +127,12 @@ simplifyTop :: WantedConstraints -> TcM (Bag EvBind)
 -- but when there is nothing to quantify we don't wrap
 -- in a degenerate implication, so we do that here instead
 simplifyTop wanteds
-  = do { traceTc "simplifyTop {" $ text "wanted = " <+> ppr wanteds
-       ; ((final_wc, unsafe_ol), binds1) <- runTcS $
+  = do { --pprTraceM "simplifyTop {" $ text "wanted = " <+> ppr wanteds
+        ((final_wc, unsafe_ol), binds1) <- runTcS $
             do { final_wc <- simpl_top wanteds
                ; unsafe_ol <- getSafeOverlapFailures
                ; return (final_wc, unsafe_ol) }
-       ; traceTc "End simplifyTop }" empty
+       --; traceTc "End simplifyTop }" empty
 
        ; binds2 <- reportUnsolved final_wc
 
@@ -153,8 +153,9 @@ simplifyTop wanteds
            ; recordUnsafeInfer whyUnsafe
            }
        ; traceTc "reportUnsolved (unsafe overlapping) }" empty
-
-       ; return (evBindMapBinds binds1 `unionBags` binds2) }
+       ; let res_map = (evBindMapBinds binds1 `unionBags` binds2)
+       ; MASSERT2(all ((== 1) . eb_level) res_map, ppr res_map)
+       ; return res_map }
 
 
 -- | Type-check a thing that emits only equality constraints, solving any
@@ -607,10 +608,11 @@ tcCheckSatisfiability :: Bag EvVar -> TcM Bool
 -- Return True if satisfiable, False if definitely contradictory
 tcCheckSatisfiability given_ids
   = do { lcl_env <- TcM.getLclEnv
+       ; st <- getStage
        ; let given_loc = mkGivenLoc topTcLevel UnkSkol lcl_env
        ; (res, _ev_binds) <- runTcS $
              do { traceTcS "checkSatisfiability {" (ppr given_ids)
-                ; let given_cts = mkGivens given_loc (bagToList given_ids)
+                ; let given_cts = mkGivens (thLevel st) given_loc (bagToList given_ids)
                      -- See Note [Superclasses and satisfiability]
                 ; solveSimpleGivens given_cts
                 ; insols <- getInertInsols
@@ -639,9 +641,10 @@ tcNormalise given_ids ty
   = do { lcl_env <- TcM.getLclEnv
        ; let given_loc = mkGivenLoc topTcLevel UnkSkol lcl_env
        ; wanted_ct <- mk_wanted_ct
+       ; st <- getStage
        ; (res, _ev_binds) <- runTcS $
              do { traceTcS "tcNormalise {" (ppr given_ids)
-                ; let given_cts = mkGivens given_loc (bagToList given_ids)
+                ; let given_cts = mkGivens (thLevel st) given_loc (bagToList given_ids)
                 ; solveSimpleGivens given_cts
                 ; wcs <- solveSimpleWanteds (unitBag wanted_ct)
                   -- It's an invariant that this wc_simple will always be
@@ -791,12 +794,13 @@ simplifyInfer rhs_tclvl infer_mode sigs name_taus wanteds
        ; tc_env          <- TcM.getEnv
        ; ev_binds_var    <- TcM.newTcEvBinds
        ; psig_theta_vars <- mapM TcM.newEvVar psig_theta
+       ; st <- getStage
        ; wanted_transformed_incl_derivs
             <- setTcLevel rhs_tclvl $
                runTcSWithEvBinds ev_binds_var $
                do { let loc         = mkGivenLoc rhs_tclvl UnkSkol $
                                       env_lcl tc_env
-                        psig_givens = mkGivens loc psig_theta_vars
+                        psig_givens = mkGivens (thLevel st) loc psig_theta_vars
                   ; _ <- solveSimpleGivens psig_givens
                          -- See Note [Add signature contexts as givens]
                   ; solveWanteds wanteds }
@@ -832,9 +836,10 @@ simplifyInfer rhs_tclvl infer_mode sigs name_taus wanteds
        -- Easiest way to do this is to emit them as new Wanteds (#14643)
        ; ct_loc <- getCtLocM AnnOrigin Nothing
        ; let psig_wanted = [ CtWanted { ctev_pred = idType psig_theta_var
-                                      , ctev_dest = EvVarDest psig_theta_var
+                                      , ctev_dest = EvVarDest (thLevel st) psig_theta_var
                                       , ctev_nosh = WDeriv
-                                      , ctev_loc  = ct_loc }
+                                      , ctev_loc  = ct_loc
+                                      , ctev_stage = thLevel st }
                            | psig_theta_var <- psig_theta_vars ]
 
        -- Now construct the residual constraint
@@ -1648,7 +1653,8 @@ solveImplication imp@(Implic { ic_tclvl  = tclvl
                              , ic_given  = given_ids
                              , ic_wanted = wanteds
                              , ic_info   = info
-                             , ic_status = status })
+                             , ic_status = status
+                             , ic_env = lcl })
   | isSolvedStatus status
   = return (emptyCts, Just imp)  -- Do nothing
 
@@ -1666,7 +1672,7 @@ solveImplication imp@(Implic { ic_tclvl  = tclvl
        ; (no_given_eqs, given_insols, residual_wanted)
             <- nestImplicTcS ev_binds_var tclvl $
                do { let loc    = mkGivenLoc tclvl info (ic_env imp)
-                        givens = mkGivens loc given_ids
+                        givens = mkGivens (thLevel $ tcl_th_ctxt lcl) loc given_ids
                   ; solveSimpleGivens givens
 
                   ; residual_wanted <- solveWanteds wanteds

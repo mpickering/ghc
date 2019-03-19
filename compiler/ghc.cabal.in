@@ -522,6 +522,7 @@ Library
         GHC.Core.Class
         GHC.Core.Coercion
         GHC.HsToCore.Quote
+        GHC.HsToCore.DsMetaTc
         THNames
         GHC.Core.FamInstEnv
         FunDeps

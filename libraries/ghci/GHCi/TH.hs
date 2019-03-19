@@ -256,6 +256,7 @@ runTH pipe rstate rhv ty mb_loc = do
     THPat -> runTHQ pipe rstate mb_loc (unsafeCoerce hv :: TH.Q TH.Pat)
     THType -> runTHQ pipe rstate mb_loc (unsafeCoerce hv :: TH.Q TH.Type)
     THDec -> runTHQ pipe rstate mb_loc (unsafeCoerce hv :: TH.Q [TH.Dec])
+    THCore -> error "not implemented"
     THAnnWrapper -> do
       hv <- unsafeCoerce <$> localRef rhv
       case hv :: AnnotationWrapper of

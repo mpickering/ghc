@@ -49,7 +49,7 @@ module Language.Haskell.TH(
         reifyConStrictness,
 
         -- * Typed expressions
-        TExp, unType,
+        TExp, unType, TExpU(..), unTypeQ,
 
         -- * Names
         Name, NameSpace,        -- Abstract

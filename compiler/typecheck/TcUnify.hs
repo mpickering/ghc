@@ -1759,6 +1759,7 @@ lhsPriority tv
                                      TyVarTv    -> 2
                                      TauTv      -> 3
                                      FlatMetaTv -> 4
+                                     BrackTv {} -> 0
 {- Note [TyVar/TyVar orientation]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Given (a ~ b), should we orient the CTyEqCan as (a~b) or (b~a)?

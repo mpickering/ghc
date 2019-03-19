@@ -26,7 +26,7 @@ module TcRnTypes(
         -- The environment types
         Env(..),
         TcGblEnv(..), TcLclEnv(..),
-        setLclEnvTcLevel, getLclEnvTcLevel,
+        setLclEnvTcLevel, getLclEnvTcLevel, getLclEnvThLevel,
         setLclEnvLoc, getLclEnvLoc,
         IfGblEnv(..), IfLclEnv(..),
         tcVisibleOrphanMods,
@@ -100,6 +100,7 @@ import Annotations
 import GHC.Core.InstEnv
 import GHC.Core.FamInstEnv
 import {-# SOURCE #-} GHC.HsToCore.PmCheck.Types (Deltas)
+import GHC.Core
 import IOEnv
 import RdrName
 import Name
@@ -139,6 +140,7 @@ import GHCi.RemoteTypes
 import {-# SOURCE #-} TcHoleFitTypes ( HoleFitPlugin )
 
 import qualified Language.Haskell.TH as TH
+import qualified Language.Haskell.TH.Syntax as TH
 
 -- | A 'NameShape' is a substitution on 'Name's that can be used
 -- to refine the identities of a hole while we are renaming interfaces
@@ -280,7 +282,10 @@ data IfLclEnv
         if_implicits_env :: Maybe TypeEnv,
 
         if_tv_env  :: FastStringEnv TyVar,     -- Nested tyvar bindings
-        if_id_env  :: FastStringEnv Id         -- Nested id binding
+        if_id_env  :: FastStringEnv Id,         -- Nested id binding
+        if_dsm_env :: Maybe (DsGblEnv, DsLclEnv),
+        if_meta_env :: UniqFM TH.TExpU,
+        if_ty_meta_env :: UniqFM TH.TTExp
     }
 
 {-
@@ -314,6 +319,7 @@ instance ContainsModule DsGblEnv where
 
 data DsLclEnv = DsLclEnv {
         dsl_meta    :: DsMetaEnv,        -- Template Haskell bindings
+        dsl_level   :: ThLevel,          -- Current Template Haskell level we are desugaring into
         dsl_loc     :: RealSrcSpan,      -- To put in pattern-matching error msgs
 
         -- See Note [Note [Type and Term Equality Propagation] in Check.hs
@@ -333,6 +339,8 @@ data DsMetaVal
 
    | DsSplice (HsExpr GhcTc) -- These bindings are introduced by
                              -- the PendingSplices on a HsBracketOut
+   | DsSpliceC CoreExpr
+
 
 
 {-
@@ -787,6 +795,9 @@ setLclEnvTcLevel env lvl = env { tcl_tclvl = lvl }
 getLclEnvTcLevel :: TcLclEnv -> TcLevel
 getLclEnvTcLevel = tcl_tclvl
 
+getLclEnvThLevel :: TcLclEnv -> ThLevel
+getLclEnvThLevel = thLevel . tcl_th_ctxt
+
 setLclEnvLoc :: TcLclEnv -> RealSrcSpan -> TcLclEnv
 setLclEnvLoc env loc = env { tcl_loc = loc }
 
@@ -949,7 +960,8 @@ data PendingStuff
   | RnPendingTyped                -- Renaming the inside of a *typed* bracket
 
   | TcPending                     -- Typechecking the inside of a typed bracket
-      (TcRef [PendingTcSplice])   --   Accumulate pending splices here
+      (TcRef [PendingTcTypedSplice])   --   Accumulate pending splices here
+      (TcRef [PendingZonkSplice])
       (TcRef WantedConstraints)   --     and type constraints here
       QuoteWrapper                -- A type variable and evidence variable
                                   -- for the overall monad of
@@ -958,6 +970,8 @@ data PendingStuff
                                   -- variable is used for desugaring
                                   -- `lift`.
 
+  | ZonkPending
+      (TcRef [PendingZonkSplice])
 
 topStage, topAnnStage, topSpliceStage :: ThStage
 topStage       = Comp
@@ -985,7 +999,12 @@ thLevel :: ThStage -> ThLevel
 thLevel (Splice _)    = 0
 thLevel Comp          = 1
 thLevel (Brack s _)   = thLevel s + 1
-thLevel (RunSplice _) = panic "thLevel: called when running a splice"
+thLevel (RunSplice _) = 0
+    -- See Note [RunSplice ThLevel].
+    -- This code path gets hit by reifyInstances which extends the local
+    -- environment with some type variables which we would ordinarily need
+    -- to know the stage of. It used to panic but I don't see a particular
+    -- reason for that (MP).
                         -- See Note [RunSplice ThLevel].
 
 {- Node [RunSplice ThLevel]

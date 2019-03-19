@@ -72,6 +72,7 @@ import GHC.Core.TyCo.Rep
 import GHC.Core.TyCo.Tidy ( tidyCo )
 import Demand ( isTopSig )
 import Cpr ( topCprSig )
+import Unique
 
 import Data.Maybe ( catMaybes )
 
@@ -160,6 +161,7 @@ toIfaceTypeX :: VarSet -> Type -> IfaceType
 -- Synonyms are retained in the interface type
 toIfaceTypeX fr (TyVarTy tv)   -- See Note [TcTyVars in IfaceType] in GHC.Iface.Type
   | tv `elemVarSet` fr         = IfaceFreeTyVar tv
+  | Just n <- isSpliceVar (getName tv) = IfaceSpliceTyVar n
   | otherwise                  = IfaceTyVar (toIfaceTyVar tv)
 toIfaceTypeX fr ty@(AppTy {})  =
   -- Flatten as many argument AppTys as possible, then turn them into an
@@ -610,10 +612,17 @@ toIfaceVar v
 
     | Just fcall <- isFCallId_maybe v = IfaceFCall fcall (toIfaceType (idType v))
                                       -- Foreign calls have special syntax
+    | Just n <- isSpliceVar name         = IfaceSplice n
 
     | isExternalName name             = IfaceExt name
     | otherwise                       = IfaceLcl (getOccFS name)
   where name = idName v
+
+isSpliceVar :: Name -> Maybe Int
+isSpliceVar n =
+  if getOccString n == "$splice"
+    then Just (getKey (nameUnique n))
+    else Nothing
 
 
 {- Note [Inlining and hs-boot files]

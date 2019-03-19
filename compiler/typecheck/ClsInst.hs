@@ -29,10 +29,11 @@ import FamInst( tcGetFamInstEnvs, tcInstNewTyCon_maybe, tcLookupDataFamInst )
 import TysWiredIn
 import TysPrim( eqPrimTyCon, eqReprPrimTyCon )
 import PrelNames
+import qualified THNames
 
 import Id
 import GHC.Core.Type
-import GHC.Core.Make ( mkStringExprFS, mkNaturalExpr )
+import GHC.Core.Make ( mkStringExprFS, mkNaturalExpr, mkCoreApps, mkNilExpr )
 
 import Name   ( Name, pprDefinedAt )
 import VarEnv ( VarEnv )
@@ -41,8 +42,17 @@ import GHC.Core.TyCon
 import GHC.Core.Class
 import GHC.Driver.Session
 import Outputable
-import Util( splitAtList, fstOf3 )
+import Util( splitAtList, fstOf3, singleton )
 import Data.Maybe
+
+--import HsUtils
+--import DsMeta
+--import GHC.HsToCore.Type
+import GHC.HsToCore.DsMetaTc ( dsType )
+import GHC.HsToCore.Monad
+
+import GHC.Core
+import FV
 
 {- *******************************************************************
 *                                                                    *
@@ -141,6 +151,7 @@ matchGlobalInst dflags short_cut clas tys
   | clas `hasKey` eqTyConKey          = matchHomoEquality         tys
   | clas `hasKey` coercibleTyConKey   = matchCoercible            tys
   | cls_name == hasFieldClassName     = matchHasField dflags short_cut clas tys
+  | clas `hasKey` THNames.liftTClassKey = matchLiftTy tys
   | otherwise                         = matchInstEnv dflags short_cut clas tys
   where
     cls_name = className clas
@@ -594,6 +605,118 @@ matchCoercible args@[k, t1, t2]
   where
     args' = [k, k, t1, t2]
 matchCoercible args = pprPanic "matchLiftedCoercible" (ppr args)
+
+-- See Note [Constructing LiftT evidence]
+matchLiftTy :: [Type] -> TcM ClsInstResult
+matchLiftTy args@[k, t2]
+    | isTyVarTy t2 = return NoInstance
+    | otherwise =  do
+    liftTClass <- tcLookupClass THNames.liftTClassName
+    mkTTExp <- tcLookupId THNames.mkTTExpName
+    let liftTTyCon = classTyCon liftTClass
+        dc = classDataCon liftTClass
+        fvs = fvVarList (tyCoFVsOfType t2)
+        mkLTPred t = mkTyConApp liftTTyCon [idType t, mkTyVarTy t]
+        new_preds = map mkLTPred fvs
+
+    -- Constructs a TH representation of term \a1 .. an -> rep_ty
+    -- Where the variables of the lambda are the free variables in rep_ty.
+    ev_w_lams <- initDsTc $ do
+            {-
+            vars <- mapM (globalVarCoreExpr . idName) fvs
+            vars_p <- mapM repPvarCoreExpr vars
+            main_ev <- repTyCoreExpr (typeToHsTypeRn t2)
+            foldlM repLamCoreExpr main_ev vars_p
+            -}
+            str <- dsType t2
+            let rty = mkBoxedTupleTy [intTy, funResultTy (funResultTy (idType mkTTExp))]
+            return (mkCoreApps (Var mkTTExp) [(mkNilExpr rty), str])
+
+    appE <- tcLookupId THNames.appEName
+    let mk_app e1 e2 = mkApps (Var appE) [e1, e2]
+        -- Apply the evidence to the lambda so that we get
+        -- (\a1 ... an -> rep_ty) t_1 t_2 t_3
+        mk_apps es = foldl mk_app ev_w_lams es
+
+    traceTc "matchLiftTy" (ppr args
+                            $$ ppr new_preds
+                            $$ ppr ev_w_lams)
+    return (OneInst { cir_new_theta = new_preds
+                    , cir_mk_ev = \evs -> evDataConApp dc args [mk_apps evs]
+                    , cir_what = BuiltinInstance })
+matchLiftTy args = pprPanic "matchLiftTy" (ppr args)
+
+{-
+Note [Constructing LiftT evidence]
+
+The definition of the `LiftT` class is:
+
+class LiftT (t :: k) where
+  liftTyCl :: Q Type
+
+For further information about LiftT and why it exists see Note [The LiftT Story]
+
+We solve these constraints magically in the function `matchLiftTy` by
+converting the type `t` into a core expression which builds a term of type
+`Q Type`.
+
+Example 1: LiftT Bool
+
+For simple ground types with no free variables we need to convert a `Type` into
+a `CoreExpr`. This is achieved by cominbing `HsUtils.typeToHsTypeRn` and
+`DsMeta.repTy`. This generates a core expression of the right type which we then
+convert to the evidence by applying the constructor for `LiftT`.
+
+Example 2: LiftT (a, Int)
+
+When a type has a free variable, we need to recursively solve LiftT constraints.
+We do this by creating `new_preds` which contains `LiftT a`.
+
+When generating the evidence for a term with free variables, we do it in two stages.
+
+Stage 1: Generate a representation of a lambda
+
+For `LiftT (a, Int)` we generate core which produces the TH representation of
+
+```
+\a -> (,) a Int
+```
+
+Which involves calls to functions like `lamE`, `appE` and so on.
+
+Stage 2: Apply the arguments
+
+Then we apply this lambda to the dictionaries produced by recursively creating
+evidence.
+
+In our example, we solve the constraint `LiftT a` somehow, so the evidence for
+this is a `CoreExpr` whose code constructs an expression of type `Q Type`.
+So in order to use this we need to apply the previously constructed lambda
+to the evidence so that when we run the core expression and then interpret the
+resulting program, the type is taken as an argument.
+
+So overall the core we generate is something like:
+
+[t|(\a -> (,) a Int)|] `app` $dictA
+
+Note that this is an application in the representation type, not at the
+core level.
+
+So when we splice it in, this gets converted to a normal lambda with type
+arguments.
+
+Say that the user decides that `a = Int` then the splice results in the core
+
+(\a -> (,) a Int) @Int
+
+
+Example 3: LiftT (forall a. a -> a)
+
+LiftT also works for polymorphic types. No further special cases are needed as
+they are handled by `typeToHsTypeRn` and `repTy` without modifications.
+
+-}
+
 
 
 {- ********************************************************************

@@ -1,5 +1,6 @@
 {-# LANGUAGE Safe #-}
-
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 -- |
 -- Language.Haskell.TH.Lib.Internal exposes some additional functionality that
 -- is used internally in GHC's integration with Template Haskell. This is not a
@@ -950,3 +951,22 @@ thisModule :: Q Module
 thisModule = do
   loc <- location
   pure $ Module (mkPkgName $ loc_package loc) (mkModName $ loc_module loc)
+
+-----------------------------------------------------
+--
+--              Lifting types
+--
+-----------------------------------------------------
+
+
+-- | This class provides a way to turn a type into its
+-- representation.
+--
+-- It is the type analogue to `Lift`.
+--
+-- It is solved automatically by the compiler so it is forbidden
+-- to write instances for it. As such, unlike `Lift`, there is not
+-- one instance per kind but one instance per type as we just create the
+-- representation directly from the type.
+class LiftT (t :: k) where
+  liftTyCl :: Q TTExp

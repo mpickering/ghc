@@ -323,6 +323,7 @@ runRnSplice flavour run_meta ppr_res splice
                 HsTypedSplice {}          -> pprPanic "runRnSplice" (ppr splice)
                 HsSpliced {}              -> pprPanic "runRnSplice" (ppr splice)
                 XSplice nec               -> noExtCon nec
+                HsSplicedD {}             -> pprPanic "runRnSplice" (ppr splice)
 
              -- Typecheck the expression
        ; meta_exp_ty   <- tcMetaTy meta_ty_name
@@ -371,6 +372,8 @@ makePending _ splice@(HsSpliced {})
   = pprPanic "makePending" (ppr splice)
 makePending _ (XSplice nec)
   = noExtCon nec
+makePending _ splice@(HsSplicedD {})
+  = pprPanic "makePending" (ppr splice)
 
 ------------------
 mkQuasiQuoteExpr :: UntypedSpliceFlavour -> Name -> SrcSpan -> FastString
@@ -395,8 +398,10 @@ mkQuasiQuoteExpr flavour quoter q_span quote
 rnSplice :: HsSplice GhcPs -> RnM (HsSplice GhcRn, FreeVars)
 -- Not exported...used for all
 rnSplice (HsTypedSplice x hasParen splice_name expr)
-  = do  { loc  <- getSrcSpanM
+  = do  { -- checkTH expr "Template Haskell typed splice"
+        ; loc  <- getSrcSpanM
         ; n' <- newLocalBndrRn (L loc splice_name)
+        ; pprTraceM "rnSplice" (ppr n')
         ; (expr', fvs) <- rnLExpr expr
         ; return (HsTypedSplice x hasParen n' expr', fvs) }
 
@@ -421,6 +426,7 @@ rnSplice (HsQuasiQuote x splice_name quoter q_loc quote)
 
 rnSplice splice@(HsSpliced {}) = pprPanic "rnSplice" (ppr splice)
 rnSplice        (XSplice nec)   = noExtCon nec
+rnSplice splice@(HsSplicedD {}) = pprPanic "rnSplice" (ppr splice)
 
 ---------------------
 rnSpliceExpr :: HsSplice GhcPs -> RnM (HsExpr GhcRn, FreeVars)
@@ -731,6 +737,8 @@ spliceCtxt splice
              HsTypedSplice   {} -> text "typed splice:"
              HsQuasiQuote    {} -> text "quasi-quotation:"
              HsSpliced       {} -> text "spliced expression:"
+--             HsSplicedT      {} -> text "spliced expression:"
+             HsSplicedD      {} -> text "spliced expression:"
              XSplice         nec -> noExtCon nec
 
 -- | The splice data to be logged

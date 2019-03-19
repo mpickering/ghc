@@ -141,6 +141,7 @@ type IfaceKind     = IfaceType
 data IfaceType
   = IfaceFreeTyVar TyVar                -- See Note [Free tyvars in IfaceType]
   | IfaceTyVar     IfLclName            -- Type/coercion variable only, not tycon
+  | IfaceSpliceTyVar Int                -- Point to insert spliced expression
   | IfaceLitTy     IfaceTyLit
   | IfaceAppTy     IfaceType IfaceAppArgs
                              -- See Note [Suppressing invisible arguments] for
@@ -459,6 +460,7 @@ ifTypeIsVarFree :: IfaceType -> Bool
 ifTypeIsVarFree ty = go ty
   where
     go (IfaceTyVar {})         = False
+    go (IfaceSpliceTyVar {})   = False
     go (IfaceFreeTyVar {})     = False
     go (IfaceAppTy fun args)   = go fun && go_args args
     go (IfaceFunTy _ arg res)  = go arg && go res
@@ -494,6 +496,7 @@ substIfaceType env ty
   = go ty
   where
     go (IfaceFreeTyVar tv)    = IfaceFreeTyVar tv
+    go sty@(IfaceSpliceTyVar {}) = sty
     go (IfaceTyVar tv)        = substIfaceTyVar env tv
     go (IfaceAppTy  t ts)     = IfaceAppTy  (go t) (substIfaceAppArgs env ts)
     go (IfaceFunTy af t1 t2)  = IfaceFunTy af (go t1) (go t2)
@@ -833,6 +836,7 @@ ppr_ty :: PprPrec -> IfaceType -> SDoc
 ppr_ty ctxt_prec ty@(IfaceForAllTy {})        = ppr_sigma ctxt_prec ty
 ppr_ty ctxt_prec ty@(IfaceFunTy InvisArg _ _) = ppr_sigma ctxt_prec ty
 
+ppr_ty _         (IfaceSpliceTyVar x)   = ppr x
 ppr_ty _         (IfaceFreeTyVar tyvar) = ppr tyvar  -- This is the main reason for IfaceFreeTyVar!
 ppr_ty _         (IfaceTyVar tyvar)     = ppr tyvar  -- See Note [TcTyVars in IfaceType]
 ppr_ty ctxt_prec (IfaceTyConApp tc tys) = pprTyTcApp ctxt_prec tc tys
@@ -988,6 +992,7 @@ defaultRuntimeRepVars ty = go False emptyFsEnv ty
       = IfaceCastTy (go ink subs x) co
 
     go _ _ ty@(IfaceLitTy {}) = ty
+    go _ _ ty@(IfaceSpliceTyVar {}) = ty
     go _ _ ty@(IfaceCoercionTy {}) = ty
 
     go_ifacebndr :: FastStringEnv () -> IfaceForAllBndr -> IfaceForAllBndr
@@ -1768,6 +1773,8 @@ instance Binary IfaceType where
       = do { putByte bh 8; put_ bh s; put_ bh i; put_ bh tys }
     put_ bh (IfaceLitTy n)
       = do { putByte bh 9; put_ bh n }
+    put_ bh (IfaceSpliceTyVar x)
+      = do { putByte bh 10; put_ bh x }
 
     get bh = do
             h <- getByte bh
@@ -1793,8 +1800,11 @@ instance Binary IfaceType where
 
               8 -> do { s <- get bh; i <- get bh; tys <- get bh
                       ; return (IfaceTupleTy s i tys) }
-              _  -> do n <- get bh
+              9  -> do n <- get bh
                        return (IfaceLitTy n)
+              10 -> do n <- get bh
+                       return (IfaceSpliceTyVar n)
+              _ -> panic "get:IfaceType"
 
 instance Binary IfaceMCoercion where
   put_ bh IfaceMRefl = do

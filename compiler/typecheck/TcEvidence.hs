@@ -16,7 +16,7 @@ module TcEvidence (
   TcEvBinds(..), EvBindsVar(..),
   EvBindMap(..), emptyEvBindMap, extendEvBinds,
   lookupEvBind, evBindMapBinds, foldEvBindMap, filterEvBindMap,
-  isEmptyEvBindMap,
+  isEmptyEvBindMap, splitEvBindsMap,
   EvBind(..), emptyTcEvBinds, isEmptyTcEvBinds, mkGivenEvBind, mkWantedEvBind,
   evBindVar, isCoEvBindsVar,
 
@@ -55,6 +55,7 @@ module TcEvidence (
 
 import GhcPrelude
 
+import {-# SOURCE #-} TcRnTypes
 import Var
 import GHC.Core.Coercion.Axiom
 import GHC.Core.Coercion
@@ -484,6 +485,11 @@ extendEvBinds bs ev_bind
                                                (eb_lhs ev_bind)
                                                ev_bind }
 
+splitEvBindsMap :: ThLevel -> EvBindMap -> (EvBindMap, EvBindMap)
+splitEvBindsMap n (EvBindMap m) =
+  let (cur, fut) = partitionDVarEnv  ((== n) .  eb_level) m
+  in ASSERT2 (allDVarEnv (( < n) . eb_level) fut, ppr fut) (EvBindMap cur, EvBindMap fut)
+
 isEmptyEvBindMap :: EvBindMap -> Bool
 isEmptyEvBindMap (EvBindMap m) = isEmptyDVarEnv m
 
@@ -507,6 +513,7 @@ instance Outputable EvBindMap where
 -- All evidence is bound by EvBinds; no side effects
 data EvBind
   = EvBind { eb_lhs      :: EvVar
+           , eb_level    :: ThLevel
            , eb_rhs      :: EvTerm
            , eb_is_given :: Bool  -- True <=> given
                  -- See Note [Tracking redundant constraints] in TcSimplify
@@ -515,12 +522,12 @@ data EvBind
 evBindVar :: EvBind -> EvVar
 evBindVar = eb_lhs
 
-mkWantedEvBind :: EvVar -> EvTerm -> EvBind
-mkWantedEvBind ev tm = EvBind { eb_is_given = False, eb_lhs = ev, eb_rhs = tm }
+mkWantedEvBind :: EvVar -> ThLevel -> EvTerm -> EvBind
+mkWantedEvBind ev n tm = EvBind { eb_is_given = False, eb_lhs = ev, eb_rhs = tm, eb_level = n }
 
 -- EvTypeable are never given, so we can work with EvExpr here instead of EvTerm
-mkGivenEvBind :: EvVar -> EvTerm -> EvBind
-mkGivenEvBind ev tm = EvBind { eb_is_given = True, eb_lhs = ev, eb_rhs = tm }
+mkGivenEvBind :: EvVar -> ThLevel -> EvTerm -> EvBind
+mkGivenEvBind ev n tm = EvBind { eb_is_given = True, eb_lhs = ev, eb_rhs = tm, eb_level = n }
 
 
 -- An EvTerm is, conceptually, a CoreExpr that implements the constraint.
@@ -538,6 +545,9 @@ data EvTerm
       , et_binds :: TcEvBinds -- This field is why we need an EvFun
                               -- constructor, and can't just use EvExpr
       , et_body  :: EvVar }
+
+  | EvSplice EvTerm
+  | EvQuote EvTerm
 
   deriving Data.Data
 
@@ -868,6 +878,8 @@ evVarsOfTerm :: EvTerm -> VarSet
 evVarsOfTerm (EvExpr e)         = exprSomeFreeVars isEvVar e
 evVarsOfTerm (EvTypeable _ ev)  = evVarsOfTypeable ev
 evVarsOfTerm (EvFun {})         = emptyVarSet -- See Note [Free vars of EvFun]
+evVarsOfTerm (EvQuote e)        = evVarsOfTerm e
+evVarsOfTerm (EvSplice e)       = evVarsOfTerm e
 
 evVarsOfTerms :: [EvTerm] -> VarSet
 evVarsOfTerms = mapUnionVarSet evVarsOfTerm
@@ -964,6 +976,8 @@ instance Outputable EvTerm where
   ppr (EvFun { et_tvs = tvs, et_given = gs, et_binds = bs, et_body = w })
       = hang (text "\\" <+> sep (map pprLamBndr (tvs ++ gs)) <+> arrow)
            2 (ppr bs $$ ppr w)   -- Not very pretty
+  ppr (EvQuote e)        = text "[|" <+> ppr e <+> text "|]"
+  ppr (EvSplice e)        = text "$(" <+> ppr e <+> text ")"
 
 instance Outputable EvCallStack where
   ppr EvCsEmpty

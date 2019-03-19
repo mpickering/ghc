@@ -49,6 +49,8 @@ import Control.Monad
 import Data.Maybe ( isJust )
 import Data.List  ( zip4 )
 import BasicTypes
+import Unique
+import THNames
 
 import Data.Bifunctor ( bimap )
 import Data.Foldable ( traverse_ )
@@ -153,6 +155,7 @@ canClassNC :: CtEvidence -> Class -> [Type] -> TcS (StopOrContinue Ct)
 -- from a NonCanonical constraint, not from a CDictCan
 -- Precondition: EvVar is class evidence
 canClassNC ev cls tys
+  | (classTyCon cls) `hasKey` codeCTyConKey  = canCodeCNC ev (head tys) >> canClass ev cls tys False
   | isGiven ev  -- See Note [Eagerly expand given superclasses]
   = do { sc_cts <- mkStrictSuperClasses ev [] [] cls tys
        ; emitWork sc_cts
@@ -189,6 +192,7 @@ canClassNC ev cls tys
     has_scs cls = not (null (classSCTheta cls))
     loc  = ctEvLoc ev
     pred = ctEvPred ev
+
 
 solveCallStack :: CtEvidence -> EvCallStack -> TcS ()
 -- Also called from TcSimplify when defaulting call stacks
@@ -696,6 +700,28 @@ constraints.
 
 See also Note [Evidence for quantified constraints] in GHC.Core.Predicate.
 
+-}
+
+-- Rewrite Given constraints to the next level
+-- Rewrite wanted constraints to the previous level
+canCodeCNC :: CtEvidence -> Type -> TcS ()
+canCodeCNC ct_ev body
+  | isGiven ct_ev = do
+      let loc = ctev_loc ct_ev
+      work <- newGivenEvVarWithStage (ctEvLevel ct_ev + 1) loc (body, EvSplice (ctEvTerm ct_ev))
+      emitWorkNC [work]
+      pprTraceM "NewGiven" (ppr ct_ev $$ ppr work)
+  | isWanted ct_ev = do
+      let loc = ctev_loc ct_ev
+
+      work <- newWantedEvVarNC_Stage (ctEvLevel ct_ev - 1) loc body
+      setWantedEvTerm (ctev_dest ct_ev) (EvQuote (ctEvTerm work))
+      emitWorkNC [work]
+
+  | otherwise = pprPanic "does this ever happen" (ppr ct_ev)
+
+
+{-
 
 ************************************************************************
 *                                                                      *
@@ -1496,11 +1522,12 @@ canTyConApp ev eq_rel tc1 tys1 tc2 tys2
 
     loc  = ctEvLoc ev
     pred = ctEvPred ev
+    n = ctEvLevel ev
 
      -- See Note [Decomposing equality]
     can_decompose inerts
       =  isInjectiveTyCon tc1 (eqRelRole eq_rel)
-      || (ctEvFlavour ev /= Given && isEmptyBag (matchableGivens loc pred inerts))
+      || (ctEvFlavour ev /= Given && isEmptyBag (matchableGivens loc n pred inerts))
 
 {-
 Note [Use canEqFailure in canDecomposableTyConApp]

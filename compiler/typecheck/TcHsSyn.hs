@@ -733,7 +733,7 @@ zonkGRHSs _ _ (XGRHSs nec) = noExtCon nec
 
 zonkLExprs :: ZonkEnv -> [LHsExpr GhcTcId] -> TcM [LHsExpr GhcTc]
 zonkLExpr  :: ZonkEnv -> LHsExpr GhcTcId   -> TcM (LHsExpr GhcTc)
-zonkExpr   :: ZonkEnv -> HsExpr GhcTcId    -> TcM (HsExpr GhcTc)
+zonkExpr   :: HasCallStack => ZonkEnv -> HsExpr GhcTcId    -> TcM (HsExpr GhcTc)
 
 zonkLExprs env exprs = mapM (zonkLExpr env) exprs
 zonkLExpr  env expr  = wrapLocM (zonkExpr env) expr
@@ -781,21 +781,69 @@ zonkExpr env (HsAppType x e t)
 zonkExpr _ e@(HsRnBracketOut _ _ _)
   = pprPanic "zonkExpr: HsRnBracketOut" (ppr e)
 
-zonkExpr env (HsTcBracketOut x wrap body bs)
-  = do wrap' <- traverse zonkQuoteWrap wrap
-       bs' <- mapM (zonk_b env) bs
-       return (HsTcBracketOut x wrap' body bs')
+zonkExpr env (HsTcUntypedBracketOut x wrap body bs)
+  = do wrap' <- traverse (zonkQuoteWrap env) wrap
+       bs' <- mapM zonk_b bs
+       return (HsTcUntypedBracketOut x wrap' body bs')
   where
-    zonkQuoteWrap (QuoteWrapper ev ty) = do
-        let ev' = zonkIdOcc env ev
-        ty' <- zonkTcTypeToTypeX env ty
-        return (QuoteWrapper ev' ty')
+    zonk_b (PendingTcSplice n e) = do
+      e' <- zonkLExpr env e
+      return (PendingTcSplice n e')
 
-    zonk_b env' (PendingTcSplice n e) = do e' <- zonkLExpr env' e
-                                           return (PendingTcSplice n e')
 
-zonkExpr env (HsSpliceE _ (XSplice (HsSplicedT s))) =
-  runTopSplice s >>= zonkExpr env
+zonkExpr env (HsTcTypedBracketOut x wrap body bs tzs)
+  = do pprTraceM "HsTcBracketOut" (ppr body $$ ppr bs)
+       bs' <- mapM zonk_b bs
+       tzs' <- mapM zonk_z tzs
+       wrap' <- traverse (zonkQuoteWrap env) wrap
+       let vars = map (\(PendingTcSplice n' _) -> n') bs'
+           env' = extendZonkEnv env vars
+       (zs, body') <- case body of
+                  TExpBr tx e -> do (zs, b) <- zonkBracket env' e
+                                    return (zs, TExpBr tx b)
+                  b -> return ([], b)
+       pprTraceM "zonkExpr:zs" (ppr zs)
+       pprTraceM "zonkExpr:zs" (ppr tzs)
+       pprTraceM "zonkExpr:zs'" (ppr bs)
+       --pprTraceM "zonkExpr:zs''" (ppr bs')
+       return (HsTcTypedBracketOut x wrap' body' bs' tzs')
+  where
+    zonk_b (PendingTcSplice n e) = do
+      pprTraceM "pending" (ppr n)
+      pprTraceM "pending" (ppr e)
+      n' <- zonkIdBndr env n
+      e' <- zonkLExpr (extendIdZonkEnv env n') e
+      --pprTraceM "pending" (ppr n')
+      --pprTraceM "pending" (ppr e')
+      return (PendingTcSplice n' e')
+
+    zonk_z (PendingZonkSplice n e) = do -- (env', n') <- zonkTyBndrX env n
+                                        e' <- zonkCoreExpr env e
+                                        return (PendingZonkSplice n e')
+
+    zonkBracket env' e =
+      do { cur_stage <- getStage
+         ; ps_ref <- newMutVar []
+         ; res <- setStage (Brack cur_stage (ZonkPending ps_ref)) $
+                                  zonkLExpr env' e
+                                  -- NC for no context; tcBracket does that
+                                  --
+         ; zs <- readMutVar ps_ref
+         ; return (zs,res) }
+         {-
+       ; meta_ty <- tcTExpTy expr_ty
+       ; ps' <- readMutVar ps_ref
+       ; pprTraceM "tcTypedBracket" (ppr ps')
+       ; texpco <- tcLookupId unsafeTExpCoerceName
+       ; tcWrapResultO (Shouldn'tHappenOrigin "TExpBr")
+                       rn_expr
+                       (unLoc (mkHsApp (nlHsTyApp texpco [expr_ty])
+                                      (noLoc (HsTcBracketOut noExt brack' ps'))))
+                       meta_ty res_ty }
+                       -}
+
+--zonkExpr env (HsSpliceE _ (HsSplicedT s)) =
+--  runTopSplice s >>= zonkExpr env
 
 zonkExpr _ (HsSpliceE x s) = WARN( True, ppr s ) -- Should not happen
                            return (HsSpliceE x s)
@@ -939,6 +987,12 @@ zonkExpr _ e@(HsUnboundVar {})
 
 zonkExpr _ expr = pprPanic "zonkExpr" (ppr expr)
 
+zonkQuoteWrap env (QuoteWrapper ev ty) = do
+  let ev' = zonkIdOcc env ev
+  ty' <- zonkTcTypeToTypeX env ty
+  return (QuoteWrapper ev' ty')
+
+
 -------------------------------------------------------------------------
 {-
 Note [Skolems in zonkSyntaxExpr]
@@ -1070,7 +1124,9 @@ zonkCoFn env (WpEvApp arg)  = do { arg' <- zonkEvTerm env arg
 zonkCoFn env (WpTyLam tv)   = ASSERT( isImmutableTyVar tv )
                               do { (env', tv') <- zonkTyBndrX env tv
                                  ; return (env', WpTyLam tv') }
-zonkCoFn env (WpTyApp ty)   = do { ty' <- zonkTcTypeToTypeX env ty
+zonkCoFn env (WpTyApp ty)   = do { --pprTraceM "zonkCoFn" (ppr ty)
+                                 ; ty' <- zonkTcTypeToTypeX env ty
+                                 -- ; pprTraceM "zonkCoFn" (ppr ty')
                                  ; return (env, WpTyApp ty') }
 zonkCoFn env (WpLet bs)     = do { (env1, bs') <- zonkTcEvBinds env bs
                                  ; return (env1, WpLet bs') }
@@ -1539,6 +1595,8 @@ zonkEvTerm env (EvExpr e)
   = EvExpr <$> zonkCoreExpr env e
 zonkEvTerm env (EvTypeable ty ev)
   = EvTypeable <$> zonkTcTypeToTypeX env ty <*> zonkEvTypeable env ev
+zonkEvTerm env (EvSplice e) = EvSplice <$> zonkEvTerm env e
+zonkEvTerm env (EvQuote e) = EvQuote <$> zonkEvTerm env e
 zonkEvTerm env (EvFun { et_tvs = tvs, et_given = evs
                       , et_binds = ev_binds, et_body = body_id })
   = do { (env0, new_tvs) <- zonkTyBndrsX env tvs
@@ -1754,12 +1812,16 @@ zonkTyVarOcc env@(ZonkEnv { ze_flexi = flexi
                           , ze_tv_env = tv_env
                           , ze_meta_tv_env = mtv_env_ref }) tv
   | isTcTyVar tv
-  = case tcTyVarDetails tv of
+  = do
+     case tcTyVarDetails tv of
       SkolemTv {}    -> lookup_in_tv_env
       RuntimeUnk {}  -> lookup_in_tv_env
-      MetaTv { mtv_ref = ref }
+      MetaTv { mtv_info = mi, mtv_ref = ref }
         -> do { mtv_env <- readTcRef mtv_env_ref
                 -- See Note [Sharing when zonking to Type]
+              ; case mi of
+                  BrackTv sp _ -> pprTraceM "zonkTyVarOcc" (ppr sp)
+                  _ -> return ()
               ; case lookupVarEnv mtv_env tv of
                   Just ty -> return ty
                   Nothing -> do { mtv_details <- readTcRef ref
@@ -1787,6 +1849,22 @@ zonkTyVarOcc env@(ZonkEnv { ze_flexi = flexi
       = do { let mtv_env' = extendVarEnv mtv_env tv ty
            ; writeTcRef mtv_env_ref mtv_env'
            ; return ty }
+
+zonkTyVarOccStageCheck :: ZonkEnv -> TyVar -> TcM TcType
+zonkTyVarOccStageCheck env tv = do
+  let ev = case tcTyVarDetails tv of
+            MetaTv { mtv_info = BrackTv ev _ } -> Just ev
+            _                                  -> Nothing
+  ty <- zonkTyVarOcc env tv
+--  pprTraceM "z" (ppr tv <+> ppr ty <+> ppr (isTyVarTy ty))
+  st <- getStage
+  return $ case st of
+    Brack _ (ZonkPending {}) ->
+      if (isTyVarTy ty) then maybe ty mkTyVarTy ev
+                        else ty
+    _ -> ty
+
+
 
 lookupTyVarOcc :: ZonkEnv -> TcTyVar -> Maybe TyVar
 lookupTyVarOcc (ZonkEnv { ze_tv_env = tv_env }) tv
@@ -1846,7 +1924,7 @@ zonkCoHole env hole@(CoercionHole { ch_ref = ref, ch_co_var = cv })
 
 zonk_tycomapper :: TyCoMapper ZonkEnv TcM
 zonk_tycomapper = TyCoMapper
-  { tcm_tyvar      = zonkTyVarOcc
+  { tcm_tyvar      = zonkTyVarOccStageCheck
   , tcm_covar      = zonkCoVarOcc
   , tcm_hole       = zonkCoHole
   , tcm_tycobinder = \env tv _vis -> zonkTyBndrX env tv

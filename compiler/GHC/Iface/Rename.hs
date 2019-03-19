@@ -639,6 +639,7 @@ rnIfaceExpr (IfaceCast expr co)
 rnIfaceExpr (IfaceLit lit) = pure (IfaceLit lit)
 rnIfaceExpr (IfaceFCall cc ty) = IfaceFCall cc <$> rnIfaceType ty
 rnIfaceExpr (IfaceTick tickish expr) = IfaceTick tickish <$> rnIfaceExpr expr
+rnIfaceExpr (IfaceSplice n) = return $ IfaceSplice n
 
 rnIfaceBndrs :: Rename [IfaceBndr]
 rnIfaceBndrs = mapM rnIfaceBndr
@@ -718,6 +719,7 @@ rnIfaceIdDetails details = pure details
 
 rnIfaceType :: Rename IfaceType
 rnIfaceType (IfaceFreeTyVar n) = pure (IfaceFreeTyVar n)
+rnIfaceType (IfaceSpliceTyVar n) = pure (IfaceSpliceTyVar n)
 rnIfaceType (IfaceTyVar   n)   = pure (IfaceTyVar n)
 rnIfaceType (IfaceAppTy t1 t2)
     = IfaceAppTy <$> rnIfaceType t1 <*> rnIfaceAppArgs t2

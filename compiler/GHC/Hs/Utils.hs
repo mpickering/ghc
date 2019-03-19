@@ -24,6 +24,7 @@ just attach noSrcSpan to everything.
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RankNTypes #-}
 
 {-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
 
@@ -43,7 +44,7 @@ module GHC.Hs.Utils(
   nlHsIntLit, nlHsVarApps,
   nlHsDo, nlHsOpApp, nlHsLam, nlHsPar, nlHsIf, nlHsCase, nlList,
   mkLHsTupleExpr, mkLHsVarTuple, missingTupArg,
-  typeToLHsType,
+  typeToLHsType, typeToHsTypeRn,
 
   -- * Constructing general big tuples
   -- $big_tuples
@@ -355,7 +356,7 @@ mkHsOpApp :: LHsExpr GhcPs -> IdP GhcPs -> LHsExpr GhcPs -> HsExpr GhcPs
 mkHsOpApp e1 op e2 = OpApp noExtField e1 (noLoc (HsVar noExtField (noLoc op))) e2
 
 unqualSplice :: RdrName
-unqualSplice = mkRdrUnqual (mkVarOccFS (fsLit "splice"))
+unqualSplice = mkRdrUnqual (mkVarOccFS (fsLit "$splice"))
 
 mkUntypedSplice :: SpliceDecoration -> LHsExpr GhcPs -> HsSplice GhcPs
 mkUntypedSplice hasParen e = HsUntypedSplice noExtField hasParen unqualSplice e
@@ -649,16 +650,21 @@ mkClassOpSigs sigs
       = L loc (ClassOpSig noExtField False nms (dropWildCards ty))
     fiddle sig = sig
 
+-- This is used in deriving machinery
 typeToLHsType :: Type -> LHsType GhcPs
--- ^ Converting a Type to an HsType RdrName
--- This is needed to implement GeneralizedNewtypeDeriving.
---
--- Note that we use 'getRdrName' extensively, which
--- generates Exact RdrNames rather than strings.
-typeToLHsType ty
+typeToLHsType = typeToLHsTypeX getRdrName
+
+-- This is used when generating LiftT evidence
+typeToHsTypeRn :: Type -> HsType GhcRn
+typeToHsTypeRn = unLoc . typeToLHsTypeX getName
+
+typeToLHsTypeX :: forall p .
+                  (forall a . NamedThing a => a -> IdP (GhcPass p))
+               -> Type -> LHsType (GhcPass p)
+typeToLHsTypeX get_name ty
   = go ty
   where
-    go :: Type -> LHsType GhcPs
+    go :: Type -> LHsType (GhcPass p)
     go ty@(FunTy { ft_af = af, ft_arg = arg, ft_res = res })
       = case af of
           VisArg   -> nlHsFunTy (go arg) (go res)
@@ -673,7 +679,7 @@ typeToLHsType ty
                           , hst_bndrs = map go_tv tvs
                           , hst_xforall = noExtField
                           , hst_body = go tau })
-    go (TyVarTy tv)         = nlHsTyVar (getRdrName tv)
+    go (TyVarTy tv)         = nlHsTyVar (get_name tv)
     go (LitTy (NumTyLit n))
       = noLoc $ HsTyLit noExtField (HsNumTy NoSourceText n)
     go (LitTy (StrTyLit s))
@@ -685,23 +691,37 @@ typeToLHsType ty
       = nlHsParTy $ noLoc $ HsKindSig noExtField ty' (go (tcTypeKind ty))
       | otherwise = ty'
        where
-        ty' :: LHsType GhcPs
-        ty' = go_app (nlHsTyVar (getRdrName tc)) args (tyConArgFlags tc args)
+        ty' :: LHsType (GhcPass p)
+        ty' = go_app (nlHsTyVar (get_name tc)) args (tyConArgFlags tc args)
     go ty@(AppTy {})        = go_app (go head) args (appTyArgFlags head args)
       where
         head :: Type
         args :: [Type]
         (head, args) = splitAppTys ty
+
+{-      arg_flags :: [ArgFlag]
+        arg_flags = tyConArgFlags tc args
+
+        lhs_ty :: LHsType (GhcPass p)
+        lhs_ty = foldl' (\f (arg, flag) ->
+                          let arg' = go arg in
+                          case flag of
+                            Inferred  -> f
+                            Specified -> f `nlHsAppKindTy` arg'
+                            Required  -> f `nlHsAppTy`     arg')
+                        (nlHsTyVar (get_name tc))
+                        (zip args arg_flags)
+                        -}
     go (CastTy ty _)        = go ty
     go (CoercionTy co)      = pprPanic "toLHsSigWcType" (ppr co)
 
          -- Source-language types have _invisible_ kind arguments,
          -- so we must remove them here (#8563)
 
-    go_app :: LHsType GhcPs -- The type being applied
+    go_app :: LHsType (GhcPass p) -- The type being applied
            -> [Type]        -- The argument types
            -> [ArgFlag]     -- The argument types' visibilities
-           -> LHsType GhcPs
+           -> LHsType (GhcPass p)
     go_app head args arg_flags =
       foldl' (\f (arg, flag) ->
                let arg' = go arg in
@@ -711,8 +731,8 @@ typeToLHsType ty
                  Required  -> f `nlHsAppTy`     arg')
              head (zip args arg_flags)
 
-    go_tv :: TyVar -> LHsTyVarBndr GhcPs
-    go_tv tv = noLoc $ KindedTyVar noExtField (noLoc (getRdrName tv))
+    go_tv :: TyVar -> LHsTyVarBndr (GhcPass p)
+    go_tv tv = noLoc $ KindedTyVar noExtField (noLoc (get_name tv))
                                    (go (tyVarKind tv))
 
 {-

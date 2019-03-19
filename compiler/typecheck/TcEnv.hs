@@ -50,7 +50,7 @@ module TcEnv(
         tcInitTidyEnv, tcInitOpenTidyEnv,
 
         -- Instances
-        tcLookupInstance, tcGetInstEnvs,
+        tcLookupInstance, tcGetInstEnvs, emitTypeable,
 
         -- Rules
         tcExtendRules,
@@ -73,6 +73,7 @@ module TcEnv(
 
 import GhcPrelude
 
+import TcOrigin
 import GHC.Hs
 import GHC.Iface.Env
 import TcRnMonad
@@ -110,6 +111,7 @@ import ErrUtils
 import Maybes( MaybeErr(..), orElse )
 import qualified GHC.LanguageExtensions as LangExt
 import Util ( HasDebugCallStack )
+import THNames (liftTClassName)
 
 import Data.IORef
 import Data.List (intercalate)
@@ -610,7 +612,8 @@ tc_extend_local_env top_lvl extra_env thing_inside
                                 -- The LocalRdrEnv contains only non-top-level names
                                 -- (GlobalRdrEnv handles the top level)
             , tcl_th_bndrs = extendNameEnvList th_bndrs  -- We only track Ids in tcl_th_bndrs
-                                 [(n, thlvl) | (n, ATcId {}) <- pairs] }
+                                 ([(n, thlvl) | (n, ATcId {}) <- pairs] ++
+                                 [(n, thlvl) | (n, ATyVar {}) <- pairs]) }
 
 tcExtendLocalTypeEnv :: TcLclEnv -> [(Name, TcTyThing)] -> TcLclEnv
 tcExtendLocalTypeEnv lcl_env@(TcLclEnv { tcl_env = lcl_type_env }) tc_ty_things
@@ -1037,6 +1040,13 @@ mkWrapperName what nameBase
              in (mod_env', num)
          let components = [what, show wrapperNum, pkg, mod, nameBase]
          return $ mkFastString $ zEncodeString $ intercalate ":" components
+
+emitTypeable :: Type -> TcM EvVar
+emitTypeable t = do
+  typeableClass <- tcLookupClass liftTClassName
+  emitWantedEvVar StaticOrigin $
+                  mkTyConApp (classTyCon typeableClass)
+                             [typeKind t, t ]
 
 {-
 Note [Generating fresh names for FFI wrappers]

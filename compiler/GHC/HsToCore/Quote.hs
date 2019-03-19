@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiWayIf #-}
 
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
@@ -22,7 +23,14 @@
 -- a Royal Pain (triggers other recompilation).
 -----------------------------------------------------------------------------
 
-module GHC.HsToCore.Quote( dsBracket ) where
+module GHC.HsToCore.Quote( dsBracket,
+
+               -- Functions used in ClsInst to generate evidence for LiftT
+               repTyCoreExpr,
+               repLamCoreExpr,
+               globalVarCoreExpr,
+               repPvarCoreExpr,
+               globalVar, Core(..)) where
 
 #include "HsVersions.h"
 
@@ -72,7 +80,7 @@ import GHC.Core.Class
 import GHC.Driver.Types ( MonadThings )
 import GHC.Core.DataCon
 import Var
-import GHC.HsToCore.Binds
+import {-# SOURCE #-} GHC.HsToCore.Binds
 
 import GHC.TypeLits
 import Data.Kind (Constraint)
@@ -138,10 +146,32 @@ wrapName n = do
 -- wrapper
 type MetaM a = ReaderT MetaWrappers DsM a
 
+-------------------------------------------------------------------------------
+{-
+These functions are repackaged slightly so that we can reuse them in ClsInst
+without having to know about the `Core` data type outside of this module.
+
+They are used to generate evidence for `LiftT` constraints which is a
+core expression which produces something of type `Q Type`.
+-}
+
+repTyCoreExpr :: HsType GhcRn -> DsM CoreExpr
+repTyCoreExpr = undefined --fmap unC . repTy
+
+repLamCoreExpr :: CoreExpr -> CoreExpr -> DsM CoreExpr
+repLamCoreExpr ce e = undefined --unC <$> repLam (MkC ce) (MkC e)
+
+globalVarCoreExpr :: Name -> DsM CoreExpr
+globalVarCoreExpr n = undefined --unC <$> globalVar n
+
+repPvarCoreExpr :: CoreExpr -> DsM CoreExpr
+repPvarCoreExpr e = undefined --unC <$> repPvar (MkC e)
+
+
 -----------------------------------------------------------------------------
 dsBracket :: Maybe QuoteWrapper -- ^ This is Nothing only when we are dealing with a VarBr
           -> HsBracket GhcRn
-          -> [PendingTcSplice]
+          -> [PendingTcUntypedSplice]
           -> DsM CoreExpr
 -- See Note [Desugaring Brackets]
 -- Returns a CoreExpr of type (M TH.Exp)
@@ -160,7 +190,7 @@ dsBracket wrap brack splices
       runReaderT (mapReaderT (dsExtendMetaEnv new_bit) act) mw
 
 
-    new_bit = mkNameEnv [(n, DsSplice (unLoc e))
+    new_bit = mkNameEnv [(getName n, DsSplice (unLoc e))
                         | PendingTcSplice n e <- splices]
 
     do_brack (VarBr _ _ n) = do { MkC e1  <- lookupOccDsM n ; return e1 }
@@ -1295,13 +1325,21 @@ repTy (HsTyVar _ _ (L _ n))
   | isLiftedTypeKindTyConName n       = repTStar
   | n `hasKey` constraintKindTyConKey = repTConstraint
   | n `hasKey` funTyConKey            = repArrowTyCon
-  | isTvOcc occ   = do tv1 <- lookupOcc n
-                       repTvar tv1
-  | isDataOcc occ = do tc1 <- lookupOcc n
-                       repPromotedDataCon tc1
-  | n == eqTyConName = repTequality
-  | otherwise     = do tc1 <- lookupOcc n
-                       repNamedTyCon tc1
+  | n == eqTyConName                  = repTequality
+  | otherwise = do
+    -- Have to lookup the variable in the environment before the calls to
+    -- `isTvOcc` as the variables for splice points return true for
+    -- `isTvOcc` as well.
+    mb_val <- lift $ dsLookupMetaEnv n
+    if
+      | Just (DsSplice t) <- mb_val -> lift (MkC <$> dsExpr t)
+      | isTvOcc occ   -> do tv1 <- lookupOcc n
+                            repTvar tv1
+      | isDataOcc occ -> do tc1 <- lookupOcc n
+                            repPromotedDataCon tc1
+      | otherwise  ->   do tc1 <- lookupOcc n
+                           repNamedTyCon tc1
+
   where
     occ = nameOccName n
 
@@ -1391,6 +1429,7 @@ repSplice (HsUntypedSplice _ _ n _) = rep_splice n
 repSplice (HsQuasiQuote _ n _ _ _)  = rep_splice n
 repSplice e@(HsSpliced {})          = pprPanic "repSplice" (ppr e)
 repSplice (XSplice nec)             = noExtCon nec
+repSplice e@(HsSplicedD {})         = pprPanic "repSpliceD" (ppr e)
 
 rep_splice :: Name -> MetaM (Core a)
 rep_splice splice_name
@@ -1422,7 +1461,8 @@ repE (HsVar _ (L _ x)) =
                                  ; repVarOrCon x str }
         Just (DsBound y)   -> repVarOrCon x (coreVar y)
         Just (DsSplice e)  -> do { e' <- lift $ dsExpr e
-                                 ; return (MkC e') } }
+                                 ; return (MkC e') }
+        Just (DsSpliceC {}) -> panic "Not used" }
 repE (HsIPVar _ n) = rep_implicit_param_name n >>= repImplicitParamVar
 repE (HsOverLabel _ _ s) = repOverLabel s
 
@@ -2079,6 +2119,7 @@ lookupOccDsM n
                 Nothing           -> globalVar n
                 Just (DsBound x)  -> return (coreVar x)
                 Just (DsSplice _) -> pprPanic "repE:lookupOcc" (ppr n)
+                Just (DsSpliceC _) -> pprPanic "repE:lookupOcc" (ppr n)
     }
 
 globalVar :: Name -> DsM (Core TH.Name)

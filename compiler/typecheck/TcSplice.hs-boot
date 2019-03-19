@@ -42,5 +42,6 @@ runMetaD :: LHsExpr GhcTcId -> TcM [LHsDecl GhcPs]
 
 lookupThName_maybe :: TH.Name -> TcM (Maybe Name)
 runQuasi :: TH.Q a -> TcM a
+
 runRemoteModFinalizers :: ThModFinalizers -> TcM ()
 finishTH :: TcM ()

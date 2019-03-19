@@ -27,7 +27,7 @@ module GHC.HsToCore.Monad (
         dsLookupGlobal, dsLookupGlobalId, dsLookupTyCon,
         dsLookupDataCon, dsLookupConLike,
 
-        DsMetaEnv, DsMetaVal(..), dsGetMetaEnv, dsLookupMetaEnv, dsExtendMetaEnv,
+        DsMetaEnv, DsMetaVal(..), dsGetMetaEnv, dsLookupMetaEnv, dsExtendMetaEnv, dsGetLevel, dsModifyLevel,
 
         -- Getting and setting pattern match oracle states
         getPmDeltas, updPmDeltas,
@@ -60,7 +60,7 @@ import GHC.Core
 import GHC.Core.Make  ( unitExpr )
 import GHC.Core.Utils ( exprType, isExprLevPoly )
 import GHC.Hs
-import GHC.IfaceToCore
+import {-# SOURCE #-} GHC.IfaceToCore
 import TcMType ( checkForLevPolyX, formatLevPolyErr )
 import PrelNames
 import RdrName
@@ -282,6 +282,7 @@ mkDsEnvs dflags mod rdr_env type_env fam_inst_env msg_var cc_st_var
                            }
         lcl_env = DsLclEnv { dsl_meta    = emptyNameEnv
                            , dsl_loc     = real_span
+                           , dsl_level   = 1
                            , dsl_deltas  = initDeltas
                            }
     in (gbl_env, lcl_env)
@@ -527,6 +528,12 @@ dsLookupMetaEnv name = do { env <- getLclEnv; return (lookupNameEnv (dsl_meta en
 dsExtendMetaEnv :: DsMetaEnv -> DsM a -> DsM a
 dsExtendMetaEnv menv thing_inside
   = updLclEnv (\env -> env { dsl_meta = dsl_meta env `plusNameEnv` menv }) thing_inside
+
+dsGetLevel :: DsM Int
+dsGetLevel = dsl_level <$> getLclEnv
+
+dsModifyLevel :: (Int -> Int) -> DsM a -> DsM a
+dsModifyLevel f = updLclEnv (\env -> env { dsl_level = f (dsl_level env)})
 
 discardWarningsDs :: DsM a -> DsM a
 -- Ignore warnings inside the thing inside;

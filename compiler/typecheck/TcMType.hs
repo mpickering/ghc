@@ -111,6 +111,7 @@ import TcOrigin
 -- others:
 import TcRnMonad        -- TcType, amongst others
 import Constraint
+import {-# SOURCE #-} TcEnv
 import TcEvidence
 import Id
 import Name
@@ -129,6 +130,7 @@ import UniqSet
 import GHC.Driver.Session
 import qualified GHC.LanguageExtensions as LangExt
 import BasicTypes ( TypeOrKind(..) )
+import GHC.Hs
 
 import Control.Monad
 import Maybes
@@ -184,12 +186,15 @@ newWanted :: CtOrigin -> Maybe TypeOrKind -> PredType -> TcM CtEvidence
 -- Deals with both equality and non-equality predicates
 newWanted orig t_or_k pty
   = do loc <- getCtLocM orig t_or_k
+       st <- getStage
+       pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
        d <- if isEqPrimPred pty then HoleDest  <$> newCoercionHole YesBlockSubst pty
-                                else EvVarDest <$> newEvVar pty
+                                else EvVarDest (thLevel st) <$> newEvVar pty
        return $ CtWanted { ctev_dest = d
                          , ctev_pred = pty
                          , ctev_nosh = WDeriv
-                         , ctev_loc = loc }
+                         , ctev_loc = loc
+                         , ctev_stage = thLevel st }
 
 newWanteds :: CtOrigin -> ThetaType -> TcM [CtEvidence]
 newWanteds orig = mapM (newWanted orig Nothing)
@@ -198,10 +203,12 @@ newWanteds orig = mapM (newWanted orig Nothing)
 newHoleCt :: HoleSort -> Id -> Type -> TcM Ct
 newHoleCt hole ev ty = do
   loc <- getCtLocM HoleOrigin Nothing
+  st <- getStage
   pure $ CHoleCan { cc_ev = CtWanted { ctev_pred = ty
-                                     , ctev_dest = EvVarDest ev
+                                     , ctev_dest = EvVarDest (thLevel st) ev
                                      , ctev_nosh = WDeriv
-                                     , ctev_loc  = loc }
+                                     , ctev_loc  = loc
+                                     , ctev_stage = thLevel st }
                   , cc_occ = getOccName ev
                   , cc_hole = hole }
 
@@ -252,21 +259,25 @@ emitDerivedEqs origin pairs
   = return ()
   | otherwise
   = do { loc <- getCtLocM origin Nothing
-       ; emitSimples (listToBag (map (mk_one loc) pairs)) }
+       ; st <- thLevel <$> getStage
+       ; emitSimples (listToBag (map (mk_one st loc) pairs)) }
   where
-    mk_one loc (ty1, ty2)
+    mk_one st loc (ty1, ty2)
        = mkNonCanonical $
          CtDerived { ctev_pred = mkPrimEqPred ty1 ty2
-                   , ctev_loc = loc }
+                   , ctev_loc = loc
+                   , ctev_stage = st }
 
 -- | Emits a new equality constraint
 emitWantedEq :: CtOrigin -> TypeOrKind -> Role -> TcType -> TcType -> TcM Coercion
 emitWantedEq origin t_or_k role ty1 ty2
   = do { hole <- newCoercionHole YesBlockSubst pty
        ; loc <- getCtLocM origin (Just t_or_k)
+       ; st <- getStage
        ; emitSimple $ mkNonCanonical $
          CtWanted { ctev_pred = pty, ctev_dest = HoleDest hole
-                  , ctev_nosh = WDeriv, ctev_loc = loc }
+                  , ctev_nosh = WDeriv, ctev_loc = loc
+                  , ctev_stage = thLevel st }
        ; return (HoleCo hole) }
   where
     pty = mkPrimEqPredRole role ty1 ty2
@@ -277,10 +288,12 @@ emitWantedEvVar :: CtOrigin -> TcPredType -> TcM EvVar
 emitWantedEvVar origin ty
   = do { new_cv <- newEvVar ty
        ; loc <- getCtLocM origin Nothing
-       ; let ctev = CtWanted { ctev_dest = EvVarDest new_cv
+       ; st <- getStage
+       ; let ctev = CtWanted { ctev_dest = EvVarDest (thLevel st) new_cv
                              , ctev_pred = ty
                              , ctev_nosh = WDeriv
-                             , ctev_loc  = loc }
+                             , ctev_loc  = loc
+                             , ctev_stage = thLevel st }
        ; emitSimple $ mkNonCanonical ctev
        ; return new_cv }
 
@@ -717,19 +730,19 @@ influences the way it is tidied; see TypeRep.tidyTyVarBndr.
 metaInfoToTyVarName :: MetaInfo -> FastString
 metaInfoToTyVarName  meta_info =
   case meta_info of
-       TauTv       -> fsLit "t"
-       FlatMetaTv  -> fsLit "fmv"
-       FlatSkolTv  -> fsLit "fsk"
-       TyVarTv     -> fsLit "a"
+    TauTv       -> fsLit "t"
+    FlatMetaTv  -> fsLit "fmv"
+    FlatSkolTv  -> fsLit "fsk"
+    TyVarTv     -> fsLit "a"
+    BrackTv {}  -> fsLit "b"
 
 newAnonMetaTyVar :: MetaInfo -> Kind -> TcM TcTyVar
 newAnonMetaTyVar mi = newNamedAnonMetaTyVar (metaInfoToTyVarName mi) mi
 
 newNamedAnonMetaTyVar :: FastString -> MetaInfo -> Kind -> TcM TcTyVar
 -- Make a new meta tyvar out of thin air
-newNamedAnonMetaTyVar tyvar_name meta_info kind
-
-  = do  { name    <- newMetaTyVarName tyvar_name
+newNamedAnonMetaTyVar s meta_info kind
+  = do  { name    <- newMetaTyVarName s
         ; details <- newMetaDetails meta_info
         ; let tyvar = mkTcTyVar name kind details
         ; traceTc "newAnonMetaTyVar" (ppr tyvar)
@@ -959,6 +972,19 @@ coercion variables, except for the special case of the promoted Eq#. But,
 that can't ever appear in user code, so we're safe!
 -}
 
+mkSpliceId :: Kind -> TcM Id
+mkSpliceId kind = do
+  name    <- newMetaTyVarName (fsLit "$splice")
+  details <- newMetaDetails TauTv
+  let tyvar = mkTcTyVar name kind details
+  traceTc "newAnonMetaTyVar" (ppr tyvar)
+  return tyvar
+
+{- Note [Name of an instantiated type variable]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+At the moment we give a unification variable a System Name, which
+influences the way it is tidied; see TypeRep.tidyTyVarBndr.
+-}
 
 newFlexiTyVar :: Kind -> TcM TcTyVar
 newFlexiTyVar kind = newAnonMetaTyVar TauTv kind
@@ -1020,8 +1046,22 @@ newWildCardX subst tv
 
 new_meta_tv_x :: MetaInfo -> TCvSubst -> TyVar -> TcM (TCvSubst, TcTyVar)
 new_meta_tv_x info subst tv
-  = do  { new_tv <- cloneAnonMetaTyVar info tv substd_kind
+  = do  { st <- getStage
+        ; new_tv <-
+            case st of
+              Brack _ (TcPending _ps_var zs_var lie_var _wrap) -> do
+                  sp_id <- mkSpliceId substd_kind
+                  let info' = BrackTv sp_id info
+                  new_tv <- cloneAnonMetaTyVar info' tv substd_kind
+                  v <- setConstraintVar lie_var   $
+                        emitTypeable (mkTyVarTy new_tv)
+
+                  zs <- readMutVar zs_var
+                  writeMutVar zs_var (PendingZonkSplice sp_id (evId v) : zs)
+                  return new_tv
+              _ -> cloneAnonMetaTyVar info tv substd_kind
         ; let subst1 = extendTvSubstWithClone subst tv new_tv
+        -- ; pprTraceM "new_meta_tv_x" (ppr tv $$ ppr st $$ ppr new_tv)
         ; return (subst1, new_tv) }
   where
     substd_kind = substTyUnchecked subst (tyVarKind tv)
@@ -2084,7 +2124,7 @@ zonkCtEvidence ctev@(CtGiven { ctev_pred = pred })
 zonkCtEvidence ctev@(CtWanted { ctev_pred = pred, ctev_dest = dest })
   = do { pred' <- zonkTcType pred
        ; let dest' = case dest of
-                       EvVarDest ev -> EvVarDest $ setVarType ev pred'
+                       EvVarDest n ev -> EvVarDest n $ setVarType ev pred'
                          -- necessary in simplifyInfer
                        HoleDest h   -> HoleDest h
        ; return (ctev { ctev_pred = pred', ctev_dest = dest' }) }

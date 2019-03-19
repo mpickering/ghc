@@ -1075,6 +1075,7 @@ getDictionaryBindings theta = do
   let wCs = mkSimpleWC [CtDerived
           { ctev_pred = varType dict_var
           , ctev_loc = loc
+          , ctev_stage = thLevel (tcl_th_ctxt (ctl_env loc))
           }]
 
   return wCs

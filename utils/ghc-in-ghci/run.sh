@@ -25,16 +25,8 @@
 
 # Look in two common locations for a GHC installation (the results of using
 # the make- and Hadrian-based build systems, respectively).
-if [ -d ./inplace/lib ]; then
-  GHC_BIN=./inplace/bin/ghc-stage2
-  _GHC_TOP_DIR=./inplace/lib
-elif [ -d ./_build/stage1/lib ]; then
-  GHC_BIN=./_build/stage1/bin/ghc
-  _GHC_TOP_DIR=./_build/stage1/lib
-else
-  echo "Could not find GHC installation"
-  exit 1
-fi
+GHC_BIN=./_core_th/stage1/bin/ghc
+_GHC_TOP_DIR=./_core_th/stage1/lib
 
 exec ${GHC_BIN} \
     --interactive \
