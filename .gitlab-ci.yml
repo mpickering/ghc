@@ -90,6 +90,7 @@ validate-x86_64-linux-deb8-hadrian:
     - ./configure $CONFIGURE_ARGS
     - |
       THREADS=`mk/detect-cpu-count.sh`
+      GhcDebugged=YES
       make V=0 -j$THREADS
     - |
       make binary-dist TAR_COMP_OPTS="-1"
