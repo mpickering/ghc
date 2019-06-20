@@ -12,6 +12,7 @@ The @Inst@ type: dictionaries or method instances
 module Inst (
        deeplySkolemise,
        topInstantiate, topInstantiateInferred, deeplyInstantiate,
+       topInstantiateGuarded,
        instCall, instDFunType, instStupidTheta, instTyVarsWith,
        newWanted, newWanteds,
 
@@ -37,7 +38,7 @@ import GhcPrelude
 import {-# SOURCE #-}   TcExpr( tcPolyExpr, tcSyntaxOp )
 import {-# SOURCE #-}   TcUnify( unifyType, unifyKind )
 
-import BasicTypes ( IntegralLit(..), SourceText(..) )
+import BasicTypes ( IntegralLit(..), SourceText(..), Arity )
 import FastString
 import HsSyn
 import TcHsSyn
@@ -61,6 +62,7 @@ import Name
 import Var      ( EvVar, tyVarName, VarBndr(..) )
 import DataCon
 import VarEnv
+import VarSet
 import PrelNames
 import SrcLoc
 import DynFlags
@@ -176,7 +178,7 @@ topInstantiate :: CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
 -- if    topInstantiate ty = (wrap, rho)
 -- and   e :: ty
 -- then  wrap e :: rho  (that is, wrap :: ty "->" rho)
-topInstantiate = top_instantiate True
+topInstantiate = top_instantiate True 0
 
 -- | Instantiate all outer 'Inferred' binders
 -- and any context. Never looks through arrows or specified type variables.
@@ -186,12 +188,19 @@ topInstantiateInferred :: CtOrigin -> TcSigmaType
 -- if    topInstantiate ty = (wrap, rho)
 -- and   e :: ty
 -- then  wrap e :: rho
-topInstantiateInferred = top_instantiate False
+topInstantiateInferred = top_instantiate False 0
+
+-- | Instantiate all outer type variables
+-- and any context. Never looks through arrows.
+-- Takes guardedness of variables into account
+topInstantiateGuarded :: Arity -> CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
+topInstantiateGuarded = top_instantiate True
 
 top_instantiate :: Bool   -- True  <=> instantiate *all* variables
                           -- False <=> instantiate only the inferred ones
+                -> Arity  -- number of provided arguments
                 -> CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
-top_instantiate inst_all orig ty
+top_instantiate inst_all prov_args orig ty
   | not (null binders && null theta)
   = do { let (inst_bndrs, leave_bndrs) = span should_inst binders
              (inst_theta, leave_theta)
@@ -200,7 +209,7 @@ top_instantiate inst_all orig ty
              in_scope    = mkInScopeSet (tyCoVarsOfType ty)
              empty_subst = mkEmptyTCvSubst in_scope
              inst_tvs    = binderVars inst_bndrs
-       ; (subst, inst_tvs') <- mapAccumLM newMetaTyVarX empty_subst inst_tvs
+       ; (subst, inst_tvs') <- mapAccumLM (newMetaTyVarChoice choice) empty_subst inst_tvs
        ; let inst_theta' = substTheta subst inst_theta
              sigma'      = substTy subst (mkForAllTys leave_bndrs $
                                           mkPhiTy leave_theta rho)
@@ -220,7 +229,7 @@ top_instantiate inst_all orig ty
            if null leave_bndrs
 
          -- account for types like forall a. Num a => forall b. Ord b => ...
-           then top_instantiate inst_all orig sigma'
+           then top_instantiate inst_all prov_args orig sigma'
 
          -- but don't loop if there were any un-inst'able tyvars
            else return (idHsWrapper, sigma')
@@ -235,6 +244,34 @@ top_instantiate inst_all orig ty
     should_inst bndr
       | inst_all  = True
       | otherwise = binderArgFlag bndr == Inferred
+
+    -- look at the prov_args first arguments for guardedness
+    vars_which_are_guarded
+      = let args_to_look = take prov_args (fst (splitFunTys rho))
+        in mapUnionVarSet guarded_vars args_to_look
+
+    choice v
+      | v `elemVarSet` vars_which_are_guarded = SigmaTv
+      | otherwise                             = TauTv
+
+    guarded_vars, guarded_vars' :: TcRhoType -> VarSet
+    guarded_vars ty
+      | Just ty' <- coreView ty = guarded_vars ty'
+    guarded_vars (TyVarTy _)    = emptyVarSet
+    guarded_vars ty             = guarded_vars' ty
+
+    guarded_vars' (TyVarTy v)
+      = unitVarSet v
+    guarded_vars' (TyConApp _ tys)
+      = mapUnionVarSet guarded_vars' tys
+    guarded_vars' (AppTy a b)
+      = mapUnionVarSet guarded_vars' [a, b]
+    guarded_vars' (FunTy _ a _)
+      = guarded_vars' a  -- Only source type is guarded
+    guarded_vars' (ForAllTy {})
+      = emptyVarSet      -- Under a forall nothing is guarded
+    guarded_vars' _
+      = emptyVarSet      -- Fallback for rest of cases
 
 deeplyInstantiate :: CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
 --   Int -> forall a. a -> a  ==>  (\x:Int. [] x alpha) :: Int -> alpha

@@ -41,7 +41,7 @@ module TcType (
   MetaDetails(Flexi, Indirect), MetaInfo(..),
   isImmutableTyVar, isSkolemTyVar, isMetaTyVar,  isMetaTyVarTy, isTyVarTy,
   tcIsTcTyVar, isTyVarTyVar, isOverlappableTyVar,  isTyConableTyVar,
-  isFskTyVar, isFmvTyVar, isFlattenTyVar,
+  isFskTyVar, isFmvTyVar, isFlattenTyVar, isSigmaTyVar,
   isAmbiguousTyVar, metaTyVarRef, metaTyVarInfo,
   isFlexi, isIndirect, isRuntimeUnkSkol,
   metaTyVarTcLevel, setMetaTyVarTcLevel, metaTyVarTcLevel_maybe,
@@ -547,6 +547,9 @@ data MetaInfo
                    --   unified with a type, only with a type variable
                    -- See Note [Signature skolems]
 
+   | SigmaTv       -- This MetaTv is an ordinary unification variable
+                   -- As opposed to TauTv, it can be filled with foralls
+
    | FlatMetaTv    -- A flatten meta-tyvar
                    -- It is a meta-tyvar, but it is always untouchable, with level 0
                    -- See Note [The flattening story] in TcFlatten
@@ -564,6 +567,7 @@ instance Outputable MetaDetails where
 instance Outputable MetaInfo where
   ppr TauTv         = text "tau"
   ppr TyVarTv       = text "tyv"
+  ppr SigmaTv       = text "sigma"
   ppr FlatMetaTv    = text "fmv"
   ppr FlatSkolTv    = text "fsk"
 
@@ -1119,7 +1123,8 @@ isImmutableTyVar tv = isSkolemTyVar tv
 
 isTyConableTyVar, isSkolemTyVar, isOverlappableTyVar,
   isMetaTyVar, isAmbiguousTyVar,
-  isFmvTyVar, isFskTyVar, isFlattenTyVar :: TcTyVar -> Bool
+  isFmvTyVar, isFskTyVar, isFlattenTyVar,
+  isSigmaTyVar :: TcTyVar -> Bool
 
 isTyConableTyVar tv
         -- True of a meta-type variable that can be filled in
@@ -1142,6 +1147,11 @@ isFskTyVar tv
     case tcTyVarDetails tv of
         MetaTv { mtv_info = FlatSkolTv } -> True
         _                                -> False
+
+isSigmaTyVar tv
+  = case tcTyVarDetails tv of
+        MetaTv { mtv_info = SigmaTv } -> True
+        _                             -> False
 
 -- | True of both given and wanted flatten-skolems (fmv and fsk)
 isFlattenTyVar tv
@@ -2136,6 +2146,7 @@ isSigmaTy :: TcType -> Bool
 isSigmaTy ty | Just ty' <- tcView ty = isSigmaTy ty'
 isSigmaTy (ForAllTy {})                = True
 isSigmaTy (FunTy { ft_af = InvisArg }) = True
+isSigmaTy (TyVarTy v)                  = isSigmaTyVar v
 isSigmaTy _                            = False
 
 isRhoTy :: TcType -> Bool   -- True of TcRhoTypes; see Note [TcRhoType]

@@ -386,7 +386,7 @@ tc_pat penv (ViewPat _ expr pat) overall_pat_ty thing_inside
         ; let expr_orig = lexprCtOrigin expr
               herald    = text "A view pattern expression expects"
         ; (expr_wrap1, [inf_arg_ty], inf_res_ty)
-            <- matchActualFunTys herald expr_orig (Just (unLoc expr)) 1 expr'_inferred
+            <- matchActualFunTys herald expr_orig (Just (unLoc expr)) 1 expr'_inferred 1
             -- expr_wrap1 :: expr'_inferred "->" (inf_arg_ty -> inf_res_ty)
 
          -- check that overall pattern is more polymorphic than arg type

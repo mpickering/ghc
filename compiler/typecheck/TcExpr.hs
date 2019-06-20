@@ -372,7 +372,7 @@ tcExpr expr@(OpApp fix arg1 op arg2) res_ty
        ; let doc   = text "The first argument of ($) takes"
              orig1 = lexprCtOrigin arg1
        ; (wrap_arg1, [arg2_sigma], op_res_ty) <-
-           matchActualFunTys doc orig1 (Just (unLoc arg1)) 1 arg1_ty
+           matchActualFunTys doc orig1 (Just (unLoc arg1)) 1 arg1_ty 2
 
          -- We have (arg1 $ arg2)
          -- So: arg1_ty = arg2_ty -> op_res_ty
@@ -437,7 +437,7 @@ tcExpr expr@(OpApp fix arg1 op arg2) res_ty
 tcExpr expr@(SectionR x op arg2) res_ty
   = do { (op', op_ty) <- tcInferFun op
        ; (wrap_fun, [arg1_ty, arg2_ty], op_res_ty)
-                  <- matchActualFunTys (mk_op_msg op) fn_orig (Just (unLoc op)) 2 op_ty
+                  <- matchActualFunTys (mk_op_msg op) fn_orig (Just (unLoc op)) 2 op_ty 2
        ; wrap_res <- tcSubTypeHR SectionOrigin (Just expr)
                                  (mkVisFunTy arg1_ty op_res_ty) res_ty
        ; arg2' <- tcArg op arg2 arg2_ty 2
@@ -457,7 +457,7 @@ tcExpr expr@(SectionL x arg1 op) res_ty
 
        ; (wrap_fn, (arg1_ty:arg_tys), op_res_ty)
            <- matchActualFunTys (mk_op_msg op) fn_orig (Just (unLoc op))
-                                n_reqd_args op_ty
+                                n_reqd_args op_ty n_reqd_args
        ; wrap_res <- tcSubTypeHR SectionOrigin (Just expr)
                                  (mkVisFunTys arg_tys op_res_ty) res_ty
        ; arg1' <- tcArg op arg1 arg1_ty 1
@@ -1289,7 +1289,7 @@ tcArgs :: LHsExpr GhcRn   -- ^ The function itself (for err msgs only)
        -> TcM (HsWrapper, [LHsExprArgOut], TcSigmaType)
           -- ^ (a wrapper for the function, the tc'd args, result type)
 tcArgs fun orig_fun_ty fun_orig orig_args herald
-  = go [] 1 orig_fun_ty orig_args
+  = go [] 1 orig_fun_ty orig_args []
   where
     -- Don't count visible type arguments when determining how many arguments
     -- an expression is given in an arity mismatch error, since visible type
@@ -1297,15 +1297,21 @@ tcArgs fun orig_fun_ty fun_orig orig_args herald
     -- See Note [Herald for matchExpectedFunTys] in TcUnify.
     orig_expr_args_arity = count isHsValArg orig_args
 
-    go _ _ fun_ty [] = return (idHsWrapper, [], fun_ty)
-
-    go acc_args n fun_ty (HsArgPar sp : args)
-      = do { (inner_wrap, args', res_ty) <- go acc_args n fun_ty args
-           ; return (inner_wrap, HsArgPar sp : args', res_ty)
+    go _ _ fun_ty [] deferred_args 
+      = do { args' <- handle_args deferred_args
+           ; return (idHsWrapper, args', fun_ty)
            }
 
-    go acc_args n fun_ty (HsTypeArg l hs_ty_arg : args)
-      = do { (wrap1, upsilon_ty) <- topInstantiateInferred fun_orig fun_ty
+    go acc_args n fun_ty (HsArgPar sp : args) deferred_args
+      = do { let deferred_args' = deferred_args ++ [(HsArgPar sp, Nothing)]
+           ; go acc_args n fun_ty args deferred_args'
+           }
+
+    go acc_args n fun_ty (HsTypeArg l hs_ty_arg : args) deferred_args
+      = do { -- handle any deferred arguments before the type argument
+             previous_args' <- handle_args deferred_args
+             -- this may cause additional unifications to occur
+           ; (wrap1, upsilon_ty) <- topInstantiateInferred fun_orig fun_ty
                -- wrap1 :: fun_ty "->" upsilon_ty
            ; case tcSplitForAllTy_maybe upsilon_ty of
                Just (tvb, inner_ty)
@@ -1331,29 +1337,65 @@ tcArgs fun orig_fun_ty fun_orig orig_args herald
                                           , debugPprType insted_ty ])
 
                     ; (inner_wrap, args', res_ty)
-                        <- go acc_args (n+1) insted_ty args
+                        <- go acc_args (n+1) insted_ty args []
                    -- inner_wrap :: insted_ty "->" (map typeOf args') -> res_ty
                     ; let inst_wrap = mkWpTyApps [ty_arg]
                     ; return ( inner_wrap <.> inst_wrap <.> wrap1
-                             , HsTypeArg l hs_ty_arg : args'
+                             , previous_args' ++ HsTypeArg l hs_ty_arg : args'
                              , res_ty ) }
                _ -> ty_app_err upsilon_ty hs_ty_arg }
 
-    go acc_args n fun_ty (HsValArg arg : args)
-      = do { (wrap, [arg_ty], res_ty)
+    go acc_args n fun_ty (HsValArg arg : args) deferred_args
+      = do { let next_val_args = 1 + count_guarding_args args
+           ; (wrap, [arg_ty], res_ty)
                <- matchActualFunTysPart herald fun_orig (Just (unLoc fun)) 1 fun_ty
-                                        acc_args orig_expr_args_arity
+                                        acc_args orig_expr_args_arity next_val_args
                -- wrap :: fun_ty "->" arg_ty -> res_ty
-           ; arg' <- tcArg fun arg arg_ty n
+           -- ; arg' <- tcArg fun arg arg_ty n  -- defer it until the end
+           ; let defer_this_arg = (HsValArg arg, Just (arg_ty, n))
            ; (inner_wrap, args', inner_res_ty)
-               <- go (arg_ty : acc_args) (n+1) res_ty args
+               <- go (arg_ty : acc_args) (n+1) res_ty args (deferred_args ++ [defer_this_arg])
                -- inner_wrap :: res_ty "->" (map typeOf args') -> inner_res_ty
            ; return ( mkWpFun idHsWrapper inner_wrap arg_ty res_ty doc <.> wrap
-                    , HsValArg arg' : args'
+                    , {- HsValArg arg' : -} args'  -- args' contains the deferred arg
                     , inner_res_ty ) }
       where
         doc = text "When checking the" <+> speakNth n <+>
               text "argument to" <+> quotes (ppr fun)
+
+    count_guarding_args [] = 0
+    count_guarding_args (HsValArg _ : args) = 1 + count_guarding_args args
+    count_guarding_args (HsArgPar _ : args) = count_guarding_args args
+    count_guarding_args (_          : _)    = 0
+
+    -- This function works in two phases
+    -- While deconstructing the list, handle the guarded args
+    -- Then while going back, handle the un-guarded args
+    handle_args :: [(LHsExprArgIn, Maybe (TcRhoType, Int))]
+                -> TcM [LHsExprArgOut]
+    handle_args [] = return []
+    handle_args ((HsArgPar sp, Nothing) : args)
+      = do { args' <- handle_args args
+           ; return (HsArgPar sp : args')
+           }
+    handle_args ((HsValArg arg, Just (arg_ty, n)) : args)
+      | is_guarding_type arg_ty
+      = do { arg'  <- tcArg fun arg arg_ty n
+           ; args' <- handle_args args
+           ; return (HsValArg arg' : args')
+           }
+      | otherwise
+      = do { args' <- handle_args args
+           ; arg'  <- tcArg fun arg arg_ty n
+           ; return (HsValArg arg' : args')
+           }
+    handle_args (_ : _) = panic "tcArg/handle_arg"
+
+    -- Important! Keep in sync with 'top_instantiate' in Inst.hs
+    is_guarding_type (TyConApp _ _) = True
+    is_guarding_type (AppTy _ _)    = True
+    is_guarding_type (FunTy _ a _)  = is_guarding_type a
+    is_guarding_type _              = False
 
     ty_app_err ty arg
       = do { (_, ty) <- zonkTidyTcType emptyTidyEnv ty
@@ -1549,7 +1591,8 @@ tcSynArgA :: CtOrigin
             -- and a wrapper to be applied to the overall expression
 tcSynArgA orig sigma_ty arg_shapes res_shape thing_inside
   = do { (match_wrapper, arg_tys, res_ty)
-           <- matchActualFunTys herald orig Nothing (length arg_shapes) sigma_ty
+              -- do *not* user guardedness information for tcSynArg
+           <- matchActualFunTys herald orig Nothing (length arg_shapes) sigma_ty 0
               -- match_wrapper :: sigma_ty "->" (arg_tys -> res_ty)
        ; ((result, res_wrapper), arg_wrappers)
            <- tc_syn_args_e arg_tys arg_shapes $ \ arg_results ->

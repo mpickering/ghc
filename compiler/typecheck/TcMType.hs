@@ -50,6 +50,7 @@ module TcMType (
 
   --------------------------------
   -- Instantiation
+  newMetaTyVarsChoice, newMetaTyVarChoice,
   newMetaTyVars, newMetaTyVarX, newMetaTyVarsX,
   newMetaTyVarTyVars, newMetaTyVarTyVarX,
   newTyVarTyVar, newPatSigTyVar, newSkolemTyVar, newWildCardX,
@@ -713,7 +714,8 @@ newAnonMetaTyVar meta_info kind
                         TauTv       -> fsLit "t"
                         FlatMetaTv  -> fsLit "fmv"
                         FlatSkolTv  -> fsLit "fsk"
-                        TyVarTv      -> fsLit "a"
+                        TyVarTv     -> fsLit "a"
+                        SigmaTv     -> fsLit "t"
         ; name    <- newMetaTyVarName s
         ; details <- newMetaDetails meta_info
         ; let tyvar = mkTcTyVar name kind details
@@ -969,21 +971,27 @@ newMetaTyVars = newMetaTyVarsX emptyTCvSubst
     -- Since the tyvars are freshly made, they cannot possibly be
     -- captured by any existing for-alls.
 
-newMetaTyVarsX :: TCvSubst -> [TyVar] -> TcM (TCvSubst, [TcTyVar])
+newMetaTyVarsChoice :: (TyVar -> MetaInfo) -> TCvSubst -> [TyVar] -> TcM (TCvSubst, [TcTyVar])
 -- Just like newMetaTyVars, but start with an existing substitution.
-newMetaTyVarsX subst = mapAccumLM newMetaTyVarX subst
+newMetaTyVarsChoice choice subst = mapAccumLM (newMetaTyVarChoice choice) subst
 
-newMetaTyVarX :: TCvSubst -> TyVar -> TcM (TCvSubst, TcTyVar)
+newMetaTyVarChoice :: (TyVar -> MetaInfo) -> TCvSubst -> TyVar -> TcM (TCvSubst, TcTyVar)
 -- Make a new unification variable tyvar whose Name and Kind come from
 -- an existing TyVar. We substitute kind variables in the kind.
-newMetaTyVarX subst tyvar = new_meta_tv_x TauTv subst tyvar
+newMetaTyVarChoice choice subst tyvar = new_meta_tv_x (choice tyvar) subst tyvar
+
+newMetaTyVarsX :: TCvSubst -> [TyVar] -> TcM (TCvSubst, [TcTyVar])
+newMetaTyVarsX = newMetaTyVarsChoice (const TauTv)
+
+newMetaTyVarX :: TCvSubst -> TyVar -> TcM (TCvSubst, TcTyVar)
+newMetaTyVarX = newMetaTyVarChoice (const TauTv)
 
 newMetaTyVarTyVars :: [TyVar] -> TcM (TCvSubst, [TcTyVar])
-newMetaTyVarTyVars = mapAccumLM newMetaTyVarTyVarX emptyTCvSubst
+newMetaTyVarTyVars = newMetaTyVarsChoice (const TyVarTv) emptyTCvSubst
 
 newMetaTyVarTyVarX :: TCvSubst -> TyVar -> TcM (TCvSubst, TcTyVar)
 -- Just like newMetaTyVarX, but make a TyVarTv
-newMetaTyVarTyVarX subst tyvar = new_meta_tv_x TyVarTv subst tyvar
+newMetaTyVarTyVarX = newMetaTyVarChoice (const TyVarTv)
 
 newWildCardX :: TCvSubst -> TyVar -> TcM (TCvSubst, TcTyVar)
 newWildCardX subst tv

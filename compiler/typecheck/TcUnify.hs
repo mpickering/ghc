@@ -221,6 +221,7 @@ matchActualFunTys :: SDoc   -- See Note [Herald for matchExpectedFunTys]
                   -> Maybe (HsExpr GhcRn)   -- the thing with type TcSigmaType
                   -> Arity
                   -> TcSigmaType
+                  -> Arity
                   -> TcM (HsWrapper, [TcSigmaType], TcSigmaType)
 -- If    matchActualFunTys n ty = (wrap, [t1,..,tn], ty_r)
 -- then  wrap : ty ~> (t1 -> ... -> tn -> ty_r)
@@ -236,10 +237,11 @@ matchActualFunTysPart :: SDoc -- See Note [Herald for matchExpectedFunTys]
                       -> TcSigmaType
                       -> [TcSigmaType] -- reversed args. See (*) below.
                       -> Arity   -- overall arity of the function, for errs
+                      -> Arity   -- how many arguments are provided explicitly
                       -> TcM (HsWrapper, [TcSigmaType], TcSigmaType)
 matchActualFunTysPart herald ct_orig mb_thing arity orig_ty
-                      orig_old_args full_arity
-  = go arity orig_old_args orig_ty
+                      orig_old_args full_arity provided_args
+  = go arity orig_old_args orig_ty provided_args
 -- Does not allocate unnecessary meta variables: if the input already is
 -- a function, we just take it apart.  Not only is this efficient,
 -- it's important for higher rank: the argument might be of form
@@ -269,34 +271,35 @@ matchActualFunTysPart herald ct_orig mb_thing arity orig_ty
     go :: Arity
        -> [TcSigmaType] -- accumulator of arguments (reversed)
        -> TcSigmaType   -- the remainder of the type as we're processing
+       -> Arity         -- how many arguments are provided after the current one
        -> TcM (HsWrapper, [TcSigmaType], TcSigmaType)
-    go 0 _ ty = return (idHsWrapper, [], ty)
+    go 0 _ ty _ = return (idHsWrapper, [], ty)
 
-    go n acc_args ty
+    go n acc_args ty prov_args
       | not (null tvs && null theta)
       = do { (wrap1, rho) <- topInstantiate ct_orig ty
-           ; (wrap2, arg_tys, res_ty) <- go n acc_args rho
+           ; (wrap2, arg_tys, res_ty) <- go n acc_args rho prov_args
            ; return (wrap2 <.> wrap1, arg_tys, res_ty) }
       where
         (tvs, theta, _) = tcSplitSigmaTy ty
 
-    go n acc_args ty
-      | Just ty' <- tcView ty = go n acc_args ty'
+    go n acc_args ty prov_args
+      | Just ty' <- tcView ty = go n acc_args ty' prov_args
 
-    go n acc_args (FunTy { ft_af = af, ft_arg = arg_ty, ft_res = res_ty })
+    go n acc_args (FunTy { ft_af = af, ft_arg = arg_ty, ft_res = res_ty }) prov_args
       = ASSERT( af == VisArg )
-        do { (wrap_res, tys, ty_r) <- go (n-1) (arg_ty : acc_args) res_ty
+        do { (wrap_res, tys, ty_r) <- go (n-1) (arg_ty : acc_args) res_ty (prov_args-1)
            ; return ( mkWpFun idHsWrapper wrap_res arg_ty ty_r doc
                     , arg_ty : tys, ty_r ) }
       where
         doc = text "When inferring the argument type of a function with type" <+>
               quotes (ppr orig_ty)
 
-    go n acc_args ty@(TyVarTy tv)
+    go n acc_args ty@(TyVarTy tv) prov_args
       | isMetaTyVar tv
       = do { cts <- readMetaTyVar tv
            ; case cts of
-               Indirect ty' -> go n acc_args ty'
+               Indirect ty' -> go n acc_args ty' prov_args
                Flexi        -> defer n ty }
 
        -- In all other cases we bale out into ordinary unification
@@ -314,8 +317,8 @@ matchActualFunTysPart herald ct_orig mb_thing arity orig_ty
        --
        -- But in that case we add specialized type into error context
        -- anyway, because it may be useful. See also #9605.
-    go n acc_args ty = addErrCtxtM (mk_ctxt (reverse acc_args) ty) $
-                       defer n ty
+    go n acc_args ty _ = addErrCtxtM (mk_ctxt (reverse acc_args) ty) $
+                         defer n ty
 
     ------------
     defer n fun_ty
@@ -1708,7 +1711,8 @@ lhsPriority tv
                                      FlatSkolTv -> 1
                                      TyVarTv    -> 2
                                      TauTv      -> 3
-                                     FlatMetaTv -> 4
+                                     SigmaTv    -> 4
+                                     FlatMetaTv -> 5
 {- Note [TyVar/TyVar orientation]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Given (a ~ b), should we orient the CTyEqCan as (a~b) or (b~a)?
@@ -2248,6 +2252,7 @@ canUnifyWithPolyType :: DynFlags -> TcTyVarDetails -> Bool
 canUnifyWithPolyType dflags details
   = case details of
       MetaTv { mtv_info = TyVarTv }    -> False
-      MetaTv { mtv_info = TauTv }      -> xopt LangExt.ImpredicativeTypes dflags
+      MetaTv { mtv_info = TauTv }      -> False
+      MetaTv { mtv_info = SigmaTv }    -> xopt LangExt.ImpredicativeTypes dflags
       _other                           -> True
           -- We can have non-meta tyvars in given constraints
