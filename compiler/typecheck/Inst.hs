@@ -222,6 +222,8 @@ top_instantiate inst_all prov_args orig ty
                        , text "type" <+> debugPprType ty
                        , text "theta" <+> ppr theta
                        , text "leave_bndrs" <+> ppr leave_bndrs
+                       , text "prov_args" <+> ppr prov_args
+                       , text "guarded_vars" <+> ppr vars_which_are_guarded
                        , text "with" <+> vcat (map debugPprType inst_tv_tys')
                        , text "theta:" <+>  ppr inst_theta' ])
 

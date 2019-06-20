@@ -277,7 +277,7 @@ matchActualFunTysPart herald ct_orig mb_thing arity orig_ty
 
     go n acc_args ty prov_args
       | not (null tvs && null theta)
-      = do { (wrap1, rho) <- topInstantiate ct_orig ty
+      = do { (wrap1, rho) <- topInstantiateGuarded prov_args ct_orig ty
            ; (wrap2, arg_tys, res_ty) <- go n acc_args rho prov_args
            ; return (wrap2 <.> wrap1, arg_tys, res_ty) }
       where
