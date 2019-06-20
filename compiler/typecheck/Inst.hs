@@ -12,7 +12,7 @@ The @Inst@ type: dictionaries or method instances
 module Inst (
        deeplySkolemise,
        topInstantiate, topInstantiateInferred, deeplyInstantiate,
-       topInstantiateGuarded,
+       topInstantiateGuarded, topInstantiateSigma,
        instCall, instDFunType, instStupidTheta, instTyVarsWith,
        newWanted, newWanteds,
 
@@ -178,7 +178,7 @@ topInstantiate :: CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
 -- if    topInstantiate ty = (wrap, rho)
 -- and   e :: ty
 -- then  wrap e :: rho  (that is, wrap :: ty "->" rho)
-topInstantiate = top_instantiate True 0
+topInstantiate = top_instantiate True (Just 0)
 
 -- | Instantiate all outer 'Inferred' binders
 -- and any context. Never looks through arrows or specified type variables.
@@ -188,17 +188,24 @@ topInstantiateInferred :: CtOrigin -> TcSigmaType
 -- if    topInstantiate ty = (wrap, rho)
 -- and   e :: ty
 -- then  wrap e :: rho
-topInstantiateInferred = top_instantiate False 0
+topInstantiateInferred = top_instantiate False (Just 0)
 
 -- | Instantiate all outer type variables
 -- and any context. Never looks through arrows.
--- Takes guardedness of variables into account
+-- Takes guardedness of variables into account,
 topInstantiateGuarded :: Arity -> CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
-topInstantiateGuarded = top_instantiate True
+topInstantiateGuarded n = top_instantiate True (Just n)
+
+-- | Instantiate all outer type variables
+-- and any context. All unification variables become sigma's.
+topInstantiateSigma :: CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
+topInstantiateSigma = top_instantiate True Nothing
 
 top_instantiate :: Bool   -- True  <=> instantiate *all* variables
                           -- False <=> instantiate only the inferred ones
-                -> Arity  -- number of provided arguments
+                -> Maybe Arity  -- number of provided arguments
+                                -- Just n  <=> n arguments where provided
+                                -- Nothing <=> instantiate everything as sigmas
                 -> CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
 top_instantiate inst_all prov_args orig ty
   | not (null binders && null theta)
@@ -223,7 +230,9 @@ top_instantiate inst_all prov_args orig ty
                        , text "theta" <+> ppr theta
                        , text "leave_bndrs" <+> ppr leave_bndrs
                        , text "prov_args" <+> ppr prov_args
-                       , text "guarded_vars" <+> ppr vars_which_are_guarded
+                       , text "guarded_vars" <+> 
+                           case prov_args of { Nothing -> text "all"
+                                             ; _ -> ppr vars_which_are_guarded }
                        , text "with" <+> vcat (map debugPprType inst_tv_tys')
                        , text "theta:" <+>  ppr inst_theta' ])
 
@@ -249,10 +258,12 @@ top_instantiate inst_all prov_args orig ty
 
     -- look at the prov_args first arguments for guardedness
     vars_which_are_guarded
-      = let args_to_look = take prov_args (fst (splitFunTys rho))
+      = let Just prov_args' = prov_args
+            args_to_look = take prov_args' (fst (splitFunTys rho))
         in mapUnionVarSet guarded_vars args_to_look
 
     choice v
+      | Nothing <- prov_args                  = SigmaTv
       | v `elemVarSet` vars_which_are_guarded = SigmaTv
       | otherwise                             = TauTv
 

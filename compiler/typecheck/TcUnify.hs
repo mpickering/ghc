@@ -775,7 +775,12 @@ tc_sub_type_ds eq_orig inst_orig ctxt ty_actual ty_expected
     go ty_a ty_e
       | let (tvs, theta, _) = tcSplitSigmaTy ty_a
       , not (null tvs && null theta)
-      = do { (in_wrap, in_rho) <- topInstantiate inst_orig ty_a
+      = do {   -- If the rhs is fully known, we can just instantiate 
+               -- the variables impredicatively
+             let ty_e_is_fully_known = isEmptyVarSet (unif_vars ty_e)
+           ; (in_wrap, in_rho) <- if ty_e_is_fully_known
+                                     then topInstantiateSigma inst_orig ty_a
+                                     else topInstantiate inst_orig ty_a
            ; body_wrap <- tc_sub_type_ds
                             (eq_orig { uo_actual = in_rho
                                      , uo_expected = ty_expected })
@@ -811,6 +816,12 @@ tc_sub_type_ds eq_orig inst_orig ctxt ty_actual ty_expected
 
      -- use versions without synonyms expanded
     unify = mkWpCastN <$> uType TypeLevel eq_orig ty_actual ty_expected
+
+    unif_vars ty = filterVarSet is_unif_var (exactTyCoVarsOfType ty)
+      where 
+        is_unif_var tv = case tcTyVarDetails tv of
+                           MetaTv {} -> True
+                           _         -> False
 
 {- Note [Settting the argument context]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
