@@ -819,9 +819,7 @@ tc_sub_type_ds eq_orig inst_orig ctxt ty_actual ty_expected
 
     unif_vars ty = filterVarSet is_unif_var (exactTyCoVarsOfType ty)
       where 
-        is_unif_var tv = case tcTyVarDetails tv of
-                           MetaTv {} -> True
-                           _         -> False
+        is_unif_var tv = isTcTyVar tv && not (isSkolemTyVar tv)
 
 {- Note [Settting the argument context]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

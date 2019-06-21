@@ -1149,9 +1149,12 @@ isFskTyVar tv
         _                                -> False
 
 isSigmaTyVar tv
+  | isTcTyVar tv
   = case tcTyVarDetails tv of
         MetaTv { mtv_info = SigmaTv } -> True
         _                             -> False
+  | otherwise
+  = False
 
 -- | True of both given and wanted flatten-skolems (fmv and fsk)
 isFlattenTyVar tv
