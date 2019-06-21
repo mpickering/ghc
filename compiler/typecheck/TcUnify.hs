@@ -817,9 +817,8 @@ tc_sub_type_ds eq_orig inst_orig ctxt ty_actual ty_expected
      -- use versions without synonyms expanded
     unify = mkWpCastN <$> uType TypeLevel eq_orig ty_actual ty_expected
 
-    unif_vars ty = filterVarSet is_unif_var (exactTyCoVarsOfType ty)
-      where 
-        is_unif_var tv = isTcTyVar tv && not (isSkolemTyVar tv)
+    unif_vars ty = filterVarSet (\tv -> isTcTyVar tv && not (isSkolemTyVar tv))
+                                (exactTyCoVarsOfType ty)
 
 {- Note [Settting the argument context]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

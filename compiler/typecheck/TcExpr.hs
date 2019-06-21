@@ -58,6 +58,7 @@ import TyCon
 import TyCoRep
 import Type
 import TcEvidence
+import Var( isTcTyVar )
 import VarSet
 import MkId( seqId )
 import TysWiredIn
@@ -1213,7 +1214,7 @@ tcFunApp m_herald rn_fun tc_fun fun_sigma rn_args res_ty
 
        ; traceTc "tcFunApp" (ppr rn_fun <+> dcolon <+> ppr fun_sigma $$ ppr rn_args $$ ppr res_ty)
        ; (wrap_fun, tc_args, actual_res_ty)
-           <- tcArgs rn_fun fun_sigma orig rn_args
+           <- tcArgs rn_fun fun_sigma orig rn_args res_ty
                      (m_herald `orElse` mk_app_msg rn_fun rn_args)
 
             -- this is just like tcWrapResult, but the types don't line
@@ -1285,10 +1286,11 @@ tcArgs :: LHsExpr GhcRn   -- ^ The function itself (for err msgs only)
        -> TcSigmaType    -- ^ the (uninstantiated) type of the function
        -> CtOrigin       -- ^ the origin for the function's type
        -> [LHsExprArgIn] -- ^ the args
+       -> ExpRhoType     -- ^ final result type, if available
        -> SDoc           -- ^ the herald for matchActualFunTys
        -> TcM (HsWrapper, [LHsExprArgOut], TcSigmaType)
           -- ^ (a wrapper for the function, the tc'd args, result type)
-tcArgs fun orig_fun_ty fun_orig orig_args herald
+tcArgs fun orig_fun_ty fun_orig orig_args res_ty herald
   = go [] 1 orig_fun_ty orig_args []
   where
     -- Don't count visible type arguments when determining how many arguments
@@ -1297,10 +1299,20 @@ tcArgs fun orig_fun_ty fun_orig orig_args herald
     -- See Note [Herald for matchExpectedFunTys] in TcUnify.
     orig_expr_args_arity = count isHsValArg orig_args
 
-    go _ _ fun_ty [] deferred_args 
+    go _ _ fun_ty [] deferred_args
+      | Check res_ty' <- res_ty
+      , isEmptyVarSet (unif_vars res_ty')
+      = do { wrap <- tcSubTypeO fun_orig GenSigCtxt fun_ty res_ty
+           ; args' <- handle_args deferred_args
+           ; return (wrap, args', res_ty')
+           }
+      | otherwise
       = do { args' <- handle_args deferred_args
            ; return (idHsWrapper, args', fun_ty)
            }
+      where
+        unif_vars ty = filterVarSet (\tv -> isTcTyVar tv && not (isSkolemTyVar tv))
+                                    (exactTyCoVarsOfType ty)
 
     go acc_args n fun_ty (HsArgPar sp : args) deferred_args
       = do { let deferred_args' = deferred_args ++ [(HsArgPar sp, Nothing)]
