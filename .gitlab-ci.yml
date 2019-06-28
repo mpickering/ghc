@@ -182,7 +182,6 @@ lint-release-changelogs:
     - ./boot
     - ./configure $CONFIGURE_ARGS
     - hadrian/build.cabal.sh -j`mk/detect-cpu-count.sh` --docs=no-sphinx binary-dist
-    - hadrian/build.cabal.sh -j`mk/detect-cpu-count.sh` --docs=no-sphinx test --summary-junit=./junit.xml
     - mv _build/bindist/ghc*.tar.xz ghc.tar.xz
   cache:
     key: hadrian
@@ -259,17 +258,6 @@ hadrian-ghc-in-ghci:
       make bindisttest
     - |
       make binary-dist TAR_COMP_OPTS="-1"
-    - |
-      # Prepare to push git notes.
-      METRICS_FILE=$(mktemp)
-      git config user.email "ben+ghc-ci@smart-cactus.org"
-      git config user.name "GHC GitLab CI"
-    - |
-      THREADS=`mk/detect-cpu-count.sh`
-      make $TEST_TYPE THREADS=$THREADS JUNIT_FILE=../../junit.xml METRICS_FILE=$METRICS_FILE
-    - |
-      # Push git notes.
-      METRICS_FILE=$METRICS_FILE .gitlab/push-test-metrics.sh
   dependencies: []
   artifacts:
     reports:
@@ -346,7 +334,6 @@ validate-x86_64-darwin:
     - ./boot
     - ./configure $CONFIGURE_ARGS
     - hadrian/build.cabal.sh -j`mk/detect-cpu-count.sh` --docs=no-sphinx binary-dist
-    - hadrian/build.cabal.sh -j`mk/detect-cpu-count.sh` --docs=no-sphinx test --summary-junit=./junit.xml
     - mv _build/bindist/ghc*.tar.xz ghc.tar.xz
   after_script:
     - cp -Rf $HOME/.cabal cabal-cache
@@ -734,7 +721,6 @@ nightly-i386-windows-hadrian:
     - bash -c "PATH=`pwd`/toolchain/bin:$PATH make -j`mk/detect-cpu-count.sh`"
     - bash -c "PATH=`pwd`/toolchain/bin:$PATH make bindisttest"
     - bash -c "PATH=`pwd`/toolchain/bin:$PATH make binary-dist TAR_COMP_OPTS=-1"
-    - bash -c 'make V=0 test THREADS=`mk/detect-cpu-count.sh` JUNIT_FILE=../../junit.xml'
   tags:
     - x86_64-windows
   artifacts:
