@@ -26,7 +26,7 @@ module TcRnTypes(
         -- The environment types
         Env(..),
         TcGblEnv(..), TcLclEnv(..),
-        setLclEnvTcLevel, getLclEnvTcLevel,
+        setLclEnvTcLevel, getLclEnvTcLevel, getLclEnvThLevel,
         setLclEnvLoc, getLclEnvLoc,
         IfGblEnv(..), IfLclEnv(..),
         tcVisibleOrphanMods,
@@ -786,6 +786,9 @@ setLclEnvTcLevel env lvl = env { tcl_tclvl = lvl }
 
 getLclEnvTcLevel :: TcLclEnv -> TcLevel
 getLclEnvTcLevel = tcl_tclvl
+
+getLclEnvThLevel :: TcLclEnv -> ThLevel
+getLclEnvThLevel = thLevel . tcl_th_ctxt
 
 setLclEnvLoc :: TcLclEnv -> RealSrcSpan -> TcLclEnv
 setLclEnvLoc env loc = env { tcl_loc = loc }

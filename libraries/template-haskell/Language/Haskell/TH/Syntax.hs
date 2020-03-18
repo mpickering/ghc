@@ -43,7 +43,7 @@ import Data.Ratio
 import GHC.CString      ( unpackCString# )
 import GHC.Generics     ( Generic )
 import GHC.Types        ( Int(..), Word(..), Char(..), Double(..), Float(..),
-                          TYPE, RuntimeRep(..) )
+                          TYPE, RuntimeRep(..), Constraint )
 import GHC.Prim         ( Int#, Word#, Char#, Double#, Float#, Addr# )
 import GHC.Lexeme       ( startsVarSym, startsVarId )
 import GHC.ForeignSrcLang.Type
@@ -338,6 +338,11 @@ be inferred (#8459).  Consider
 
 The splice will evaluate to (MkAge 3) and you can't add that to
 4::Int. So you can't coerce a (TExp Age) to a (TExp Int). -}
+
+-- CodeC
+
+
+class CodeC (c :: Constraint) where
 
 ----------------------------------------------------
 -- Packaged versions for the programmer, hiding the Quasi-ness

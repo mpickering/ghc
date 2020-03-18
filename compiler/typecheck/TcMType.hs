@@ -184,12 +184,15 @@ newWanted :: CtOrigin -> Maybe TypeOrKind -> PredType -> TcM CtEvidence
 -- Deals with both equality and non-equality predicates
 newWanted orig t_or_k pty
   = do loc <- getCtLocM orig t_or_k
+       st <- getStage
+       pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
        d <- if isEqPrimPred pty then HoleDest  <$> newCoercionHole pty
                                 else EvVarDest <$> newEvVar pty
        return $ CtWanted { ctev_dest = d
                          , ctev_pred = pty
                          , ctev_nosh = WDeriv
-                         , ctev_loc = loc }
+                         , ctev_loc = loc
+                         , ctev_stage = st }
 
 newWanteds :: CtOrigin -> ThetaType -> TcM [CtEvidence]
 newWanteds orig = mapM (newWanted orig Nothing)
@@ -198,10 +201,12 @@ newWanteds orig = mapM (newWanted orig Nothing)
 newHoleCt :: HoleSort -> Id -> Type -> TcM Ct
 newHoleCt hole ev ty = do
   loc <- getCtLocM HoleOrigin Nothing
+  st <- getStage
   pure $ CHoleCan { cc_ev = CtWanted { ctev_pred = ty
                                      , ctev_dest = EvVarDest ev
                                      , ctev_nosh = WDeriv
-                                     , ctev_loc  = loc }
+                                     , ctev_loc  = loc
+                                     , ctev_stage = st }
                   , cc_occ = getOccName ev
                   , cc_hole = hole }
 
@@ -252,21 +257,25 @@ emitDerivedEqs origin pairs
   = return ()
   | otherwise
   = do { loc <- getCtLocM origin Nothing
-       ; emitSimples (listToBag (map (mk_one loc) pairs)) }
+       ; st <- getStage
+       ; emitSimples (listToBag (map (mk_one st loc) pairs)) }
   where
-    mk_one loc (ty1, ty2)
+    mk_one st loc (ty1, ty2)
        = mkNonCanonical $
          CtDerived { ctev_pred = mkPrimEqPred ty1 ty2
-                   , ctev_loc = loc }
+                   , ctev_loc = loc
+                   , ctev_stage = st }
 
 -- | Emits a new equality constraint
 emitWantedEq :: CtOrigin -> TypeOrKind -> Role -> TcType -> TcType -> TcM Coercion
 emitWantedEq origin t_or_k role ty1 ty2
   = do { hole <- newCoercionHole pty
        ; loc <- getCtLocM origin (Just t_or_k)
+       ; st <- getStage
        ; emitSimple $ mkNonCanonical $
          CtWanted { ctev_pred = pty, ctev_dest = HoleDest hole
-                  , ctev_nosh = WDeriv, ctev_loc = loc }
+                  , ctev_nosh = WDeriv, ctev_loc = loc
+                  , ctev_stage = st }
        ; return (HoleCo hole) }
   where
     pty = mkPrimEqPredRole role ty1 ty2
@@ -277,10 +286,12 @@ emitWantedEvVar :: CtOrigin -> TcPredType -> TcM EvVar
 emitWantedEvVar origin ty
   = do { new_cv <- newEvVar ty
        ; loc <- getCtLocM origin Nothing
+       ; st <- getStage
        ; let ctev = CtWanted { ctev_dest = EvVarDest new_cv
                              , ctev_pred = ty
                              , ctev_nosh = WDeriv
-                             , ctev_loc  = loc }
+                             , ctev_loc  = loc
+                             , ctev_stage = st }
        ; emitSimple $ mkNonCanonical ctev
        ; return new_cv }
 

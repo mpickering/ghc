@@ -1648,22 +1648,26 @@ traceTcConstraints msg
 emitAnonWildCardHoleConstraint :: TcTyVar -> TcM ()
 emitAnonWildCardHoleConstraint tv
   = do { ct_loc <- getCtLocM HoleOrigin Nothing
+       ; st <- getStage
        ; emitInsolubles $ unitBag $
          CHoleCan { cc_ev = CtDerived { ctev_pred = mkTyVarTy tv
-                                      , ctev_loc  = ct_loc }
+                                      , ctev_loc  = ct_loc
+                                      , ctev_stage = st}
                   , cc_occ = mkTyVarOcc "_"
                   , cc_hole = TypeHole } }
 
 emitNamedWildCardHoleConstraints :: [(Name, TcTyVar)] -> TcM ()
 emitNamedWildCardHoleConstraints wcs
   = do { ct_loc <- getCtLocM HoleOrigin Nothing
+       ; st <- getStage
        ; emitInsolubles $ listToBag $
-         map (do_one ct_loc) wcs }
+         map (do_one st ct_loc) wcs }
   where
-    do_one :: CtLoc -> (Name, TcTyVar) -> Ct
-    do_one ct_loc (name, tv)
+    do_one :: ThStage -> CtLoc -> (Name, TcTyVar) -> Ct
+    do_one st ct_loc (name, tv)
        = CHoleCan { cc_ev = CtDerived { ctev_pred = mkTyVarTy tv
-                                      , ctev_loc  = ct_loc' }
+                                      , ctev_loc  = ct_loc'
+                                      , ctev_stage = st }
                   , cc_occ = occName name
                   , cc_hole = TypeHole }
        where

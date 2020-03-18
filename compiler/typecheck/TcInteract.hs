@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TupleSections #-}
 
 {-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns   #-}
@@ -729,8 +730,11 @@ findMatchingIrreds irreds ev
   = partitionBagWith match_non_eq irreds
   where
     pred = ctEvPred ev
+    st   = tcl_th_ctxt (ctl_env (ctEvLoc ev))
     match_non_eq ct
-      | ctPred ct `tcEqTypeNoKindCheck` pred = Left (ct, NotSwapped)
+      | ctPred ct `tcEqTypeNoKindCheck` pred
+        && thLevel (tcl_th_ctxt (ctl_env (ctLoc ct)))
+            == thLevel st = Left (ct, NotSwapped)
       | otherwise                            = Right ct
 
     match_eq eq_rel1 lty1 rty1 ct
@@ -1042,7 +1046,7 @@ interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs
            KeepInert -> do { setEvBindIfWanted ev_w (ctEvTerm ev_i)
                            ; return $ Stop ev_w (text "Dict equal" <+> parens (ppr what_next)) }
            KeepWork  -> do { setEvBindIfWanted ev_i (ctEvTerm ev_w)
-                           ; updInertDicts $ \ ds -> delDict ds cls tys
+                           ; updInertDicts $ \ ds -> delDict ds  cls tys (ctEvLevel ev_w)
                            ; continueWith workItem } } }
 
   | cls `hasKey` ipClassKey
@@ -1106,6 +1110,7 @@ shortCutSolver dflags ev_w ev_i
     try_solve_from_instance (ev_binds, solved_dicts) ev
       | let pred = ctEvPred ev
             loc  = ctEvLoc  ev
+            lvl  = ctEvLevel ev
       , ClassPred cls tys <- classifyPredType pred
       = do { inst_res <- lift $ matchGlobalInst dflags True cls tys
            ; case inst_res of
@@ -1114,7 +1119,7 @@ shortCutSolver dflags ev_w ev_i
                        , cir_what      = what }
                  | safeOverlap what
                  , all isTyFamFree preds  -- Note [Shortcut solving: type families]
-                 -> do { let solved_dicts' = addDict solved_dicts cls tys ev
+                 -> do { let solved_dicts' = addDict solved_dicts cls tys (lvl, ev)
                              -- solved_dicts': it is important that we add our goal
                              -- to the cache before we solve! Otherwise we may end
                              -- up in a loop while solving recursive dictionaries.
@@ -1153,7 +1158,7 @@ addFunDepWork :: InertCans -> CtEvidence -> Class -> TcS ()
 -- Add derived constraints from type-class functional dependencies.
 addFunDepWork inerts work_ev cls
   | isImprovable work_ev
-  = mapBagM_ add_fds (findDictsByClass (inert_dicts inerts) cls)
+  = mapBagM_ add_fds (findDictsByClass (inert_dicts inerts) (ctEvLevel work_ev) cls)
                -- No need to check flavour; fundeps work between
                -- any pair of constraints, regardless of flavour
                -- Importantly we don't throw workitem back in the
@@ -1207,13 +1212,13 @@ interactGivenIP :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 -- See Note [Shadowing of Implicit Parameters]
 interactGivenIP inerts workItem@(CDictCan { cc_ev = ev, cc_class = cls
                                           , cc_tyargs = tys@(ip_str:_) })
-  = do { updInertCans $ \cans -> cans { inert_dicts = addDict filtered_dicts cls tys workItem }
+  = do { updInertCans $ \cans -> cans { inert_dicts = addDict filtered_dicts cls tys (ctLevel workItem, workItem) }
        ; stopWith ev "Given IP" }
   where
     dicts           = inert_dicts inerts
-    ip_dicts        = findDictsByClass dicts cls
+    ip_dicts        = findDictsByClass dicts (ctLevel workItem) cls
     other_ip_dicts  = filterBag (not . is_this_ip) ip_dicts
-    filtered_dicts  = addDictsByClass dicts cls other_ip_dicts
+    filtered_dicts  = addDictsByClass dicts cls (fmap (ctLevel workItem,) other_ip_dicts)
 
     -- Pick out any Given constraints for the same implicit parameter
     is_this_ip (CDictCan { cc_ev = ev, cc_tyargs = ip_str':_ })
@@ -1604,7 +1609,8 @@ interactTyVarEq inerts workItem@(CTyEqCan { cc_tyvar = tv
                                      (ctEvCoercion ev_i))
 
        ; let deriv_ev = CtDerived { ctev_pred = ctEvPred ev
-                                  , ctev_loc  = ctEvLoc  ev }
+                                  , ctev_loc  = ctEvLoc  ev
+                                  , ctev_stage = tcl_th_ctxt (ctl_env (ctEvLoc ev)) }
        ; when keep_deriv $
          emitWork [workItem { cc_ev = deriv_ev }]
          -- As a Derived it might not be fully rewritten,
