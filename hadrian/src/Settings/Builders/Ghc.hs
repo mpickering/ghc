@@ -13,7 +13,6 @@ import Settings.Builders.Common
 import Settings.Warnings
 import qualified Context as Context
 import Rules.Libffi (libffiName)
-import System.Directory
 
 ghcBuilderArgs :: Args
 ghcBuilderArgs = mconcat [ compileAndLinkHs, compileC, findHsDependencies
@@ -216,19 +215,17 @@ includeGhcArgs :: Args
 includeGhcArgs = do
     pkg     <- getPackage
     path    <- getBuildPath
-    cpath <- exprIO $ canonicalizePath path
     context <- getContext
     srcDirs <- getContextData srcDirs
-    abSrcDirs <- exprIO $ mapM canonicalizePath [pkgPath pkg -/- dir | dir <- srcDirs ]
     autogen <- expr $ autogenPath context
     stage <- getStage
     libPath <- expr $ stageLibPath stage
     let cabalMacros = autogen -/- "cabal_macros.h"
     expr $ need [cabalMacros]
     mconcat [ arg "-i"
-            , arg $ "-i" ++ cpath
+            , arg $ "-i" ++ path
             , arg $ "-i" ++ autogen
-            , pure [ "-i" ++ d | d <- abSrcDirs ]
+            , pure [ "-i" ++ pkgPath pkg -/- dir | dir <- srcDirs ]
             , cIncludeArgs
             , arg $      "-I" ++ libPath
             , arg $ "-optc-I" ++ libPath

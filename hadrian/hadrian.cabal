@@ -77,7 +77,6 @@ executable hadrian
                        , Rules.Program
                        , Rules.Register
                        , Rules.Rts
-                       , Rules.ToolArgs
                        , Rules.Selftest
                        , Rules.SimpleTargets
                        , Rules.SourceDist
