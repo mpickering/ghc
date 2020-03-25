@@ -540,6 +540,9 @@ data EvTerm
                               -- constructor, and can't just use EvExpr
       , et_body  :: EvVar }
 
+  | EvSplice EvTerm
+  | EvQuote EvTerm
+
   deriving Data.Data
 
 type EvExpr = CoreExpr

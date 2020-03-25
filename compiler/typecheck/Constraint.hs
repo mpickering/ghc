@@ -22,11 +22,11 @@ module Constraint (
         isCNonCanonical, isWantedCt, isDerivedCt,
         isGivenCt, isHoleCt, isOutOfScopeCt, isExprHoleCt, isTypeHoleCt,
         isUserTypeErrorCt, getUserTypeErrorMsg,
-        ctEvidence, ctLoc, setCtLoc, ctPred, ctStage, ctLevel, ctFlavour, ctEqRel, ctOrigin,
+        ctEvidence, ctLoc, setCtLoc, ctPred, ctLevel, ctFlavour, ctEqRel, ctOrigin,
         ctEvId, mkTcEqPredLikeEv,
         mkNonCanonical, mkNonCanonicalCt, mkGivens,
         mkIrredCt, mkInsolubleCt,
-        ctEvPred, ctEvLevel, ctEvStage, ctEvLoc, ctEvOrigin, ctEvEqRel,
+        ctEvPred, ctEvLevel, ctEvLoc, ctEvOrigin, ctEvEqRel,
         ctEvExpr, ctEvTerm, ctEvCoercion, ctEvEvId,
         tyCoVarsOfCt, tyCoVarsOfCts,
         tyCoVarsOfCtList, tyCoVarsOfCtsList,
@@ -78,7 +78,7 @@ module Constraint (
 import GhcPrelude
 
 import {-# SOURCE #-} TcRnTypes ( TcLclEnv, setLclEnvTcLevel, getLclEnvTcLevel
-                                , setLclEnvLoc, getLclEnvLoc, ThStage, thLevel, ThLevel
+                                , setLclEnvLoc, getLclEnvLoc, ThLevel
                                 , getLclEnvThLevel )
 
 import Predicate
@@ -354,7 +354,7 @@ mkIrredCt ev = CIrredCan { cc_ev = ev, cc_insol = False }
 mkInsolubleCt :: CtEvidence -> Ct
 mkInsolubleCt ev = CIrredCan { cc_ev = ev, cc_insol = True }
 
-mkGivens :: ThStage -> CtLoc -> [EvId] -> [Ct]
+mkGivens :: ThLevel -> CtLoc -> [EvId] -> [Ct]
 mkGivens st loc ev_ids
   = map mk ev_ids
   where
@@ -379,9 +379,6 @@ ctOrigin = ctLocOrigin . ctLoc
 ctPred :: Ct -> PredType
 -- See Note [Ct/evidence invariant]
 ctPred ct = ctEvPred (ctEvidence ct)
-
-ctStage :: Ct -> ThStage
-ctStage ct = ctEvStage (ctEvidence ct)
 
 ctLevel :: Ct -> ThLevel
 ctLevel ct = ctEvLevel (ctEvidence ct)
@@ -1371,7 +1368,7 @@ data CtEvidence
       { ctev_pred :: TcPredType      -- See Note [Ct/evidence invariant]
       , ctev_evar :: EvVar           -- See Note [Evidence field of CtEvidence]
       , ctev_loc  :: CtLoc
-      , ctev_stage :: ThStage }
+      , ctev_stage :: ThLevel }
 
 
   | CtWanted   -- Wanted goal
@@ -1379,7 +1376,7 @@ data CtEvidence
       , ctev_dest :: TcEvDest
       , ctev_nosh :: ShadowInfo     -- See Note [Constraint flavours]
       , ctev_loc  :: CtLoc
-      , ctev_stage :: ThStage }
+      , ctev_stage :: ThLevel }
 
   | CtDerived  -- A goal that we don't really have to solve and can't
                -- immediately rewrite anything other than a derived
@@ -1387,17 +1384,14 @@ data CtEvidence
                -- it may help in solving other goals.
       { ctev_pred :: TcPredType
       , ctev_loc  :: CtLoc
-      , ctev_stage :: ThStage }
+      , ctev_stage :: ThLevel }
 
 ctEvPred :: CtEvidence -> TcPredType
 -- The predicate of a flavor
 ctEvPred = ctev_pred
 
-ctEvStage :: CtEvidence -> ThStage
-ctEvStage = ctev_stage
-
 ctEvLevel :: CtEvidence -> ThLevel
-ctEvLevel = getLclEnvThLevel . ctl_env . ctEvLoc
+ctEvLevel = ctev_stage
 
 ctEvLoc :: CtEvidence -> CtLoc
 ctEvLoc = ctev_loc
@@ -1448,7 +1442,7 @@ instance Outputable CtEvidence where
            <+> braces (ppr (ctl_depth (ctEvLoc ev))) <> dcolon
                   -- Show the sub-goal depth too
            <+> ppr (ctEvPred ev)
-           <+> ppr (thLevel $ ctEvStage ev)
+           <+> ppr (ctEvLevel ev)
     where
       pp_ev = case ev of
              CtGiven { ctev_evar = v } -> ppr v

@@ -44,6 +44,7 @@ module TcSMonad (
     setEvBind, setWantedEq,
     setWantedEvTerm, setEvBindIfWanted,
     newEvVar, newGivenEvVar, newGivenEvVars,
+    newGivenEvVarWithStage,
     emitNewDeriveds, emitNewDerivedEq,
     checkReductionDepth,
     getSolvedDicts, setSolvedDicts,
@@ -1417,12 +1418,12 @@ maybeEmitShadow :: InertCans -> Ct -> TcS Ct
 maybeEmitShadow ics ct
   | let ev = ctEvidence ct
   , CtWanted { ctev_pred = pred, ctev_loc = loc
-             , ctev_nosh = WDeriv } <- ev
+             , ctev_nosh = WDeriv, ctev_stage = st } <- ev
   , shouldSplitWD (inert_eqs ics) ct
   = do { traceTcS "Emit derived shadow" (ppr ct)
        ; let derived_ev = CtDerived { ctev_pred = pred
                                     , ctev_loc  = loc
-                                    , ctev_stage = tcl_th_ctxt (ctl_env loc) }
+                                    , ctev_stage = st }
              shadow_ct = ct { cc_ev = derived_ev }
                -- Te shadow constraint keeps the canonical shape.
                -- This just saves work, but is sometimes important;
@@ -3461,15 +3462,18 @@ newNoTcEvBinds = wrapTcS TcM.newNoTcEvBinds
 newEvVar :: TcPredType -> TcS EvVar
 newEvVar pred = wrapTcS (TcM.newEvVar pred)
 
-newGivenEvVar :: CtLoc -> (TcPredType, EvTerm) -> TcS CtEvidence
+newGivenEvVarWithStage :: ThLevel -> CtLoc -> (TcPredType, EvTerm) -> TcS CtEvidence
 -- Make a new variable of the given PredType,
 -- immediately bind it to the given term
 -- and return its CtEvidence
 -- See Note [Bind new Givens immediately] in Constraint
-newGivenEvVar loc (pred, rhs)
+newGivenEvVarWithStage stage loc (pred, rhs)
   = do { new_ev <- newBoundEvVarId pred rhs
        ; return (CtGiven { ctev_pred = pred, ctev_evar = new_ev, ctev_loc = loc
-                         , ctev_stage = tcl_th_ctxt (ctl_env loc) })}
+                         , ctev_stage = stage })}
+
+newGivenEvVar :: CtLoc -> (TcPredType, EvTerm) -> TcS CtEvidence
+newGivenEvVar ct_loc = newGivenEvVarWithStage (thLevel (tcl_th_ctxt (ctl_env ct_loc))) ct_loc
 
 -- | Make a new 'Id' of the given type, bound (in the monad's EvBinds) to the
 -- given term
@@ -3503,7 +3507,7 @@ newWantedEq_SI si loc role ty1 ty2
        ; return ( CtWanted { ctev_pred = pty, ctev_dest = HoleDest hole
                            , ctev_nosh = si
                            , ctev_loc = loc
-                          , ctev_stage = tcl_th_ctxt (ctl_env loc) }
+                          , ctev_stage = thLevel (tcl_th_ctxt (ctl_env loc)) }
                 , mkHoleCo hole ) }
   where
     pty = mkPrimEqPredRole role ty1 ty2
@@ -3521,7 +3525,7 @@ newWantedEvVarNC_SI si loc pty
        ; return (CtWanted { ctev_pred = pty, ctev_dest = EvVarDest new_ev
                           , ctev_nosh = si
                           , ctev_loc = loc
-                          , ctev_stage = tcl_th_ctxt (ctl_env loc) })}
+                          , ctev_stage = thLevel (tcl_th_ctxt (ctl_env loc)) })}
 
 newWantedEvVar :: CtLoc -> TcPredType -> TcS MaybeNew
 newWantedEvVar = newWantedEvVar_SI WDeriv
@@ -3580,7 +3584,7 @@ emitNewDerivedEq loc role ty1 ty2
 newDerivedNC :: CtLoc -> TcPredType -> TcS CtEvidence
 newDerivedNC loc pred
   = do { -- checkReductionDepth loc pred
-       ; return (CtDerived { ctev_pred = pred, ctev_loc = loc, ctev_stage = tcl_th_ctxt (ctl_env loc) })}
+       ; return (CtDerived { ctev_pred = pred, ctev_loc = loc, ctev_stage = thLevel (tcl_th_ctxt (ctl_env loc)) })}
 
 -- --------- Check done in TcInteract.selectNewWorkItem???? ---------
 -- | Checks if the depth of the given location is too much. Fails if

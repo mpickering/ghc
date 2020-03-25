@@ -49,6 +49,8 @@ import Control.Monad
 import Data.Maybe ( isJust )
 import Data.List  ( zip4 )
 import BasicTypes
+import Unique
+import THNames
 
 import Data.Bifunctor ( bimap )
 import Data.Foldable ( traverse_ )
@@ -153,6 +155,7 @@ canClassNC :: CtEvidence -> Class -> [Type] -> TcS (StopOrContinue Ct)
 -- from a NonCanonical constraint, not from a CDictCan
 -- Precondition: EvVar is class evidence
 canClassNC ev cls tys
+  | cls `hasKey` codeCTyConKey  = canCodeCNC ev (head tys) >> canClass ev cls tys False
   | isGiven ev  -- See Note [Eagerly expand given superclasses]
   = do { sc_cts <- mkStrictSuperClasses ev [] [] cls tys
        ; emitWork sc_cts
@@ -189,6 +192,7 @@ canClassNC ev cls tys
     has_scs cls = not (null (classSCTheta cls))
     loc  = ctEvLoc ev
     pred = ctEvPred ev
+
 
 solveCallStack :: CtEvidence -> EvCallStack -> TcS ()
 -- Also called from TcSimplify when defaulting call stacks
@@ -696,6 +700,23 @@ constraints.
 
 See also Note [Evidence for quantified constraints] in Predicate.
 
+-}
+
+-- Rewrite Given constraints to the next level
+-- Rewrite wanted constraints to the previous level
+canCodeCNC :: CtEvidence -> Type -> TcS ()
+canCodeCNC ct_ev body
+  | isGiven ct_ev = do
+      let loc = ctev_loc ct_ev
+      work <- newGivenEvVarWithStage (ctEvLevel ct_ev + 1) loc (body, EvSplice (ctEvTerm ct_ev))
+      emitWorkNC [work]
+  | isWanted ct_ev = do
+      let loc = ctev_loc ct_ev
+      work <- newGivenEvVarWithStage (ctEvLevel ct_ev - 1) loc (body, EvQuote (ctEvTerm ct_ev))
+      emitWorkNC [work]
+
+
+{-
 
 ************************************************************************
 *                                                                      *
