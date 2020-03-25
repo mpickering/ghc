@@ -185,14 +185,14 @@ newWanted :: CtOrigin -> Maybe TypeOrKind -> PredType -> TcM CtEvidence
 newWanted orig t_or_k pty
   = do loc <- getCtLocM orig t_or_k
        st <- getStage
-       pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
+--       pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
        d <- if isEqPrimPred pty then HoleDest  <$> newCoercionHole pty
                                 else EvVarDest <$> newEvVar pty
        return $ CtWanted { ctev_dest = d
                          , ctev_pred = pty
                          , ctev_nosh = WDeriv
                          , ctev_loc = loc
-                         , ctev_stage = st }
+                         , ctev_stage = thLevel st }
 
 newWanteds :: CtOrigin -> ThetaType -> TcM [CtEvidence]
 newWanteds orig = mapM (newWanted orig Nothing)
@@ -206,7 +206,7 @@ newHoleCt hole ev ty = do
                                      , ctev_dest = EvVarDest ev
                                      , ctev_nosh = WDeriv
                                      , ctev_loc  = loc
-                                     , ctev_stage = st }
+                                     , ctev_stage = thLevel st }
                   , cc_occ = getOccName ev
                   , cc_hole = hole }
 
@@ -257,7 +257,7 @@ emitDerivedEqs origin pairs
   = return ()
   | otherwise
   = do { loc <- getCtLocM origin Nothing
-       ; st <- getStage
+       ; st <- thLevel <$> getStage
        ; emitSimples (listToBag (map (mk_one st loc) pairs)) }
   where
     mk_one st loc (ty1, ty2)
@@ -275,7 +275,7 @@ emitWantedEq origin t_or_k role ty1 ty2
        ; emitSimple $ mkNonCanonical $
          CtWanted { ctev_pred = pty, ctev_dest = HoleDest hole
                   , ctev_nosh = WDeriv, ctev_loc = loc
-                  , ctev_stage = st }
+                  , ctev_stage = thLevel st }
        ; return (HoleCo hole) }
   where
     pty = mkPrimEqPredRole role ty1 ty2
@@ -291,7 +291,7 @@ emitWantedEvVar origin ty
                              , ctev_pred = ty
                              , ctev_nosh = WDeriv
                              , ctev_loc  = loc
-                             , ctev_stage = st }
+                             , ctev_stage = thLevel st }
        ; emitSimple $ mkNonCanonical ctev
        ; return new_cv }
 

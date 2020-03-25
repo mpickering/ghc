@@ -1610,7 +1610,7 @@ interactTyVarEq inerts workItem@(CTyEqCan { cc_tyvar = tv
 
        ; let deriv_ev = CtDerived { ctev_pred = ctEvPred ev
                                   , ctev_loc  = ctEvLoc  ev
-                                  , ctev_stage = tcl_th_ctxt (ctl_env (ctEvLoc ev)) }
+                                  , ctev_stage = thLevel (tcl_th_ctxt (ctl_env (ctEvLoc ev))) }
        ; when keep_deriv $
          emitWork [workItem { cc_ev = deriv_ev }]
          -- As a Derived it might not be fully rewritten,

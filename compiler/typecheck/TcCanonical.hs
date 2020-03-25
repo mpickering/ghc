@@ -714,6 +714,7 @@ canCodeCNC ct_ev body
       let loc = ctev_loc ct_ev
       work <- newGivenEvVarWithStage (ctEvLevel ct_ev - 1) loc (body, EvQuote (ctEvTerm ct_ev))
       emitWorkNC [work]
+  | otherwise = return ()
 
 
 {-

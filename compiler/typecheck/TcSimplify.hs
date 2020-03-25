@@ -611,7 +611,7 @@ tcCheckSatisfiability given_ids
        ; let given_loc = mkGivenLoc topTcLevel UnkSkol lcl_env
        ; (res, _ev_binds) <- runTcS $
              do { traceTcS "checkSatisfiability {" (ppr given_ids)
-                ; let given_cts = mkGivens st given_loc (bagToList given_ids)
+                ; let given_cts = mkGivens (thLevel st) given_loc (bagToList given_ids)
                      -- See Note [Superclasses and satisfiability]
                 ; solveSimpleGivens given_cts
                 ; insols <- getInertInsols
@@ -643,7 +643,7 @@ tcNormalise given_ids ty
        ; st <- getStage
        ; (res, _ev_binds) <- runTcS $
              do { traceTcS "tcNormalise {" (ppr given_ids)
-                ; let given_cts = mkGivens st given_loc (bagToList given_ids)
+                ; let given_cts = mkGivens (thLevel st) given_loc (bagToList given_ids)
                 ; solveSimpleGivens given_cts
                 ; wcs <- solveSimpleWanteds (unitBag wanted_ct)
                   -- It's an invariant that this wc_simple will always be
@@ -799,7 +799,7 @@ simplifyInfer rhs_tclvl infer_mode sigs name_taus wanteds
                runTcSWithEvBinds ev_binds_var $
                do { let loc         = mkGivenLoc rhs_tclvl UnkSkol $
                                       env_lcl tc_env
-                        psig_givens = mkGivens st loc psig_theta_vars
+                        psig_givens = mkGivens (thLevel st) loc psig_theta_vars
                   ; _ <- solveSimpleGivens psig_givens
                          -- See Note [Add signature contexts as givens]
                   ; solveWanteds wanteds }
@@ -838,7 +838,7 @@ simplifyInfer rhs_tclvl infer_mode sigs name_taus wanteds
                                       , ctev_dest = EvVarDest psig_theta_var
                                       , ctev_nosh = WDeriv
                                       , ctev_loc  = ct_loc
-                                      , ctev_stage = st }
+                                      , ctev_stage = thLevel st }
                            | psig_theta_var <- psig_theta_vars ]
 
        -- Now construct the residual constraint
@@ -1671,7 +1671,7 @@ solveImplication imp@(Implic { ic_tclvl  = tclvl
        ; (no_given_eqs, given_insols, residual_wanted)
             <- nestImplicTcS ev_binds_var tclvl $
                do { let loc    = mkGivenLoc tclvl info (ic_env imp)
-                        givens = mkGivens (tcl_th_ctxt lcl) loc given_ids
+                        givens = mkGivens (thLevel $ tcl_th_ctxt lcl) loc given_ids
                   ; solveSimpleGivens givens
 
                   ; residual_wanted <- solveWanteds wanteds
