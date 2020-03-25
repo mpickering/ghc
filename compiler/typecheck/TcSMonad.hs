@@ -37,7 +37,7 @@ module TcSMonad (
     newTcEvBinds, newNoTcEvBinds,
     newWantedEq, newWantedEq_SI, emitNewWantedEq,
     newWanted, newWanted_SI, newWantedEvVar,
-    newWantedNC, newWantedEvVarNC,
+    newWantedNC, newWantedEvVarNC, newWantedEvVarNC_Stage,
     newDerivedNC,
     newBoundEvVarId,
     unifyTyVar, unflattenFmv, reportUnifications,
@@ -2147,8 +2147,8 @@ getNoGivenEqs tclvl skol_tvs
 -- potentially, match the given pred. This is used when checking to see if a
 -- Given might overlap with an instance. See Note [Instance and Given overlap]
 -- in TcInteract.
-matchableGivens :: CtLoc -> PredType -> InertSet -> Cts
-matchableGivens loc_w pred_w (IS { inert_cans = inert_cans })
+matchableGivens :: CtLoc -> ThLevel -> PredType -> InertSet -> Cts
+matchableGivens loc_w n pred_w (IS { inert_cans = inert_cans })
   = filterBag matchable_given all_relevant_givens
   where
     -- just look in class constraints and irreds. matchableGivens does get called
@@ -2158,7 +2158,7 @@ matchableGivens loc_w pred_w (IS { inert_cans = inert_cans })
     all_relevant_givens :: Cts
     all_relevant_givens
       | Just (clas, _) <- getClassPredTys_maybe pred_w
-      = findDictsByClass (inert_dicts inert_cans) (ctLocTHLevel loc_w)  clas
+      = findDictsByClass (inert_dicts inert_cans) n  clas
         `unionBags` inert_irreds inert_cans
       | otherwise
       = inert_irreds inert_cans
@@ -2337,30 +2337,30 @@ lookupFlatCache fam_tc tys
     lookup_flats flat_cache = findExactFunEq flat_cache fam_tc tys
 
 
-lookupInInerts :: CtLoc -> TcPredType -> TcS (Maybe CtEvidence)
+lookupInInerts :: CtLoc -> ThLevel -> TcPredType -> TcS (Maybe CtEvidence)
 -- Is this exact predicate type cached in the solved or canonicals of the InertSet?
-lookupInInerts loc pty
+lookupInInerts loc n pty
   | ClassPred cls tys <- classifyPredType pty
   = do { inerts <- getTcSInerts
-       ; return (lookupSolvedDict inerts loc cls tys `mplus`
-                 lookupInertDict (inert_cans inerts) loc cls tys) }
+       ; return (lookupSolvedDict inerts loc n cls tys `mplus`
+                 lookupInertDict (inert_cans inerts) loc n cls tys) }
   | otherwise -- NB: No caching for equalities, IPs, holes, or errors
   = return Nothing
 
 -- | Look up a dictionary inert. NB: the returned 'CtEvidence' might not
 -- match the input exactly. Note [Use loose types in inert set].
-lookupInertDict :: InertCans -> CtLoc -> Class -> [Type] -> Maybe CtEvidence
-lookupInertDict (IC { inert_dicts = dicts }) loc cls tys
-  = case findDict dicts loc cls tys of
+lookupInertDict :: InertCans -> CtLoc -> ThLevel -> Class -> [Type] -> Maybe CtEvidence
+lookupInertDict (IC { inert_dicts = dicts }) loc n cls tys
+  = case pprTrace "lookupInertDict" (ppr cls $$ ppr n $$ ppr dicts) findDict dicts loc n cls tys of
       Just ct -> Just (ctEvidence ct)
       _       -> Nothing
 
 -- | Look up a solved inert. NB: the returned 'CtEvidence' might not
 -- match the input exactly. See Note [Use loose types in inert set].
-lookupSolvedDict :: InertSet -> CtLoc -> Class -> [Type] -> Maybe CtEvidence
+lookupSolvedDict :: InertSet -> CtLoc -> ThLevel -> Class -> [Type] -> Maybe CtEvidence
 -- Returns just if exactly this predicate type exists in the solved.
-lookupSolvedDict (IS { inert_solved_dicts = solved }) loc cls tys
-  = case findDict solved loc cls tys of
+lookupSolvedDict (IS { inert_solved_dicts = solved }) loc n cls tys
+  = case findDict solved loc n cls tys of
       Just ev -> Just ev
       _       -> Nothing
 
@@ -2499,8 +2499,8 @@ type DictMap a = TcAppMap [(ThLevel, a)]
 emptyDictMap :: DictMap a
 emptyDictMap = emptyTcAppMap
 
-findDict :: DictMap a -> CtLoc -> Class -> [Type] -> Maybe a
-findDict m loc cls tys
+findDict :: DictMap a -> CtLoc -> ThLevel -> Class -> [Type] -> Maybe a
+findDict m loc n cls tys
   | isCTupleClass cls
   , any hasIPPred tys   -- See Note [Tuples hiding implicit parameters]
   = Nothing
@@ -2510,7 +2510,7 @@ findDict m loc cls tys
   = Nothing             -- See Note [Solving CallStack constraints]
 
   | otherwise
-  = lookup (ctLocTHLevel loc)  =<< findTcApp m (getUnique cls) tys
+  = lookup n =<< findTcApp m (getUnique cls) tys
 
 findDictsByClass :: DictMap a -> ThLevel -> Class -> Bag a
 findDictsByClass m st cls
@@ -3516,16 +3516,23 @@ newWantedEq_SI si loc role ty1 ty2
 newWantedEvVarNC :: CtLoc -> TcPredType -> TcS CtEvidence
 newWantedEvVarNC = newWantedEvVarNC_SI WDeriv
 
+newWantedEvVarNC_Stage :: ThLevel -> CtLoc -> TcPredType -> TcS CtEvidence
+newWantedEvVarNC_Stage n = newWantedEvVarNC_SI_Stage n WDeriv
+
 newWantedEvVarNC_SI :: ShadowInfo -> CtLoc -> TcPredType -> TcS CtEvidence
+newWantedEvVarNC_SI si loc = newWantedEvVarNC_SI_Stage  (thLevel (tcl_th_ctxt (ctl_env loc))) si loc
+
+newWantedEvVarNC_SI_Stage :: ThLevel -> ShadowInfo -> CtLoc -> TcPredType -> TcS CtEvidence
 -- Don't look up in the solved/inerts; we know it's not there
-newWantedEvVarNC_SI si loc pty
+newWantedEvVarNC_SI_Stage n si loc pty
   = do { new_ev <- newEvVar pty
        ; traceTcS "Emitting new wanted" (ppr new_ev <+> dcolon <+> ppr pty $$
                                          pprCtLoc loc)
        ; return (CtWanted { ctev_pred = pty, ctev_dest = EvVarDest new_ev
                           , ctev_nosh = si
                           , ctev_loc = loc
-                          , ctev_stage = thLevel (tcl_th_ctxt (ctl_env loc)) })}
+                          , ctev_stage = n
+                            })}
 
 newWantedEvVar :: CtLoc -> TcPredType -> TcS MaybeNew
 newWantedEvVar = newWantedEvVar_SI WDeriv
@@ -3533,7 +3540,8 @@ newWantedEvVar = newWantedEvVar_SI WDeriv
 newWantedEvVar_SI :: ShadowInfo -> CtLoc -> TcPredType -> TcS MaybeNew
 -- For anything except ClassPred, this is the same as newWantedEvVarNC
 newWantedEvVar_SI si loc pty
-  = do { mb_ct <- lookupInInerts loc pty
+  = do { st <- wrapTcS $ TcM.getStage
+       ; mb_ct <- lookupInInerts loc (thLevel st) pty
        ; case mb_ct of
             Just ctev
               | not (isDerived ctev)

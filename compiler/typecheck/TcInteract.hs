@@ -1028,7 +1028,7 @@ Passing along the solved_dicts important for two reasons:
 
 interactDict :: InertCans -> Ct -> TcS (StopOrContinue Ct)
 interactDict inerts workItem@(CDictCan { cc_ev = ev_w, cc_class = cls, cc_tyargs = tys })
-  | Just ev_i <- lookupInertDict inerts (ctEvLoc ev_w) cls tys
+  | Just ev_i <- lookupInertDict inerts (ctEvLoc ev_w) (ctEvLevel ev_w) cls tys
   = -- There is a matching dictionary in the inert set
     do { -- First to try to solve it /completely/ from top level instances
          -- See Note [Shortcut solving]
@@ -1110,6 +1110,7 @@ shortCutSolver dflags ev_w ev_i
     try_solve_from_instance (ev_binds, solved_dicts) ev
       | let pred = ctEvPred ev
             loc  = ctEvLoc  ev
+            n    = ctEvLevel  ev
             lvl  = ctEvLevel ev
       , ClassPred cls tys <- classifyPredType pred
       = do { inst_res <- lift $ matchGlobalInst dflags True cls tys
@@ -1127,7 +1128,7 @@ shortCutSolver dflags ev_w ev_i
                        ; lift $ traceTcS "shortCutSolver: found instance" (ppr preds)
                        ; loc' <- lift $ checkInstanceOK loc what pred
 
-                       ; evc_vs <- mapM (new_wanted_cached loc' solved_dicts') preds
+                       ; evc_vs <- mapM (new_wanted_cached loc' n solved_dicts') preds
                                   -- Emit work for subgoals but use our local cache
                                   -- so we can solve recursive dictionaries.
 
@@ -1146,10 +1147,10 @@ shortCutSolver dflags ev_w ev_i
     -- Use a local cache of solved dicts while emitting EvVars for new work
     -- We bail out of the entire computation if we need to emit an EvVar for
     -- a subgoal that isn't a ClassPred.
-    new_wanted_cached :: CtLoc -> DictMap CtEvidence -> TcPredType -> MaybeT TcS MaybeNew
-    new_wanted_cached loc cache pty
+    new_wanted_cached :: CtLoc -> ThLevel -> DictMap CtEvidence -> TcPredType -> MaybeT TcS MaybeNew
+    new_wanted_cached loc n cache pty
       | ClassPred cls tys <- classifyPredType pty
-      = lift $ case findDict cache loc_w cls tys of
+      = lift $ case findDict cache loc_w n cls tys of
           Just ctev -> return $ Cached (ctEvExpr ctev)
           Nothing   -> Fresh <$> newWantedNC loc pty
       | otherwise = mzero
@@ -1158,7 +1159,7 @@ addFunDepWork :: InertCans -> CtEvidence -> Class -> TcS ()
 -- Add derived constraints from type-class functional dependencies.
 addFunDepWork inerts work_ev cls
   | isImprovable work_ev
-  = mapBagM_ add_fds (findDictsByClass (inert_dicts inerts) (ctEvLevel work_ev) cls)
+  = mapBagM_ add_fds (findDictsByClass (inert_dicts inerts) work_n cls)
                -- No need to check flavour; fundeps work between
                -- any pair of constraints, regardless of flavour
                -- Importantly we don't throw workitem back in the
@@ -1168,7 +1169,7 @@ addFunDepWork inerts work_ev cls
   where
     work_pred = ctEvPred work_ev
     work_loc  = ctEvLoc work_ev
-
+    work_n    = ctEvLevel work_ev
     add_fds inert_ct
       | isImprovable inert_ev
       = do { traceTcS "addFunDepWork" (vcat
@@ -1610,7 +1611,7 @@ interactTyVarEq inerts workItem@(CTyEqCan { cc_tyvar = tv
 
        ; let deriv_ev = CtDerived { ctev_pred = ctEvPred ev
                                   , ctev_loc  = ctEvLoc  ev
-                                  , ctev_stage = thLevel (tcl_th_ctxt (ctl_env (ctEvLoc ev))) }
+                                  , ctev_stage = ctEvLevel ev }
        ; when keep_deriv $
          emitWork [workItem { cc_ev = deriv_ev }]
          -- As a Derived it might not be fully rewritten,
@@ -2331,13 +2332,13 @@ doTopReactDict inerts work_item@(CDictCan { cc_ev = ev, cc_class = cls
   = do { try_fundep_improvement
        ; continueWith work_item }
 
-  | Just solved_ev <- lookupSolvedDict inerts dict_loc cls xis   -- Cached
+  | Just solved_ev <- lookupSolvedDict inerts dict_loc n cls xis   -- Cached
   = do { setEvBindIfWanted ev (ctEvTerm solved_ev)
        ; stopWith ev "Dict/Top (cached)" }
 
   | otherwise  -- Wanted or Derived, but not cached
    = do { dflags <- getDynFlags
-        ; lkup_res <- matchClassInst dflags inerts cls xis dict_loc
+        ; lkup_res <- matchClassInst dflags inerts cls xis dict_loc n
         ; case lkup_res of
                OneInst { cir_what = what }
                   -> do { insertSafeOverlapFailureTcS what work_item
@@ -2350,6 +2351,7 @@ doTopReactDict inerts work_item@(CDictCan { cc_ev = ev, cc_class = cls
    where
      dict_pred   = mkClassPred cls xis
      dict_loc    = ctEvLoc ev
+     n = ctEvLevel ev
      dict_origin = ctLocOrigin dict_loc
 
      -- We didn't solve it; so try functional dependencies with
@@ -2454,15 +2456,15 @@ This test arranges to ignore the instance-based solution under these
 
 matchClassInst :: DynFlags -> InertSet
                -> Class -> [Type]
-               -> CtLoc -> TcS ClsInstResult
-matchClassInst dflags inerts clas tys loc
+               -> CtLoc -> ThLevel -> TcS ClsInstResult
+matchClassInst dflags inerts clas tys loc n
 -- First check whether there is an in-scope Given that could
 -- match this constraint.  In that case, do not use any instance
 -- whether top level, or local quantified constraints.
 -- ee Note [Instance and Given overlap]
   | not (xopt LangExt.IncoherentInstances dflags)
   , not (naturallyCoherentClass clas)
-  , let matchable_givens = matchableGivens loc pred inerts
+  , let matchable_givens = matchableGivens loc n pred inerts
   , not (isEmptyBag matchable_givens)
   = do { traceTcS "Delaying instance application" $
            vcat [ text "Work item=" <+> pprClassPred clas tys

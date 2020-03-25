@@ -156,7 +156,7 @@ templateHaskellNames = [
     patQTyConName, funDepTyConName, decsQTyConName,
     ruleBndrTyConName, tySynEqnTyConName,
     roleTyConName, tExpTyConName, injAnnTyConName, kindTyConName,
-    overlapTyConName, derivClauseTyConName, derivStrategyTyConName,
+    overlapTyConName, derivClauseTyConName, derivStrategyTyConName, codeCTyConName,
 
     -- Quasiquoting
     quoteDecName, quoteTypeName, quoteExpName, quotePatName]

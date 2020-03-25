@@ -872,6 +872,8 @@ evVarsOfTerm :: EvTerm -> VarSet
 evVarsOfTerm (EvExpr e)         = exprSomeFreeVars isEvVar e
 evVarsOfTerm (EvTypeable _ ev)  = evVarsOfTypeable ev
 evVarsOfTerm (EvFun {})         = emptyVarSet -- See Note [Free vars of EvFun]
+evVarsOfTerm (EvQuote e)        = evVarsOfTerm e
+evVarsOfTerm (EvSplice e)       = evVarsOfTerm e
 
 evVarsOfTerms :: [EvTerm] -> VarSet
 evVarsOfTerms = mapUnionVarSet evVarsOfTerm
@@ -968,6 +970,8 @@ instance Outputable EvTerm where
   ppr (EvFun { et_tvs = tvs, et_given = gs, et_binds = bs, et_body = w })
       = hang (text "\\" <+> sep (map pprLamBndr (tvs ++ gs)) <+> arrow)
            2 (ppr bs $$ ppr w)   -- Not very pretty
+  ppr (EvQuote e)        = text "[|" <+> ppr e <+> text "|]"
+  ppr (EvSplice e)        = text "$(" <+> ppr e <+> text ")"
 
 instance Outputable EvCallStack where
   ppr EvCsEmpty

@@ -185,7 +185,7 @@ newWanted :: CtOrigin -> Maybe TypeOrKind -> PredType -> TcM CtEvidence
 newWanted orig t_or_k pty
   = do loc <- getCtLocM orig t_or_k
        st <- getStage
---       pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
+       pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
        d <- if isEqPrimPred pty then HoleDest  <$> newCoercionHole pty
                                 else EvVarDest <$> newEvVar pty
        return $ CtWanted { ctev_dest = d
