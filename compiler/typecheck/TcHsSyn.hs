@@ -1540,6 +1540,8 @@ zonkEvTerm env (EvExpr e)
   = EvExpr <$> zonkCoreExpr env e
 zonkEvTerm env (EvTypeable ty ev)
   = EvTypeable <$> zonkTcTypeToTypeX env ty <*> zonkEvTypeable env ev
+zonkEvTerm env (EvSplice e) = EvSplice <$> zonkEvTerm env e
+zonkEvTerm env (EvQuote e) = EvQuote <$> zonkEvTerm env e
 zonkEvTerm env (EvFun { et_tvs = tvs, et_given = evs
                       , et_binds = ev_binds, et_body = body_id })
   = do { (env0, new_tvs) <- zonkTyBndrsX env tvs
