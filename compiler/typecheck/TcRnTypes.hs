@@ -314,6 +314,7 @@ instance ContainsModule DsGblEnv where
 
 data DsLclEnv = DsLclEnv {
         dsl_meta    :: DsMetaEnv,        -- Template Haskell bindings
+        dsl_level   :: ThLevel,          -- Current Template Haskell level we are desugaring into
         dsl_loc     :: RealSrcSpan,      -- To put in pattern-matching error msgs
 
         -- See Note [Note [Type and Term Equality Propagation] in Check.hs

@@ -16,7 +16,7 @@ module TcEvidence (
   TcEvBinds(..), EvBindsVar(..),
   EvBindMap(..), emptyEvBindMap, extendEvBinds,
   lookupEvBind, evBindMapBinds, foldEvBindMap, filterEvBindMap,
-  isEmptyEvBindMap,
+  isEmptyEvBindMap, splitEvBindsMap,
   EvBind(..), emptyTcEvBinds, isEmptyTcEvBinds, mkGivenEvBind, mkWantedEvBind,
   evBindVar, isCoEvBindsVar,
 
@@ -55,6 +55,7 @@ module TcEvidence (
 
 import GhcPrelude
 
+import {-# SOURCE #-} TcRnTypes
 import Var
 import CoAxiom
 import Coercion
@@ -485,6 +486,11 @@ extendEvBinds bs ev_bind
                                                (eb_lhs ev_bind)
                                                ev_bind }
 
+splitEvBindsMap :: ThLevel -> EvBindMap -> (EvBindMap, EvBindMap)
+splitEvBindsMap n (EvBindMap m) =
+  let (cur, fut) = partitionDVarEnv  ((== n) .  eb_level) m
+  in ASSERT2 (allDVarEnv (( < n) . eb_level) fut, ppr fut) (EvBindMap cur, EvBindMap fut)
+
 isEmptyEvBindMap :: EvBindMap -> Bool
 isEmptyEvBindMap (EvBindMap m) = isEmptyDVarEnv m
 
@@ -508,6 +514,7 @@ instance Outputable EvBindMap where
 -- All evidence is bound by EvBinds; no side effects
 data EvBind
   = EvBind { eb_lhs      :: EvVar
+           , eb_level    :: ThLevel
            , eb_rhs      :: EvTerm
            , eb_is_given :: Bool  -- True <=> given
                  -- See Note [Tracking redundant constraints] in TcSimplify
@@ -516,12 +523,12 @@ data EvBind
 evBindVar :: EvBind -> EvVar
 evBindVar = eb_lhs
 
-mkWantedEvBind :: EvVar -> EvTerm -> EvBind
-mkWantedEvBind ev tm = EvBind { eb_is_given = False, eb_lhs = ev, eb_rhs = tm }
+mkWantedEvBind :: EvVar -> ThLevel -> EvTerm -> EvBind
+mkWantedEvBind ev n tm = EvBind { eb_is_given = False, eb_lhs = ev, eb_rhs = tm, eb_level = n }
 
 -- EvTypeable are never given, so we can work with EvExpr here instead of EvTerm
-mkGivenEvBind :: EvVar -> EvTerm -> EvBind
-mkGivenEvBind ev tm = EvBind { eb_is_given = True, eb_lhs = ev, eb_rhs = tm }
+mkGivenEvBind :: EvVar -> ThLevel -> EvTerm -> EvBind
+mkGivenEvBind ev n tm = EvBind { eb_is_given = True, eb_lhs = ev, eb_rhs = tm, eb_level = n }
 
 
 -- An EvTerm is, conceptually, a CoreExpr that implements the constraint.

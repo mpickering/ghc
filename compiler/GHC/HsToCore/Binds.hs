@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-
 (c) The University of Glasgow 2006
 (c) The GRASP/AQUA Project, Glasgow University, 1992-1998
@@ -1141,7 +1142,8 @@ dsHsWrapper (WpFun c1 c2 t1 doc)
                                      else return id }  -- this return is irrelevant
 dsHsWrapper (WpCast co)       = ASSERT(coercionRole co == Representational)
                                 return $ \e -> mkCastDs e co
-dsHsWrapper (WpEvApp tm)      = do { core_tm <- dsEvTerm tm
+dsHsWrapper (WpEvApp tm)      = do { n <- dsGetLevel
+                                   ; core_tm <- snd <$> dsEvTerm n tm
                                    ; return (\e -> App e core_tm) }
 
 --------------------------------------
@@ -1157,7 +1159,11 @@ dsTcEvBinds (EvBinds bs)   = dsEvBinds bs
 dsEvBinds :: Bag EvBind -> DsM [CoreBind]
 dsEvBinds bs
   = do { ds_bs <- mapBagM dsEvBind bs
-       ; return (mk_ev_binds ds_bs) }
+       ; let (now, other) = partitionBag ((== 1) . fst . snd) ds_bs
+       ; let ds_bs_now = (mapBag (fmap snd) now)
+       ; pprTraceM "IGNORING" (ppr other)
+       ; let eb = mk_ev_binds ds_bs_now
+       ; return eb}
 
 mk_ev_binds :: Bag (Id,CoreExpr) -> [CoreBind]
 -- We do SCC analysis of the evidence bindings, /after/ desugaring
@@ -1184,8 +1190,8 @@ mk_ev_binds ds_binds
     ds_scc (AcyclicSCC (v,r)) = NonRec v r
     ds_scc (CyclicSCC prs)    = Rec prs
 
-dsEvBind :: EvBind -> DsM (Id, CoreExpr)
-dsEvBind (EvBind { eb_lhs = v, eb_rhs = r}) = liftM ((,) v) (dsEvTerm r)
+dsEvBind :: EvBind -> DsM (Id, (Int, CoreExpr))
+dsEvBind (EvBind { eb_lhs = v, eb_rhs = r}) = liftM ((,) v) (dsEvTerm 1 r)
 
 
 {-**********************************************************************
@@ -1194,15 +1200,18 @@ dsEvBind (EvBind { eb_lhs = v, eb_rhs = r}) = liftM ((,) v) (dsEvTerm r)
 *                                                                      *
 **********************************************************************-}
 
-dsEvTerm :: EvTerm -> DsM CoreExpr
-dsEvTerm (EvExpr e)          = return e
-dsEvTerm (EvTypeable ty ev)  = dsEvTypeable ty ev
-dsEvTerm (EvFun { et_tvs = tvs, et_given = given
+dsEvTerm :: Int -> EvTerm -> DsM (Int, CoreExpr)
+dsEvTerm n (EvExpr e)          = return (n, e)
+dsEvTerm n (EvTypeable ty ev)  = (n, ) <$> dsEvTypeable ty ev
+dsEvTerm n (EvFun { et_tvs = tvs, et_given = given
                 , et_binds = ev_binds, et_body = wanted_id })
   = do { ds_ev_binds <- dsTcEvBinds ev_binds
-       ; return $ (mkLams (tvs ++ given) $
+       ; return $ (n, (mkLams (tvs ++ given) $
                    mkCoreLets ds_ev_binds $
-                   Var wanted_id) }
+                   Var wanted_id)) }
+dsEvTerm n (EvQuote e) = dsEvTerm (n - 1) e
+dsEvTerm n (EvSplice e) = dsEvTerm (n + 1) e
+dsEvTerm _n e = pprPanic "dsEvTerm" (ppr e)
 
 
 {-**********************************************************************
@@ -1290,7 +1299,8 @@ ds_ev_typeable ty (EvTypeableTrFun ev1 ev2)
 ds_ev_typeable ty (EvTypeableTyLit ev)
   = -- See Note [Typeable for Nat and Symbol] in TcInteract
     do { fun  <- dsLookupGlobalId tr_fun
-       ; dict <- dsEvTerm ev       -- Of type KnownNat/KnownSymbol
+       ; n <- dsGetLevel
+       ; dict <- snd <$> dsEvTerm n ev       -- Of type KnownNat/KnownSymbol
        ; let proxy = mkTyApps (Var proxyHashId) [ty_kind, ty]
        ; return (mkApps (mkTyApps (Var fun) [ty]) [ dict, proxy ]) }
   where
@@ -1313,7 +1323,8 @@ getRep :: EvTerm          -- ^ EvTerm for @Typeable ty@
 -- Remember that
 --   typeRep# :: forall k (a::k). Typeable k a -> TypeRep a
 getRep ev ty
-  = do { typeable_expr <- dsEvTerm ev
+  = do { n <- dsGetLevel
+       ; typeable_expr <- snd <$> dsEvTerm n ev
        ; typeRepId     <- dsLookupGlobalId typeRepIdName
        ; let ty_args = [typeKind ty, ty]
        ; return (mkApps (mkTyApps (Var typeRepId) ty_args) [ typeable_expr ]) }

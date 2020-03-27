@@ -1134,7 +1134,7 @@ shortCutSolver dflags ev_w ev_i
 
                        ; let ev_tm     = mk_ev (map getEvExpr evc_vs)
                              ev_binds' = extendEvBinds ev_binds $
-                                         mkWantedEvBind (ctEvEvId ev) ev_tm
+                                         mkWantedEvBind (ctEvEvId ev) (ctEvLevel ev) ev_tm
 
                        ; foldlM try_solve_from_instance
                                 (ev_binds', solved_dicts')

@@ -888,12 +888,12 @@ addDeferredBinding ctxt err ct
              ev_binds_var = cec_binds ctxt
 
        ; case dest of
-           EvVarDest evar
-             -> addTcEvBind ev_binds_var $ mkWantedEvBind evar err_tm
+           EvVarDest st evar
+             -> addTcEvBind ev_binds_var $ mkWantedEvBind evar st err_tm
            HoleDest hole
              -> do { -- See Note [Deferred errors for coercion holes]
                      let co_var = coHoleCoVar hole
-                   ; addTcEvBind ev_binds_var $ mkWantedEvBind co_var err_tm
+                   ; addTcEvBind ev_binds_var $ mkWantedEvBind co_var (ctLevel ct) err_tm
                    ; fillCoercionHole hole (mkTcCoVarCo co_var) }}
 
   | otherwise   -- Do not set any evidence for Given/Derived

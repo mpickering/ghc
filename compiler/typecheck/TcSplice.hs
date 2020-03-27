@@ -119,6 +119,7 @@ import Lexeme
 import qualified EnumSet
 import GHC.Driver.Plugins
 import Bag
+import TcSMonad (runTcSAt)
 
 import qualified Language.Haskell.TH as TH
 -- THSyntax gives access to internal functions and data types
@@ -189,9 +190,13 @@ tcTypedBracket rn_expr brack@(TExpBr _ expr) res_ty
        -- Typecheck expr to make sure it is valid,
        -- Throw away the typechecked expression but return its type.
        -- We'll typecheck it again when we splice it in somewhere
-       ; (_tc_expr, expr_ty) <- setStage (Brack cur_stage (TcPending ps_ref lie_var wrapper)) $
+       ; ((_tc_expr, expr_ty), wanted) <- captureConstraints $
+                                setStage (Brack cur_stage (TcPending ps_ref lie_var wrapper)) $
                                 tcInferRhoNC expr
                                 -- NC for no context; tcBracket does that
+       ; (ws, _ev_now, ev_later) <- runTcSAt (thLevel cur_stage + 1) (solveWanteds wanted)
+       ; pprTraceM "TcQuote" (ppr ws $$ ppr _ev_now $$ ppr ev_later)
+       ; emitConstraints ws
        ; let rep = getRuntimeRep expr_ty
        ; meta_ty <- tcTExpTy m_var expr_ty
        ; ps' <- readMutVar ps_ref

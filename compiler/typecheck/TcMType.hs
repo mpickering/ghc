@@ -187,7 +187,7 @@ newWanted orig t_or_k pty
        st <- getStage
        pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
        d <- if isEqPrimPred pty then HoleDest  <$> newCoercionHole pty
-                                else EvVarDest <$> newEvVar pty
+                                else EvVarDest (thLevel st) <$> newEvVar pty
        return $ CtWanted { ctev_dest = d
                          , ctev_pred = pty
                          , ctev_nosh = WDeriv
@@ -203,7 +203,7 @@ newHoleCt hole ev ty = do
   loc <- getCtLocM HoleOrigin Nothing
   st <- getStage
   pure $ CHoleCan { cc_ev = CtWanted { ctev_pred = ty
-                                     , ctev_dest = EvVarDest ev
+                                     , ctev_dest = EvVarDest (thLevel st) ev
                                      , ctev_nosh = WDeriv
                                      , ctev_loc  = loc
                                      , ctev_stage = thLevel st }
@@ -287,7 +287,7 @@ emitWantedEvVar origin ty
   = do { new_cv <- newEvVar ty
        ; loc <- getCtLocM origin Nothing
        ; st <- getStage
-       ; let ctev = CtWanted { ctev_dest = EvVarDest new_cv
+       ; let ctev = CtWanted { ctev_dest = EvVarDest (thLevel st) new_cv
                              , ctev_pred = ty
                              , ctev_nosh = WDeriv
                              , ctev_loc  = loc
@@ -2093,7 +2093,7 @@ zonkCtEvidence ctev@(CtGiven { ctev_pred = pred })
 zonkCtEvidence ctev@(CtWanted { ctev_pred = pred, ctev_dest = dest })
   = do { pred' <- zonkTcType pred
        ; let dest' = case dest of
-                       EvVarDest ev -> EvVarDest $ setVarType ev pred'
+                       EvVarDest n ev -> EvVarDest n $ setVarType ev pred'
                          -- necessary in simplifyInfer
                        HoleDest h   -> HoleDest h
        ; return (ctev { ctev_pred = pred', ctev_dest = dest' }) }

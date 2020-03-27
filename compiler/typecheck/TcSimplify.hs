@@ -153,8 +153,9 @@ simplifyTop wanteds
            ; recordUnsafeInfer whyUnsafe
            }
        ; traceTc "reportUnsolved (unsafe overlapping) }" empty
-
-       ; return (evBindMapBinds binds1 `unionBags` binds2) }
+       ; let res_map = (evBindMapBinds binds1 `unionBags` binds2)
+       ; MASSERT2(all ((== 1) . eb_level) res_map, ppr res_map)
+       ; return res_map }
 
 
 -- | Type-check a thing that emits only equality constraints, solving any
@@ -835,7 +836,7 @@ simplifyInfer rhs_tclvl infer_mode sigs name_taus wanteds
        -- Easiest way to do this is to emit them as new Wanteds (#14643)
        ; ct_loc <- getCtLocM AnnOrigin Nothing
        ; let psig_wanted = [ CtWanted { ctev_pred = idType psig_theta_var
-                                      , ctev_dest = EvVarDest psig_theta_var
+                                      , ctev_dest = EvVarDest (thLevel st) psig_theta_var
                                       , ctev_nosh = WDeriv
                                       , ctev_loc  = ct_loc
                                       , ctev_stage = thLevel st }

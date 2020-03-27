@@ -216,6 +216,7 @@ checkAmbiguity ctxt ty
        ; allow_ambiguous <- xoptM LangExt.AllowAmbiguousTypes
        ; (_wrap, wanted) <- addErrCtxt (mk_msg allow_ambiguous) $
                             captureConstraints $
+                            setStage Comp $
                             tcSubType_NC ctxt ty ty
        ; simplifyAmbiguityCheck ty wanted
 

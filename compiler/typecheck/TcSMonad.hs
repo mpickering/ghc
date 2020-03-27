@@ -15,7 +15,7 @@ module TcSMonad (
     getWorkList, updWorkListTcS,
 
     -- The TcS monad
-    TcS, runTcS, runTcSDeriveds, runTcSWithEvBinds,
+    TcS, runTcS, runTcSAt, runTcSDeriveds, runTcSWithEvBinds,
     failTcS, warnTcS, addErrTcS,
     runTcSEqualities,
     nestTcS, nestImplicTcS, setEvBindsTcS,
@@ -2764,6 +2764,18 @@ runTcS tcs
        ; ev_binds <- TcM.getTcEvBindsMap ev_binds_var
        ; return (res, ev_binds) }
 
+
+runTcSAt :: ThLevel
+       -> TcS a                -- What to run
+       -> TcM (a, EvBindMap, EvBindMap)
+runTcSAt n tcs
+  = do { ev_binds_var <- TcM.newTcEvBinds
+       ; res <- runTcSWithEvBinds ev_binds_var tcs
+       ; ev_binds <- TcM.getTcEvBindsMap ev_binds_var
+       ; let (ev_binds_cur, ev_binds_fut) = splitEvBindsMap n ev_binds
+       ; return (res, ev_binds_cur, ev_binds_fut) }
+
+
 -- | This variant of 'runTcS' will keep solving, even when only Deriveds
 -- are left around. It also doesn't return any evidence, as callers won't
 -- need it.
@@ -3411,7 +3423,7 @@ setWantedEq :: TcEvDest -> Coercion -> TcS ()
 setWantedEq (HoleDest hole) co
   = do { useVars (coVarsOfCo co)
        ; wrapTcS $ TcM.fillCoercionHole hole co }
-setWantedEq (EvVarDest ev) _ = pprPanic "setWantedEq" (ppr ev)
+setWantedEq ev@(EvVarDest {}) _ = pprPanic "setWantedEq" (ppr ev)
 
 -- | Good for both equalities and non-equalities
 setWantedEvTerm :: TcEvDest -> EvTerm -> TcS ()
@@ -3422,11 +3434,11 @@ setWantedEvTerm (HoleDest hole) tm
   | otherwise
   = -- See Note [Yukky eq_sel for a HoleDest]
     do { let co_var = coHoleCoVar hole
-       ; setEvBind (mkWantedEvBind co_var tm)
+       ; setEvBind (mkWantedEvBind co_var (error "TODO") tm)
        ; wrapTcS $ TcM.fillCoercionHole hole (mkTcCoVarCo co_var) }
 
-setWantedEvTerm (EvVarDest ev_id) tm
-  = setEvBind (mkWantedEvBind ev_id tm)
+setWantedEvTerm (EvVarDest n ev_id) tm
+  = setEvBind (mkWantedEvBind ev_id n tm)
 
 {- Note [Yukky eq_sel for a HoleDest]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3468,7 +3480,7 @@ newGivenEvVarWithStage :: ThLevel -> CtLoc -> (TcPredType, EvTerm) -> TcS CtEvid
 -- and return its CtEvidence
 -- See Note [Bind new Givens immediately] in Constraint
 newGivenEvVarWithStage stage loc (pred, rhs)
-  = do { new_ev <- newBoundEvVarId pred rhs
+  = do { new_ev <- newBoundEvVarId pred stage rhs
        ; return (CtGiven { ctev_pred = pred, ctev_evar = new_ev, ctev_loc = loc
                          , ctev_stage = stage })}
 
@@ -3477,10 +3489,10 @@ newGivenEvVar ct_loc = newGivenEvVarWithStage (thLevel (tcl_th_ctxt (ctl_env ct_
 
 -- | Make a new 'Id' of the given type, bound (in the monad's EvBinds) to the
 -- given term
-newBoundEvVarId :: TcPredType -> EvTerm -> TcS EvVar
-newBoundEvVarId pred rhs
+newBoundEvVarId :: TcPredType -> ThLevel -> EvTerm -> TcS EvVar
+newBoundEvVarId pred n rhs
   = do { new_ev <- newEvVar pred
-       ; setEvBind (mkGivenEvBind new_ev rhs)
+       ; setEvBind (mkGivenEvBind new_ev n rhs)
        ; return new_ev }
 
 newGivenEvVars :: CtLoc -> [(TcPredType, EvTerm)] -> TcS [CtEvidence]
@@ -3528,7 +3540,7 @@ newWantedEvVarNC_SI_Stage n si loc pty
   = do { new_ev <- newEvVar pty
        ; traceTcS "Emitting new wanted" (ppr new_ev <+> dcolon <+> ppr pty $$
                                          pprCtLoc loc)
-       ; return (CtWanted { ctev_pred = pty, ctev_dest = EvVarDest new_ev
+       ; return (CtWanted { ctev_pred = pty, ctev_dest = EvVarDest n new_ev
                           , ctev_nosh = si
                           , ctev_loc = loc
                           , ctev_stage = n

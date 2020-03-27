@@ -1355,7 +1355,7 @@ So a Given has EvVar inside it rather than (as previously) an EvTerm.
 -- Wanted equalities are always HoleDest; other wanteds are always
 -- EvVarDest.
 data TcEvDest
-  = EvVarDest EvVar         -- ^ bind this var to the evidence
+  = EvVarDest ThLevel EvVar         -- ^ bind this var to the evidence
               -- EvVarDest is always used for non-type-equalities
               -- e.g. class constraints
 
@@ -1427,14 +1427,14 @@ ctEvCoercion ev
   = pprPanic "ctEvCoercion" (ppr ev)
 
 ctEvEvId :: CtEvidence -> EvVar
-ctEvEvId (CtWanted { ctev_dest = EvVarDest ev }) = ev
+ctEvEvId (CtWanted { ctev_dest = EvVarDest _ ev }) = ev
 ctEvEvId (CtWanted { ctev_dest = HoleDest h })   = coHoleCoVar h
 ctEvEvId (CtGiven  { ctev_evar = ev })           = ev
 ctEvEvId ctev@(CtDerived {}) = pprPanic "ctEvId:" (ppr ctev)
 
 instance Outputable TcEvDest where
   ppr (HoleDest h)   = text "hole" <> ppr h
-  ppr (EvVarDest ev) = ppr ev
+  ppr (EvVarDest n ev) = ppr ev <+> text "@" <+> ppr n
 
 instance Outputable CtEvidence where
   ppr ev = ppr (ctEvFlavour ev)
