@@ -1015,7 +1015,7 @@ instance ( a ~ GhcPass p
         [ toHie b
         , toHie p
         ]
-      HsTcTypedBracketOut _ _wrap b p _ ->
+      HsTcTypedBracketOut _ b p _ _ ->
         [ toHie b
         , toHie p
         ]

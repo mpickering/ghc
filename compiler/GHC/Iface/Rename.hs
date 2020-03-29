@@ -612,6 +612,7 @@ rnIfaceUnfolding (IfDFunUnfold bs ops)
 
 rnIfaceExpr :: Rename IfaceExpr
 rnIfaceExpr (IfaceLcl name) = pure (IfaceLcl name)
+rnIfaceExpr (IfaceExactLocal u name ty) = IfaceExactLocal u name <$> rnIfaceType ty
 rnIfaceExpr (IfaceExt gbl) = IfaceExt <$> rnIfaceGlobal gbl
 rnIfaceExpr (IfaceType ty) = IfaceType <$> rnIfaceType ty
 rnIfaceExpr (IfaceCo co) = IfaceCo <$> rnIfaceCo co

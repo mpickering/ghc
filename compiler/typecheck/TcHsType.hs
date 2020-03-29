@@ -1561,17 +1561,17 @@ but far less expressive.
 -- Functions to do with cross stage persistence of types
 
 checkThLocalTyId :: Name -> Id -> TcM Id
-checkThLocalTyId n id = do
+checkThLocalTyId n id = return id {- do
   sp_name <- newSysName (mkTyVarOcc "$splice")
   let sp_id = mkTyVar sp_name (idType id)
-  checkThLocalIdX sp_id (mkSpliceTyExpr sp_id) n id
+  checkThLocalIdX sp_id (mkSpliceTyExpr sp_id) n id 0 -}
 
 -- Construct the term for `liftTyCl @k @ty`
 mkSpliceTyExpr :: Id -> Name -> Id -> TcM (Either a PendingZonkSplice)
 mkSpliceTyExpr sp_id id_name id = do
-  let id_ty = mkTyVarTy id
-  ev <- emitTypeable id_ty
-  return $ Right $ PendingZonkSplice sp_id (evId ev)
+ let id_ty = mkTyVarTy id
+ ev <- emitTypeable id_ty
+ return $ Right $ PendingZonkSplice sp_id (evId ev)
 
   {-
   pprTraceM "mkSpliceTy" (ppr id $$ ppr id_ty $$ ppr k)

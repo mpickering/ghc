@@ -47,6 +47,7 @@ import TcType
 
 import Outputable
 import TcExpr
+import Constraint
 import SrcLoc
 import THNames
 import TcUnify
@@ -121,6 +122,7 @@ import qualified EnumSet
 import GHC.Driver.Plugins
 import Bag
 import TcSMonad (runTcSAt)
+import GHC.Core.Predicate
 
 import qualified Language.Haskell.TH as TH
 -- THSyntax gives access to internal functions and data types
@@ -173,6 +175,29 @@ runAnnotation     :: CoreAnnTarget -> LHsExpr GhcRn -> TcM Annotation
 ************************************************************************
 -}
 
+promoteQuoteWanted :: Int -> WantedConstraints -> TcM (WantedConstraints, Bag (PendingZonkSplice, EvBind))
+promoteQuoteWanted n (WC cts is) = do
+  (cts', ebs) <- mapAndUnzipBagM go cts
+  pprTraceM "promoteQuote" (ppr cts $$ ppr cts' $$ ppr ebs)
+  return (WC cts' is, (mapMaybeBag id ebs))
+  where
+    go :: Ct -> TcM (Ct, Maybe (PendingZonkSplice, EvBind))
+    go c@(CNonCanonical ctw) =
+        if ctEvLevel ctw == n
+          then do
+            cc <- tcLookupTyCon codeCTyConName
+            let pt = mkTyConApp cc [ctEvPred ctw]
+            w <- newWantedAt (n - 1) (ctEvOrigin ctw) Nothing pt
+            sp_id <- newSysLocalId (mkFastString "$splice") (idType (ctEvEvId w))
+            let b = case ctev_dest ctw of
+                      EvVarDest n ev_id ->
+                         let (EvExpr e) = ctEvTerm w
+                         in Just (PendingZonkSplice sp_id e, mkWantedEvBind ev_id n (EvExpr $ Var sp_id))
+                      _ -> Nothing
+            return (mkNonCanonical w, b)
+          else return (c, Nothing)
+
+
 -- See Note [How brackets and nested splices are handled]
 -- tcTypedBracket :: HsBracket Name -> TcRhoType -> TcM (HsExpr TcId)
 tcTypedBracket rn_expr brack@(TExpBr e expr) res_ty
@@ -185,25 +210,28 @@ tcTypedBracket rn_expr brack@(TExpBr e expr) res_ty
                                        -- from outside the bracket
 
        -- Make a new type variable for the type of the overall quote
-       ; m_var <- mkTyVarTy <$> mkMetaTyVar
+      -- ; m_var <- mkTyVarTy <$> mkMetaTyVar
        -- Make sure the type variable satisfies Quote
-       ; ev_var <- emitQuoteWanted m_var
+      -- ; ev_var <- emitQuoteWanted m_var
        -- Bundle them together so they can be used in GHC.HsToCore.Quote for desugaring
        -- brackets.
-       ; let wrapper = QuoteWrapper ev_var m_var
+      -- ; let wrapper = QuoteWrapper ev_var m_var
        -- Typecheck expr to make sure it is valid,
        -- Throw away the typechecked expression but return its type.
        -- We'll typecheck it again when we splice it in somewhere
        ; ((tc_expr, expr_ty), wanted) <- captureConstraints $
-                                setStage (Brack cur_stage (TcPending ps_ref zz_ref lie_var wrapper)) $
+                                setStage (Brack cur_stage (TcPending ps_ref zz_ref lie_var undefined)) $
                                 tcInferRhoNC expr
                                 -- NC for no context; tcBracket does that
-       ; (ws, _ev_now, ev_later) <- runTcSAt (thLevel cur_stage + 1) (solveWanteds wanted)
-       ; pprTraceM "TcQuote" (ppr ws $$ ppr _ev_now $$ ppr ev_later)
+       ; pprTraceM "solve_wanteds" (ppr wanted)
+       ; (ws, wrap) <- promoteQuoteWanted (thLevel cur_stage + 1) wanted
+       --; (ws, _ev_now, ev_later) <- runTcSAt (thLevel cur_stage + 1) (solveWanteds wanted)
+       ; pprTraceM "TcQuote" (ppr ws $$ ppr wrap)
+       ; let (ev_splices, ev_binds) = unzip (bagToList wrap)
        ; emitConstraints ws
        ; let rep = getRuntimeRep expr_ty
-       ; let brack' = TExpBr e tc_expr
-       ; meta_ty <- tcTExpTy m_var expr_ty
+       ; let brack' = TExpBr e (mkHsDictLet (EvBinds (listToBag ev_binds)) tc_expr)
+       ; meta_ty <- tcTExpTy expr_ty
        ; pprTraceM "tcTypedBracket" (ppr expr_ty)
        ; pprTraceM "tcTypedBracket" (ppr meta_ty)
        ; ps' <- readMutVar ps_ref
@@ -213,9 +241,8 @@ tcTypedBracket rn_expr brack@(TExpBr e expr) res_ty
        ; texpco <- tcLookupId unsafeTExpCoerceName
        ; tcWrapResultO (Shouldn'tHappenOrigin "TExpBr")
                        rn_expr
-                       (unLoc (mkHsApp (mkLHsWrap (applyQuoteWrapper wrapper)
-                                                  (nlHsTyApp texpco [rep, expr_ty]))
-                                      (noLoc (HsTcTypedBracketOut noExtField (Just wrapper) brack' ps' zz))))
+                       (unLoc (mkHsApp ((nlHsTyApp texpco [rep, expr_ty]))
+                                      (noLoc (HsTcTypedBracketOut noExtField brack' ps' ev_splices zz))))
                        meta_ty res_ty }
 tcTypedBracket _ other_brack _
   = pprPanic "tcTypedBracket" (ppr other_brack)
@@ -316,12 +343,13 @@ tcPendingSplice m_var (PendingRnSplice flavour splice_name expr)
 
 ---------------
 -- Takes a m and tau and returns the type m (TExp tau)
-tcTExpTy :: TcType -> TcType -> TcM TcType
-tcTExpTy m_ty exp_ty
+tcTExpTy :: TcType -> TcM TcType
+tcTExpTy exp_ty
   = do { unless (isTauTy exp_ty) $ addErr (err_msg exp_ty)
+       ; q <- tcLookupTyCon qTyConName
        ; texp <- tcLookupTyCon tExpTyConName
        ; let rep = getRuntimeRep exp_ty
-       ; return (mkAppTy m_ty (mkTyConApp texp [rep, exp_ty])) }
+       ; return (mkTyConApp q [mkTyConApp texp [rep, exp_ty]]) }
   where
     err_msg ty
       = vcat [ text "Illegal polytype:" <+> ppr ty
@@ -629,10 +657,10 @@ tcNestedSplice :: ThStage -> PendingStuff -> Name
                 -> LHsExpr GhcRn -> ExpRhoType -> TcM (HsExpr GhcTc)
     -- See Note [How brackets and nested splices are handled]
     -- A splice inside brackets
-tcNestedSplice pop_stage (TcPending ps_var  _zz_var lie_var q@(QuoteWrapper _ m_var)) splice_name expr res_ty
+tcNestedSplice pop_stage (TcPending ps_var  _zz_var lie_var _) splice_name expr res_ty
   = do { res_ty <- expTypeToType res_ty
        ; let rep = getRuntimeRep res_ty
-       ; meta_exp_ty <- tcTExpTy m_var res_ty
+       ; meta_exp_ty <- tcTExpTy res_ty
        ; expr' <- setStage pop_stage $
                   setConstraintVar lie_var $
                   tcMonoExpr expr (mkCheckExpType meta_exp_ty)
@@ -657,7 +685,7 @@ tcTopSplice expr res_ty
          res_ty <- expTypeToType res_ty
        ; q_type <- tcMetaTy qTyConName
        -- Top level splices must still be of type Q (TExp a)
-       ; meta_exp_ty <- tcTExpTy q_type res_ty
+       ; meta_exp_ty <- tcTExpTy res_ty
        ; q_expr <- tcTopSpliceExpr Typed $
                           tcMonoExpr expr (mkCheckExpType meta_exp_ty)
        ; lcl_env <- getLclEnv
@@ -680,6 +708,7 @@ runTopSplice (DelayedSplice lcl_env orig_expr _res_ty q_expr)
        ; pprTrace "runTopSplice" (ppr orig_expr) (return ())
        ; TH.TExpU zs env expr2 <- setStage (RunSplice modfinalizers_ref) $
                                     runMetaC zonked_q_expr
+       ; pprTraceM "RUN" (ppr expr2)
                                     {-
        ; let rn_one rdr_name =
               case isExact_maybe rdr_name of
@@ -754,10 +783,30 @@ tcTopSpliceExpr isTypedSplice tc_action
     setStage (Splice isTypedSplice) $
     do {    -- Typecheck the expression
          (expr', wanted) <- captureConstraints tc_action
-       ; const_binds     <- simplifyTop wanted
-
+       ; (wcs, wrap) <- promoteSpliceWanted 0 wanted
+       ; emitConstraints wcs
           -- Zonk it and tie the knot of dictionary bindings
-       ; return $ mkHsDictLet (EvBinds const_binds) expr' }
+       ; return $ mkLHsWrap wrap expr' }
+
+promoteSpliceWanted :: Int -> WantedConstraints -> TcM (WantedConstraints, HsWrapper)
+promoteSpliceWanted n (WC cts is) = do
+  (cts', ebs) <- mapAndUnzipBagM go cts
+  pprTraceM "promoteSplice" (ppr cts $$ ppr cts' $$ ppr ebs)
+  return (WC cts' is, mkWpLet (EvBinds (mapMaybeBag id ebs)))
+  where
+    go :: Ct -> TcM (Ct, Maybe EvBind)
+    go c@(CNonCanonical ctw)
+      | ClassPred cls [pty] <- classifyPredType (ctEvPred ctw)
+      , classTyCon cls `hasKey` codeCTyConKey =
+          if ctEvLevel ctw == n
+            then do
+              w <- newWantedAt (n + 1) (ctEvOrigin ctw) Nothing pty
+              let b = case ctev_dest ctw of
+                        EvVarDest n ev_id ->
+                           Just (mkWantedEvBind ev_id n (EvQuote (ctEvEvId w)))
+                        _ -> Nothing
+              return (mkNonCanonical w, b)
+            else return (c, Nothing)
 
 {-
 ************************************************************************
@@ -988,6 +1037,7 @@ runMeta' show_code ppr_hs run_and_convert desugar expr
         ; traceTc "About to run (desugared)" (ppr ds_expr)
         ; either_hval <- tryM $ liftIO $
                          GHC.Driver.Main.hscCompileCoreExpr hsc_env src_span ds_expr
+        ; pprTraceM "Run desugared" (ppr ds_expr)
         ; case either_hval of {
             Left exn   -> fail_with_exn "compile and link" exn ;
             Right hval -> do

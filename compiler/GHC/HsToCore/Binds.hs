@@ -41,6 +41,7 @@ import GHC.Core           -- lots of things
 import GHC.Core.SimpleOpt    ( simpleOptExpr )
 import GHC.Core.Op.OccurAnal ( occurAnalyseExpr )
 import GHC.Core.Make
+import GHC.Core.DataCon
 import GHC.Core.Utils
 import GHC.Core.Arity     ( etaExpand )
 import GHC.Core.Unfold
@@ -77,6 +78,8 @@ import MonadUtils
 import qualified GHC.LanguageExtensions as LangExt
 import Control.Monad
 import Data.List.NonEmpty ( nonEmpty )
+import qualified GHC.HsToCore.DsMetaTc as DsMetaTc
+import THNames
 
 {-**********************************************************************
 *                                                                      *
@@ -190,7 +193,10 @@ dsHsBind dflags (AbsBinds { abs_tvs = tyvars, abs_ev_vars = dicts
                           , abs_exports = exports
                           , abs_ev_binds = ev_binds
                           , abs_binds = binds, abs_sig = has_sig })
-  = do { ds_binds <- applyWhen (needToRunPmCheck dflags FromSource)
+  = do {
+       ds_ev_binds <- dsTcEvBinds_s ev_binds
+       ; pprTraceM "ds_ev_binds" (ppr ds_ev_binds)
+       ; ds_binds <- applyWhen (needToRunPmCheck dflags FromSource)
                                -- FromSource might not be accurate, but at worst
                                -- we do superfluous calls to the pattern match
                                -- oracle.
@@ -199,8 +205,6 @@ dsHsBind dflags (AbsBinds { abs_tvs = tyvars, abs_ev_vars = dicts
                                -- See Check, Note [Type and Term Equality Propagation]
                                (addTyCsDs (listToBag dicts))
                                (dsLHsBinds binds)
-
-       ; ds_ev_binds <- dsTcEvBinds_s ev_binds
 
        -- dsAbsBinds does the hard work
        ; dsAbsBinds dflags tyvars dicts exports ds_ev_binds ds_binds has_sig }
@@ -1156,7 +1160,7 @@ dsTcEvBinds (EvBinds bs)   = dsEvBinds bs
 dsEvBinds :: Bag EvBind -> DsM [CoreBind]
 dsEvBinds bs
   = do { ds_bs <- mapBagM dsEvBind bs
-       ; let (now, other) = partitionBag ((== 1) . fst . snd) ds_bs
+       ; let (now, other) = partitionBag (const True . (== 1) . fst . snd) ds_bs
        ; let ds_bs_now = (mapBag (fmap snd) now)
        ; pprTraceM "IGNORING" (ppr other)
        ; let eb = mk_ev_binds ds_bs_now
@@ -1206,12 +1210,17 @@ dsEvTerm n (EvFun { et_tvs = tvs, et_given = given
        ; return $ (n, (mkLams (tvs ++ given) $
                    mkCoreLets ds_ev_binds $
                    Var wanted_id)) }
-dsEvTerm n (EvQuote e) = dsEvTerm (n - 1) e
-dsEvTerm n (EvSplice e) = dsEvTerm (n + 1) e
+dsEvTerm n (EvQuote e) = do
+  b <- DsMetaTc.repVar e
+  tc <- dsLookupTyCon codeCTyConName
+  let dc = tyConSingleDataCon tc
+  pprTraceM "EvQuote" (ppr $ idType (dataConWorkId dc))
+  return (0, mkConApp dc [Type (idType e), b])
 dsEvTerm _n e = pprPanic "dsEvTerm" (ppr e)
 
 
 {-**********************************************************************
+Joey Bada$$ - 95 Til Infinity
 *                                                                      *
            Desugaring Typeable dictionaries
 *                                                                      *

@@ -510,9 +510,9 @@ data HsExpr p
 
   | HsTcTypedBracketOut
       (XTcBracketOut p)
-      (Maybe QuoteWrapper)
       (HsBracket GhcTc) -- The contents of the bracket
       [PendingTcTypedSplice] -- Any expression splices
+      [PendingZonkSplice]
       [PendingZonkSplice] -- Any type splices (?)
 
   | HsSpliceE  (XSpliceE p) (HsSplice p)
@@ -1068,8 +1068,8 @@ ppr_expr (HsRnBracketOut _ e []) = ppr e
 ppr_expr (HsRnBracketOut _ e ps) = ppr e $$ text "pending(rn)" <+> ppr ps
 ppr_expr (HsTcUntypedBracketOut _ _wrap e []) = ppr e
 ppr_expr (HsTcUntypedBracketOut _ _wrap e ps) = ppr e $$ text "pending-u(tc)" <+> ppr ps
-ppr_expr (HsTcTypedBracketOut _ _wrap e [] []) = ppr e
-ppr_expr (HsTcTypedBracketOut _ _wrap e ps zs) = ppr e $$ text "pending-t(tc)" <+> ppr ps <+> ppr zs
+ppr_expr (HsTcTypedBracketOut _ e [] [] []) = ppr e
+ppr_expr (HsTcTypedBracketOut _ e ps es zs) = ppr e $$ text "pending-t(tc)" <+> ppr ps <+> ppr zs <+> ppr es
 
 ppr_expr (HsProc _ pat (L _ (HsCmdTop _ cmd)))
   = hsep [text "proc", ppr pat, ptext (sLit "->"), ppr cmd]
@@ -2481,6 +2481,7 @@ data PendingTcSplice p
 
 data PendingZonkSplice
   = PendingZonkSplice (IdP GhcTc) (EvExpr)
+
 
 {-
 Note [Pending Splices]

@@ -3,7 +3,7 @@
              RankNTypes, RoleAnnotations, ScopedTypeVariables,
              MagicHash, KindSignatures, PolyKinds, TypeApplications, DataKinds,
              GADTs, UnboxedTuples, UnboxedSums, TypeInType,
-             Trustworthy #-}
+             Trustworthy, AllowAmbiguousTypes #-}
 
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
 
@@ -427,6 +427,7 @@ The splice will evaluate to (MkAge 3) and you can't add that to
 
 
 class CodeC (c :: Constraint) where
+  codeCevidence :: Q TExpU
 
 ----------------------------------------------------
 -- Packaged versions for the programmer, hiding the Quasi-ness

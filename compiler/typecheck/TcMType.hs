@@ -42,7 +42,7 @@ module TcMType (
   --------------------------------
   -- Creating new evidence variables
   newEvVar, newEvVars, newDict,
-  newWanted, newWanteds, newHoleCt, cloneWanted, cloneWC,
+  newWanted, newWantedAt, newWanteds, newHoleCt, cloneWanted, cloneWC,
   emitWanted, emitWantedEq, emitWantedEvVar, emitWantedEvVars,
   emitDerivedEqs,
   newTcEvBinds, newNoTcEvBinds, addTcEvBind,
@@ -183,18 +183,22 @@ newEvVar ty = do { name <- newSysName (predTypeOccName ty)
                  ; return (mkLocalIdOrCoVar name ty) }
 
 newWanted :: CtOrigin -> Maybe TypeOrKind -> PredType -> TcM CtEvidence
+newWanted orig t_or_k pty = do
+  st <- getStage
+  newWantedAt (thLevel st) orig t_or_k pty
+
+newWantedAt :: ThLevel -> CtOrigin -> Maybe TypeOrKind -> PredType -> TcM CtEvidence
 -- Deals with both equality and non-equality predicates
-newWanted orig t_or_k pty
+newWantedAt n orig t_or_k pty
   = do loc <- getCtLocM orig t_or_k
-       st <- getStage
-       pprTraceM "newWanted" (ppr pty $$ ppr (thLevel st) $$ ppr orig)
+       pprTraceM "newWanted" (ppr pty $$ ppr n $$ ppr orig)
        d <- if isEqPrimPred pty then HoleDest  <$> newCoercionHole YesBlockSubst pty
-                                else EvVarDest (thLevel st) <$> newEvVar pty
+                                else EvVarDest n <$> newEvVar pty
        return $ CtWanted { ctev_dest = d
                          , ctev_pred = pty
                          , ctev_nosh = WDeriv
                          , ctev_loc = loc
-                         , ctev_stage = thLevel st }
+                         , ctev_stage = n }
 
 newWanteds :: CtOrigin -> ThetaType -> TcM [CtEvidence]
 newWanteds orig = mapM (newWanted orig Nothing)
@@ -1053,11 +1057,14 @@ new_meta_tv_x info subst tv
                   sp_id <- mkSpliceId substd_kind
                   let info' = BrackTv sp_id info
                   new_tv <- cloneAnonMetaTyVar info' tv substd_kind
+                  {-
                   v <- setConstraintVar lie_var   $
                         emitTypeable (mkTyVarTy new_tv)
+                        -}
 
                   zs <- readMutVar zs_var
-                  writeMutVar zs_var (PendingZonkSplice sp_id (evId v) : zs)
+--                  writeMutVar zs_var (PendingZonkSplice sp_id (evId v) : zs)
+                  writeMutVar zs_var zs
                   return new_tv
               _ -> cloneAnonMetaTyVar info tv substd_kind
         ; let subst1 = extendTvSubstWithClone subst tv new_tv

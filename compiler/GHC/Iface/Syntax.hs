@@ -487,6 +487,7 @@ data IfaceExpr
   = IfaceLcl    IfLclName
   | IfaceExt    IfExtName
   | IfaceSplice Int                     -- A splice point
+  | IfaceExactLocal Int IfLclName IfaceType      -- A local name from TH
   | IfaceType   IfaceType
   | IfaceCo     IfaceCoercion
   | IfaceTuple  TupleSort [IfaceExpr]   -- Saturated; type arguments omitted
@@ -1289,6 +1290,7 @@ pprIfaceExpr :: (SDoc -> SDoc) -> IfaceExpr -> SDoc
 
 pprIfaceExpr _       (IfaceLcl v)       = ppr v
 pprIfaceExpr _       (IfaceExt v)       = ppr v
+pprIfaceExpr _       (IfaceExactLocal u fs t) = brackets (ppr u <+> ppr fs <+> ppr t)
 pprIfaceExpr _       (IfaceSplice n)    = ppr n
 pprIfaceExpr _       (IfaceLit l)       = ppr l
 pprIfaceExpr _       (IfaceFCall cc ty) = braces (ppr cc <+> ppr ty)
@@ -2262,8 +2264,14 @@ instance Binary IfaceExpr where
     put_ bh (IfaceSplice n) = do
         putByte bh 14
         put_ bh n
+    put_ bh (IfaceExactLocal u fs t) = do
+        putByte bh 15
+        put_ bh u
+        put_ bh fs
+        put_ bh t
     get bh = do
         h <- getByte bh
+        pprTraceM "byte" (text $ show h)
         case h of
             0 -> do aa <- get bh
                     return (IfaceLcl aa)
@@ -2306,6 +2314,10 @@ instance Binary IfaceExpr where
                      return (IfaceECase a b)
             14 -> do n <- get bh
                      return (IfaceSplice n)
+            15 -> do u <- get bh
+                     fs <- get bh
+                     t <- get bh
+                     return (IfaceExactLocal u fs t)
             _ -> panic ("get IfaceExpr " ++ show h)
 
 instance Binary IfaceTickish where

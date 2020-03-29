@@ -73,6 +73,7 @@ import GHC.Core.TyCo.Tidy ( tidyCo )
 import Demand ( isTopSig )
 import Cpr ( topCprSig )
 import Unique
+import GHC.Core.FVs
 
 import Data.Maybe ( catMaybes )
 
@@ -506,10 +507,10 @@ toIfUnfolding lb (CoreUnfolding { uf_tmpl = rhs
         -- have stuck in NoUnfolding.  For supercompilation we want
         -- to see that unfolding!
   where
-    if_rhs = toIfaceExpr rhs
+    if_rhs = toIfaceExpr (exprFreeVars rhs) rhs
 
 toIfUnfolding lb (DFunUnfolding { df_bndrs = bndrs, df_args = args })
-  = Just (HsUnfold lb (IfDFunUnfold (map toIfaceBndr bndrs) (map toIfaceExpr args)))
+  = Just (HsUnfold lb (IfDFunUnfold (map toIfaceBndr bndrs) (map (toIfaceExpr emptyVarSet) args)))
       -- No need to serialise the data constructor;
       -- we can recover it from the type of the dfun
 
@@ -531,21 +532,21 @@ toIfUnfolding _ NoUnfolding = Nothing
 ************************************************************************
 -}
 
-toIfaceExpr :: CoreExpr -> IfaceExpr
-toIfaceExpr (Var v)         = toIfaceVar v
-toIfaceExpr (Lit l)         = IfaceLit l
-toIfaceExpr (Type ty)       = IfaceType (toIfaceType ty)
-toIfaceExpr (Coercion co)   = IfaceCo   (toIfaceCoercion co)
-toIfaceExpr (Lam x b)       = IfaceLam (toIfaceBndr x, toIfaceOneShot x) (toIfaceExpr b)
-toIfaceExpr (App f a)       = toIfaceApp f [a]
-toIfaceExpr (Case s x ty as)
-  | null as                 = IfaceECase (toIfaceExpr s) (toIfaceType ty)
-  | otherwise               = IfaceCase (toIfaceExpr s) (getOccFS x) (map toIfaceAlt as)
-toIfaceExpr (Let b e)       = IfaceLet (toIfaceBind b) (toIfaceExpr e)
-toIfaceExpr (Cast e co)     = IfaceCast (toIfaceExpr e) (toIfaceCoercion co)
-toIfaceExpr (Tick t e)
-  | Just t' <- toIfaceTickish t = IfaceTick t' (toIfaceExpr e)
-  | otherwise                   = toIfaceExpr e
+toIfaceExpr :: VarSet -> CoreExpr -> IfaceExpr
+toIfaceExpr fvs (Var v)       = toIfaceVar fvs v
+toIfaceExpr _ (Lit l)         = IfaceLit l
+toIfaceExpr _ (Type ty)       = IfaceType (toIfaceType ty)
+toIfaceExpr _ (Coercion co)   = IfaceCo   (toIfaceCoercion co)
+toIfaceExpr fvs (Lam x b)       = IfaceLam (toIfaceBndr x, toIfaceOneShot x) (toIfaceExpr fvs b)
+toIfaceExpr fvs (App f a)       = toIfaceApp fvs f [a]
+toIfaceExpr fvs (Case s x ty as)
+  | null as                 = IfaceECase (toIfaceExpr fvs s) (toIfaceType ty)
+  | otherwise               = IfaceCase (toIfaceExpr fvs s) (getOccFS x) (map toIfaceAlt as)
+toIfaceExpr fvs (Let b e)       = IfaceLet (toIfaceBind b) (toIfaceExpr fvs e)
+toIfaceExpr fvs (Cast e co)     = IfaceCast (toIfaceExpr fvs e) (toIfaceCoercion co)
+toIfaceExpr fvs (Tick t e)
+  | Just t' <- toIfaceTickish t = IfaceTick t' (toIfaceExpr fvs e)
+  | otherwise                   = toIfaceExpr fvs e
 
 toIfaceOneShot :: Id -> IfaceOneShot
 toIfaceOneShot id | isId id
@@ -565,13 +566,13 @@ toIfaceTickish (Breakpoint {})         = Nothing
 
 ---------------------
 toIfaceBind :: Bind Id -> IfaceBinding
-toIfaceBind (NonRec b r) = IfaceNonRec (toIfaceLetBndr b) (toIfaceExpr r)
-toIfaceBind (Rec prs)    = IfaceRec [(toIfaceLetBndr b, toIfaceExpr r) | (b,r) <- prs]
+toIfaceBind (NonRec b r) = IfaceNonRec (toIfaceLetBndr b) (toIfaceExpr emptyVarSet r)
+toIfaceBind (Rec prs)    = IfaceRec [(toIfaceLetBndr b, toIfaceExpr emptyVarSet r) | (b,r) <- prs]
 
 ---------------------
 toIfaceAlt :: (AltCon, [Var], CoreExpr)
            -> (IfaceConAlt, [FastString], IfaceExpr)
-toIfaceAlt (c,bs,r) = (toIfaceCon c, map getOccFS bs, toIfaceExpr r)
+toIfaceAlt (c,bs,r) = (toIfaceCon c, map getOccFS bs, toIfaceExpr emptyVarSet r)
 
 ---------------------
 toIfaceCon :: AltCon -> IfaceConAlt
@@ -580,9 +581,9 @@ toIfaceCon (LitAlt l)   = IfaceLitAlt l
 toIfaceCon DEFAULT      = IfaceDefault
 
 ---------------------
-toIfaceApp :: Expr CoreBndr -> [Arg CoreBndr] -> IfaceExpr
-toIfaceApp (App f a) as = toIfaceApp f (a:as)
-toIfaceApp (Var v) as
+toIfaceApp :: VarSet -> Expr CoreBndr -> [Arg CoreBndr] -> IfaceExpr
+toIfaceApp fvs (App f a) as = toIfaceApp fvs f (a:as)
+toIfaceApp fvs (Var v) as
   = case isDataConWorkId_maybe v of
         -- We convert the *worker* for tuples into IfaceTuples
         Just dc |  saturated
@@ -591,19 +592,19 @@ toIfaceApp (Var v) as
           where
             val_args  = dropWhile isTypeArg as
             saturated = val_args `lengthIs` idArity v
-            tup_args  = map toIfaceExpr val_args
+            tup_args  = map (toIfaceExpr fvs) val_args
             tc        = dataConTyCon dc
 
-        _ -> mkIfaceApps (toIfaceVar v) as
+        _ -> mkIfaceApps fvs (toIfaceVar fvs v) as
 
-toIfaceApp e as = mkIfaceApps (toIfaceExpr e) as
+toIfaceApp fvs e as = mkIfaceApps fvs (toIfaceExpr fvs e) as
 
-mkIfaceApps :: IfaceExpr -> [CoreExpr] -> IfaceExpr
-mkIfaceApps f as = foldl' (\f a -> IfaceApp f (toIfaceExpr a)) f as
+mkIfaceApps :: VarSet -> IfaceExpr -> [CoreExpr] -> IfaceExpr
+mkIfaceApps fvs f as = foldl' (\f a -> IfaceApp f (toIfaceExpr fvs a)) f as
 
 ---------------------
-toIfaceVar :: Id -> IfaceExpr
-toIfaceVar v
+toIfaceVar :: VarSet -> Id -> IfaceExpr
+toIfaceVar fvs v
     | isBootUnfolding (idUnfolding v)
     = -- See Note [Inlining and hs-boot files]
       IfaceApp (IfaceApp (IfaceExt noinlineIdName)
@@ -615,7 +616,9 @@ toIfaceVar v
     | Just n <- isSpliceVar name         = IfaceSplice n
 
     | isExternalName name             = IfaceExt name
-    | otherwise                       = IfaceLcl (getOccFS name)
+    -- In the old days, expressions were always closed but not in the new days
+    | v `elemVarSet` fvs              = IfaceExactLocal (getKey (nameUnique name)) (getOccFS name) (toIfaceType (idType v)) --IfaceLcl (getOccFS name)
+    | otherwise = IfaceLcl (getOccFS name)
   where name = idName v
 
 isSpliceVar :: Name -> Maybe Int

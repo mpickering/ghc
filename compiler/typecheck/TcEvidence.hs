@@ -546,8 +546,7 @@ data EvTerm
                               -- constructor, and can't just use EvExpr
       , et_body  :: EvVar }
 
-  | EvSplice EvTerm
-  | EvQuote EvTerm
+  | EvQuote EvVar
 
   deriving Data.Data
 
@@ -878,8 +877,7 @@ evVarsOfTerm :: EvTerm -> VarSet
 evVarsOfTerm (EvExpr e)         = exprSomeFreeVars isEvVar e
 evVarsOfTerm (EvTypeable _ ev)  = evVarsOfTypeable ev
 evVarsOfTerm (EvFun {})         = emptyVarSet -- See Note [Free vars of EvFun]
-evVarsOfTerm (EvQuote e)        = evVarsOfTerm e
-evVarsOfTerm (EvSplice e)       = evVarsOfTerm e
+evVarsOfTerm (EvQuote e)        = unitVarSet e
 
 evVarsOfTerms :: [EvTerm] -> VarSet
 evVarsOfTerms = mapUnionVarSet evVarsOfTerm
@@ -963,11 +961,12 @@ instance Uniquable EvBindsVar where
   getUnique = ebv_uniq
 
 instance Outputable EvBind where
-  ppr (EvBind { eb_lhs = v, eb_rhs = e, eb_is_given = is_given })
-     = sep [ pp_gw <+> ppr v
+  ppr (EvBind { eb_lhs = v, eb_rhs = e, eb_is_given = is_given, eb_level = n })
+     = sep [ pp_gw <> pp_l <+> ppr v
            , nest 2 $ equals <+> ppr e ]
      where
        pp_gw = brackets (if is_given then char 'G' else char 'W')
+       pp_l  = brackets (ppr n)
    -- We cheat a bit and pretend EqVars are CoVars for the purposes of pretty printing
 
 instance Outputable EvTerm where
@@ -977,7 +976,6 @@ instance Outputable EvTerm where
       = hang (text "\\" <+> sep (map pprLamBndr (tvs ++ gs)) <+> arrow)
            2 (ppr bs $$ ppr w)   -- Not very pretty
   ppr (EvQuote e)        = text "[|" <+> ppr e <+> text "|]"
-  ppr (EvSplice e)        = text "$(" <+> ppr e <+> text ")"
 
 instance Outputable EvCallStack where
   ppr EvCsEmpty

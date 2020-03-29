@@ -33,6 +33,7 @@ import Id
 import Annotations
 import GHC.Core
 import GHC.Core.Class
+import GHC.Core.FVs
 import GHC.Core.TyCon
 import GHC.Core.Coercion.Axiom
 import GHC.Core.ConLike
@@ -65,6 +66,7 @@ import Data.Function
 import Data.List ( findIndex, mapAccumL, sortBy )
 import Data.Ord
 import Data.IORef
+import VarSet
 import GHC.Driver.Plugins (LoadedPlugin(..))
 
 {-
@@ -703,7 +705,7 @@ coreRuleToIfaceRule (Rule { ru_name = name, ru_fn = fn,
                 ifRuleBndrs = map toIfaceBndr bndrs,
                 ifRuleHead  = fn,
                 ifRuleArgs  = map do_arg args,
-                ifRuleRhs   = toIfaceExpr rhs,
+                ifRuleRhs   = toIfaceExpr (exprFreeVars rhs) rhs,
                 ifRuleAuto  = auto,
                 ifRuleOrph  = orph }
   where
@@ -713,7 +715,7 @@ coreRuleToIfaceRule (Rule { ru_name = name, ru_fn = fn,
         -- see tcIfaceRule
     do_arg (Type ty)     = IfaceType (toIfaceType (deNoteType ty))
     do_arg (Coercion co) = IfaceCo   (toIfaceCoercion co)
-    do_arg arg           = toIfaceExpr arg
+    do_arg arg           = toIfaceExpr emptyVarSet arg
 
 bogusIfaceRule :: Name -> IfaceRule
 bogusIfaceRule id_name

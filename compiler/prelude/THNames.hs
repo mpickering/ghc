@@ -34,7 +34,7 @@ templateHaskellNames = [
     unTypeName,
     unTypeQName,
     unsafeTExpCoerceName,
-    mkTTExpName,
+    mkTTExpName, codeCevidenceName,
 
     -- Lit
     charLName, stringLName, integerLName, intPrimLName, wordPrimLName,
@@ -223,7 +223,8 @@ overlapTyConName       = thTc (fsLit "Overlap")        overlapTyConKey
 returnQName, bindQName, sequenceQName, newNameName, liftName,
     mkNameName, mkNameG_vName, mkNameG_dName, mkNameG_tcName,
     mkNameLName, mkNameSName, liftStringName, unTypeName, unTypeQName,
-    unsafeTExpCoerceName, liftTypedName, mkTTExpName, liftStringTypedName :: Name
+    unsafeTExpCoerceName, liftTypedName, mkTTExpName, liftStringTypedName,
+    codeCevidenceName :: Name
 returnQName    = thFun (fsLit "returnQ")   returnQIdKey
 bindQName      = thFun (fsLit "bindQ")     bindQIdKey
 sequenceQName  = thFun (fsLit "sequenceQ") sequenceQIdKey
@@ -243,6 +244,7 @@ unsafeTExpCoerceName = thFun (fsLit "unsafeTExpCoerce") unsafeTExpCoerceIdKey
 liftTypedName = liftFun (fsLit "liftTyped") liftTypedIdKey
 
 mkTTExpName = thFun (fsLit "mkTTExp") mkTTExpKey
+codeCevidenceName = thFun (fsLit "codeCevidence") codeCevidenceKey
 
 -------------------- TH.Lib -----------------------
 -- data Lit = ...
@@ -741,7 +743,8 @@ incoherentDataConKey   = mkPreludeDataConUnique 212
 returnQIdKey, bindQIdKey, sequenceQIdKey, liftIdKey, newNameIdKey,
     mkNameIdKey, mkNameG_vIdKey, mkNameG_dIdKey, mkNameG_tcIdKey,
     mkNameLIdKey, mkNameSIdKey, unTypeIdKey, unTypeQIdKey,
-    unsafeTExpCoerceIdKey, liftTypedIdKey, mkTTExpKey :: Unique
+    unsafeTExpCoerceIdKey, liftTypedIdKey, mkTTExpKey,
+    codeCevidenceKey :: Unique
 returnQIdKey        = mkPreludeMiscIdUnique 200
 bindQIdKey          = mkPreludeMiscIdUnique 201
 sequenceQIdKey      = mkPreludeMiscIdUnique 202
@@ -758,6 +761,7 @@ unTypeQIdKey         = mkPreludeMiscIdUnique 212
 unsafeTExpCoerceIdKey = mkPreludeMiscIdUnique 213
 liftTypedIdKey        = mkPreludeMiscIdUnique 214
 mkTTExpKey = mkPreludeMiscIdUnique 215
+codeCevidenceKey = mkPreludeMiscIdUnique 216
 
 
 -- data Lit = ...

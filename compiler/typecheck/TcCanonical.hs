@@ -155,7 +155,7 @@ canClassNC :: CtEvidence -> Class -> [Type] -> TcS (StopOrContinue Ct)
 -- from a NonCanonical constraint, not from a CDictCan
 -- Precondition: EvVar is class evidence
 canClassNC ev cls tys
-  | (classTyCon cls) `hasKey` codeCTyConKey  = canCodeCNC ev (head tys) >> canClass ev cls tys False
+  -- | (classTyCon cls) `hasKey` codeCTyConKey  = canCodeCNC ev (head tys) >> canClass ev cls tys False
   | isGiven ev  -- See Note [Eagerly expand given superclasses]
   = do { sc_cts <- mkStrictSuperClasses ev [] [] cls tys
        ; emitWork sc_cts
@@ -704,6 +704,7 @@ See also Note [Evidence for quantified constraints] in GHC.Core.Predicate.
 
 -- Rewrite Given constraints to the next level
 -- Rewrite wanted constraints to the previous level
+{-
 canCodeCNC :: CtEvidence -> Type -> TcS ()
 canCodeCNC ct_ev body
   | isGiven ct_ev = do
@@ -719,6 +720,7 @@ canCodeCNC ct_ev body
       emitWorkNC [work]
 
   | otherwise = pprPanic "does this ever happen" (ppr ct_ev)
+  -}
 
 
 {-

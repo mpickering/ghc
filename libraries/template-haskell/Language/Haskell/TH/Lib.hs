@@ -339,7 +339,7 @@ tupE es = do { es1 <- sequenceA es; return (TupE $ map Just es1)}
 unboxedTupE :: Quote m => [m Exp] -> m Exp
 unboxedTupE es = do { es1 <- sequenceA es; return (UnboxedTupE $ map Just es1)}
 
-#if __GLASGOW_HASKELL__ < 811
+#if __GLASGOW_HASKELL__ < 812
 typecheck :: Exp -> Q (TExp a)
 typecheck = error "not possible"
 #else

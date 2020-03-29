@@ -754,7 +754,7 @@ Thus, we pass @r@ as the scrutinee expression to @matchWrapper@ above.
 
 dsExpr  (HsRnBracketOut _ _ _)  = panic "dsExpr HsRnBracketOut"
 dsExpr (HsTcUntypedBracketOut _ w x ps) = GHC.HsToCore.Quote.dsBracket w x ps
-dsExpr (HsTcTypedBracketOut _ _ x ps zs) = GHC.HsToCore.DsMetaTc.dsBracketTc x ps zs
+dsExpr (HsTcTypedBracketOut _ x ps ev_zs zs) = GHC.HsToCore.DsMetaTc.dsBracketTc x ps ev_zs zs
 dsExpr (HsSpliceE _ (HsSplicedD zs env s))
   = dsSplicedD (TExpU zs env s)
 dsExpr (HsSpliceE {})         =
@@ -856,6 +856,7 @@ loadCoreExpr zs menv s =  pprTrace "LOADING" (ppr zs $$ ppr menv $$ ppr s) $ do
       ncu = NCU (\f -> return $ snd (f nc))
   i <- liftIO $ do
     bh <- readBinMem s
+    pprTraceM "getting" (text s)
     getWithUserData ncu bh
   dsm_envs <- getEnvs
   let (if_gbl, if_lcl) = ds_if_env env

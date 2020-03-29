@@ -163,6 +163,7 @@ getWithUserData ncu bh = do
     data_p <- tellBin bh          -- Remember where we are now
     seekBin bh dict_p
     dict   <- getDictionary bh
+    pprTraceM "dict" (text (show  dict))
     seekBin bh data_p             -- Back to where we were before
 
     -- Initialise the user-data field of bh
@@ -178,7 +179,7 @@ getWithUserData ncu bh = do
         -- It is only now that we know how to get a Name
         return $ setUserData bh $ newReadState (getSymtabName ncu dict symtab)
                                                (getDictFastString dict)
-
+    pprTraceM "getting2" empty
     -- Read the interface file
     get bh
 
@@ -293,7 +294,9 @@ putSymbolTable bh next_off symtab = do
 getSymbolTable :: BinHandle -> NameCacheUpdater -> IO SymbolTable
 getSymbolTable bh ncu = do
     sz <- get bh
+    pprTraceM "sz" (ppr sz)
     od_names <- sequence (replicate sz (get bh))
+    pprTraceM "od_names" (ppr od_names)
     updateNameCache ncu $ \namecache ->
         runST $ flip State.evalStateT namecache $ do
             mut_arr <- lift $ newSTArray_ (0, sz-1)
@@ -378,7 +381,7 @@ getSymtabName :: NameCacheUpdater
 getSymtabName _ncu _dict symtab bh = do
     i :: Word32 <- get bh
     case i .&. 0xC0000000 of
-      0x00000000 -> return $! symtab ! fromIntegral i
+      0x00000000 -> return $! symtab ! (pprTraceIt "symtab" $ fromIntegral i)
 
       0x80000000 ->
         let

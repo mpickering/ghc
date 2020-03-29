@@ -1292,6 +1292,11 @@ tcIfaceExpr (IfaceCast expr co)
 tcIfaceExpr (IfaceLcl name)
   = Var <$> tcIfaceLclId name
 
+tcIfaceExpr (IfaceExactLocal u fs ty)
+  = do { let name = mkInternalName (mkUniqueGrimily u) (mkVarOccFS fs) noSrcSpan
+       ; ty'  <- tcIfaceType ty
+       ; return (Var  (mkLocalId name ty')) }
+
 tcIfaceExpr (IfaceExt gbl)
   = Var <$> tcIfaceExtId gbl
 tcIfaceExpr (IfaceSplice n)
