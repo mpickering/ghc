@@ -856,7 +856,6 @@ loadCoreExpr zs menv s =  pprTrace "LOADING" (ppr zs $$ ppr menv $$ ppr s) $ do
       ncu = NCU (\f -> return $ snd (f nc))
   i <- liftIO $ do
     bh <- readBinMem s
-    pprTraceM "getting" (text s)
     getWithUserData ncu bh
   dsm_envs <- getEnvs
   let (if_gbl, if_lcl) = ds_if_env env

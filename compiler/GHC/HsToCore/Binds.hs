@@ -1214,7 +1214,6 @@ dsEvTerm n (EvQuote e) = do
   b <- DsMetaTc.repVar e
   tc <- dsLookupTyCon codeCTyConName
   let dc = tyConSingleDataCon tc
-  pprTraceM "EvQuote" (ppr $ idType (dataConWorkId dc))
   return (0, mkConApp dc [Type (idType e), b])
 dsEvTerm _n e = pprPanic "dsEvTerm" (ppr e)
 

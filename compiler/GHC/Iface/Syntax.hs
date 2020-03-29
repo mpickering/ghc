@@ -2271,7 +2271,6 @@ instance Binary IfaceExpr where
         put_ bh t
     get bh = do
         h <- getByte bh
-        pprTraceM "byte" (text $ show h)
         case h of
             0 -> do aa <- get bh
                     return (IfaceLcl aa)
